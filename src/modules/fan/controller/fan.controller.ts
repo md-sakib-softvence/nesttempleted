@@ -13,7 +13,7 @@ import {
   UploadedFile,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { ApiTags, ApiOperation, ApiConsumes, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiConsumes, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { FanService } from '../service/fan.service';
 import { CreateFanDto } from '../dto/create-fan.dto';
@@ -22,10 +22,12 @@ import { sendResponse } from '../../utils/response.util';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
-import { uploadImageToS3 } from '../../utils/s3.util';
+import { Public } from '../../../common/decorators/public.decorator';
+import { uploadImageToS3, deleteImageFromS3, getPreSignedUrl } from '../../utils/s3.util';
 import { Role } from '@prisma/client';
 
 @ApiTags('fan')
+@ApiBearerAuth()
 @Controller('fan')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'fan' as Role)
@@ -41,12 +43,29 @@ export class FanController {
     @Body() createFanDto: CreateFanDto,
     @UploadedFile() profileImage?: Express.Multer.File,
   ) {
+    let s3ProfileImageFilename: string | null = null;
+    
     if (profileImage) {
-      const s3Url = await uploadImageToS3(profileImage);
-      createFanDto.profileImage = s3Url;
+      s3ProfileImageFilename = await uploadImageToS3(profileImage);
+      createFanDto.profileImage = s3ProfileImageFilename;
+    } else {
+      delete createFanDto.profileImage;
     }
-    const data = await this.fanService.createFan(createFanDto);
-    return sendResponse({ message: 'Fan created successfully', data });
+
+    try {
+      const data = await this.fanService.createFan(createFanDto);
+      
+      if (data.profileImage) {
+        data.profileImage = await getPreSignedUrl(data.profileImage);
+      }
+      
+      return sendResponse({ message: 'Fan created successfully', data });
+    } catch (error) {
+      if (s3ProfileImageFilename) {
+        await deleteImageFromS3(s3ProfileImageFilename);
+      }
+      throw error;
+    }
   }
 
   @Patch(':id')
@@ -58,12 +77,40 @@ export class FanController {
     @Body() updateFanDto: UpdateFanDto,
     @UploadedFile() profileImage?: Express.Multer.File,
   ) {
+    let s3ProfileImageFilename: string | null = null;
+
     if (profileImage) {
-      const s3Url = await uploadImageToS3(profileImage);
-      updateFanDto.profileImage = s3Url;
+      s3ProfileImageFilename = await uploadImageToS3(profileImage);
+      updateFanDto.profileImage = s3ProfileImageFilename;
+    } else {
+      delete updateFanDto.profileImage;
     }
-    const data = await this.fanService.updateFan(id, updateFanDto);
-    return sendResponse({ message: 'Fan updated successfully', data });
+
+    try {
+      const data = await this.fanService.updateFan(id, updateFanDto);
+      
+      if (data.profileImage) {
+        data.profileImage = await getPreSignedUrl(data.profileImage);
+      }
+      
+      return sendResponse({ message: 'Fan updated successfully', data });
+    } catch (error) {
+      if (s3ProfileImageFilename) {
+        await deleteImageFromS3(s3ProfileImageFilename);
+      }
+      throw error;
+    }
+  }
+
+  @Get('recover')
+  @Public()
+  @ApiOperation({ summary: 'Recover deactivated Fan account' })
+  async recoverFan(@Query('token') token: string) {
+    const data = await this.fanService.recoverFan(token);
+    return sendResponse({
+      message: 'Fan account recovered successfully',
+      data,
+    });
   }
 
   @Get('profile')
@@ -74,6 +121,16 @@ export class FanController {
     const data = await this.fanService.getFanById(fanId);
     return sendResponse<any>({
       message: 'Fan profile retrieved successfully',
+      data,
+    });
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get a specific Fan by ID' })
+  async getFanById(@Param('id') id: string) {
+    const data = await this.fanService.getFanById(id);
+    return sendResponse({
+      message: 'Fan retrieved successfully',
       data,
     });
   }

@@ -12,10 +12,18 @@ import {
   calculatePaginationMeta,
   QueryOptions,
 } from '../../utils/query.util';
+import { getPreSignedUrl, deleteImageFromS3 } from '../../utils/s3.util';
+import { generateFanId } from '../utils/generate-id.util';
+import { JwtService } from '@nestjs/jwt';
+import { MailService } from '../../mail/mail.service';
 
 @Injectable()
 export class FanService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private jwtService: JwtService,
+    private mailService: MailService,
+  ) {}
 
   async createFan(createFanDto: CreateFanDto) {
     const existingFan = await this.prisma.fan.findUnique({
@@ -24,26 +32,27 @@ export class FanService {
 
     if (existingFan) {
       if (existingFan.isDeleted) {
-        throw new ConflictException('This account has been deactivated.');
+        const token = await this.jwtService.signAsync(
+          { sub: existingFan.fanId, email: existingFan.email },
+          { expiresIn: (process.env.RECOVERY_TOKEN_EXPIRATION || '15m') as any },
+        );
+        await this.mailService.sendRecoveryLink(existingFan.email, token);
+        throw new ConflictException(
+          'This account has been deactivated. A recovery link has been sent to your email.',
+        );
       }
       throw new ConflictException('Fan with this email already exists');
     }
 
-    const existingShowId = await this.prisma.fan.findUnique({
-      where: { showFanId: createFanDto.showFanId },
-    });
-
-    if (existingShowId) {
-      throw new ConflictException('Fan with this Show ID already exists');
-    }
-
     const { password, ...rest } = createFanDto;
     const hashedPassword = await bcrypt.hash(password, 10);
+    const showFanId = await generateFanId(this.prisma);
 
     return this.prisma.fan.create({
       data: {
         ...rest,
         password: hashedPassword,
+        showFanId,
       },
     });
   }
@@ -66,16 +75,21 @@ export class FanService {
       }
     }
 
-    const { password, ...restData } = updateFanDto;
+    const { password, profileImage, ...restData } = updateFanDto;
     let hashedPassword: string | undefined = undefined;
     if (password) {
       hashedPassword = await bcrypt.hash(password, 10);
+    }
+    
+    if (profileImage && existingFan.profileImage) {
+      await deleteImageFromS3(existingFan.profileImage);
     }
 
     return this.prisma.fan.update({
       where: { fanId: id },
       data: {
         ...restData,
+        ...(profileImage ? { profileImage } : {}),
         ...(hashedPassword ? { password: hashedPassword } : {}),
       },
     });
@@ -92,6 +106,10 @@ export class FanService {
 
     if (!fan || fan.isDeleted) {
       throw new NotFoundException('Fan not found');
+    }
+
+    if (fan.profileImage) {
+      fan.profileImage = await getPreSignedUrl(fan.profileImage);
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -117,9 +135,51 @@ export class FanService {
       this.prisma.fan.count({ where }),
     ]);
 
+    const safeData = await Promise.all(
+      data.map(async (fan) => {
+        if (fan.profileImage) {
+          fan.profileImage = await getPreSignedUrl(fan.profileImage);
+        }
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { password, ...fanWithoutPassword } = fan;
+        return fanWithoutPassword;
+      }),
+    );
+
     const meta = calculatePaginationMeta(total, page, limit);
 
-    return { data, meta };
+    return { data: safeData, meta };
+  }
+
+  async recoverFan(token: string) {
+    try {
+      const payload = await this.jwtService.verifyAsync<{
+        sub: string;
+      }>(token);
+      const fan = await this.prisma.fan.findUnique({
+        where: { fanId: payload.sub },
+      });
+
+      if (!fan) {
+        throw new NotFoundException('Fan not found');
+      }
+
+      if (!fan.isDeleted) {
+        throw new ConflictException('Fan account is already active');
+      }
+
+      return await this.prisma.fan.update({
+        where: { fanId: fan.fanId },
+        data: {
+          isDeleted: false,
+        },
+      });
+    } catch (error) {
+      if (error.name === 'TokenExpiredError') {
+        throw new ConflictException('Recovery link has expired');
+      }
+      throw new ConflictException('Invalid recovery link');
+    }
   }
 
   async deleteFan(id: string) {
@@ -127,8 +187,8 @@ export class FanService {
       where: { fanId: id },
     });
 
-    if (!fan) {
-      throw new NotFoundException('Fan not found');
+    if (!fan || fan.isDeleted) {
+      throw new NotFoundException('Fan not found or already deleted');
     }
 
     return this.prisma.fan.update({

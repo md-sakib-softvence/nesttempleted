@@ -13,7 +13,7 @@ import {
   UploadedFiles,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { ApiTags, ApiOperation, ApiConsumes, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiConsumes, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { PlayerService } from '../service/player.service';
 import { CreatePlayerDto } from '../dto/create-player.dto';
@@ -22,10 +22,12 @@ import { sendResponse } from '../../utils/response.util';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
-import { uploadMultipleFilesToS3 } from '../../utils/s3.util';
+import { Public } from '../../../common/decorators/public.decorator';
+import { uploadMultipleFilesToS3, deleteImageFromS3, getPreSignedUrl } from '../../utils/s3.util';
 import { Role } from '@prisma/client';
 
 @ApiTags('player')
+@ApiBearerAuth()
 @Controller('player')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'player' as Role)
@@ -41,14 +43,31 @@ export class PlayerController {
     @Body() createPlayerDto: CreatePlayerDto,
     @UploadedFiles() documents?: Express.Multer.File[],
   ) {
+    let s3DocumentFilenames: string[] = [];
+
     if (documents && documents.length > 0) {
-      const s3Urls = await uploadMultipleFilesToS3(documents);
-      createPlayerDto.documents = s3Urls;
+      s3DocumentFilenames = await uploadMultipleFilesToS3(documents);
+      createPlayerDto.documents = s3DocumentFilenames;
     } else {
       createPlayerDto.documents = [];
     }
-    const data = await this.playerService.createPlayer(createPlayerDto);
-    return sendResponse({ message: 'Player created successfully', data });
+
+    try {
+      const data = await this.playerService.createPlayer(createPlayerDto);
+      
+      if (data.document && data.document.length > 0) {
+        data.document = await Promise.all(
+          data.document.map(async (doc) => getPreSignedUrl(doc))
+        );
+      }
+      
+      return sendResponse({ message: 'Player created successfully', data });
+    } catch (error) {
+      if (s3DocumentFilenames.length > 0) {
+        await Promise.all(s3DocumentFilenames.map((key) => deleteImageFromS3(key)));
+      }
+      throw error;
+    }
   }
 
   @Patch(':id')
@@ -60,12 +79,47 @@ export class PlayerController {
     @Body() updatePlayerDto: UpdatePlayerDto,
     @UploadedFiles() documents?: Express.Multer.File[],
   ) {
-    if (documents && documents.length > 0) {
-      const s3Urls = await uploadMultipleFilesToS3(documents);
-      updatePlayerDto.documents = s3Urls;
+    // Convert deletedDocuments to array if it is a string from multipart/form-data
+    if (updatePlayerDto.deletedDocuments && typeof updatePlayerDto.deletedDocuments === 'string') {
+      updatePlayerDto.deletedDocuments = [updatePlayerDto.deletedDocuments];
     }
-    const data = await this.playerService.updatePlayer(id, updatePlayerDto);
-    return sendResponse({ message: 'Player updated successfully', data });
+
+    let s3DocumentFilenames: string[] = [];
+
+    if (documents && documents.length > 0) {
+      s3DocumentFilenames = await uploadMultipleFilesToS3(documents);
+      updatePlayerDto.documents = s3DocumentFilenames;
+    } else {
+      delete updatePlayerDto.documents;
+    }
+
+    try {
+      const data = await this.playerService.updatePlayer(id, updatePlayerDto);
+      
+      if (data.document && data.document.length > 0) {
+        data.document = await Promise.all(
+          data.document.map(async (doc) => getPreSignedUrl(doc))
+        );
+      }
+      
+      return sendResponse({ message: 'Player updated successfully', data });
+    } catch (error) {
+      if (s3DocumentFilenames.length > 0) {
+        await Promise.all(s3DocumentFilenames.map((key) => deleteImageFromS3(key)));
+      }
+      throw error;
+    }
+  }
+
+  @Get('recover')
+  @Public()
+  @ApiOperation({ summary: 'Recover deactivated Player account' })
+  async recoverPlayer(@Query('token') token: string) {
+    const data = await this.playerService.recoverPlayer(token);
+    return sendResponse({
+      message: 'Player account recovered successfully',
+      data,
+    });
   }
 
   @Get('profile')
@@ -76,6 +130,16 @@ export class PlayerController {
     const data = await this.playerService.getPlayerById(playerId);
     return sendResponse<any>({
       message: 'Player profile retrieved successfully',
+      data,
+    });
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get a specific Player by ID' })
+  async getPlayerById(@Param('id') id: string) {
+    const data = await this.playerService.getPlayerById(id);
+    return sendResponse({
+      message: 'Player retrieved successfully',
       data,
     });
   }

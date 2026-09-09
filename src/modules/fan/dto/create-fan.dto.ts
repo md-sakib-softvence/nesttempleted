@@ -9,11 +9,6 @@ import {
 import { Type } from 'class-transformer';
 
 export class CreateFanDto {
-  @ApiProperty({ description: 'Show Fan ID' })
-  @IsString()
-  @IsNotEmpty()
-  showFanId: string;
-
   @ApiProperty({ description: 'First Name' })
   @IsString()
   @IsNotEmpty()

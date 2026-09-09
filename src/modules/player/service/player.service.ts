@@ -12,10 +12,18 @@ import {
   calculatePaginationMeta,
   QueryOptions,
 } from '../../utils/query.util';
+import { getPreSignedUrl, deleteImageFromS3 } from '../../utils/s3.util';
+import { generatePlayerId } from '../utils/generate-id.util';
+import { JwtService } from '@nestjs/jwt';
+import { MailService } from '../../mail/mail.service';
 
 @Injectable()
 export class PlayerService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private jwtService: JwtService,
+    private mailService: MailService,
+  ) {}
 
   async createPlayer(createPlayerDto: CreatePlayerDto) {
     const existingPlayer = await this.prisma.player.findUnique({
@@ -24,27 +32,28 @@ export class PlayerService {
 
     if (existingPlayer) {
       if (existingPlayer.isDeleted) {
-        throw new ConflictException('This account has been deactivated.');
+        const token = await this.jwtService.signAsync(
+          { sub: existingPlayer.playerId, email: existingPlayer.email },
+          { expiresIn: (process.env.RECOVERY_TOKEN_EXPIRATION || '15m') as any },
+        );
+        await this.mailService.sendRecoveryLink(existingPlayer.email, token);
+        throw new ConflictException(
+          'This account has been deactivated. A recovery link has been sent to your email.',
+        );
       }
       throw new ConflictException('Player with this email already exists');
     }
 
-    const existingShowId = await this.prisma.player.findUnique({
-      where: { showPlayerId: createPlayerDto.showPlayerId },
-    });
-
-    if (existingShowId) {
-      throw new ConflictException('Player with this Show ID already exists');
-    }
-
     const { password, documents, ...rest } = createPlayerDto;
     const hashedPassword = await bcrypt.hash(password, 10);
+    const showPlayerId = await generatePlayerId(this.prisma);
 
     return this.prisma.player.create({
       data: {
         ...rest,
         password: hashedPassword,
         document: documents || [],
+        showPlayerId,
       },
     });
   }
@@ -70,25 +79,43 @@ export class PlayerService {
       }
     }
 
-    const { password, documents, ...restData } = updatePlayerDto;
+    const { password, documents, deletedDocuments, ...restData } = updatePlayerDto;
     let hashedPassword: string | undefined = undefined;
     if (password) {
       hashedPassword = await bcrypt.hash(password, 10);
     }
 
-    // Merge existing documents with new ones if provided, or overwrite. Let's overwrite for simplicity unless logic demands otherwise.
-    // Or just append new documents to existing. Let's append new ones to the array.
+    let finalDocuments = existingPlayer.document || [];
+
+    const extractKey = (urlOrKey: string) => {
+      if (urlOrKey.startsWith('http')) {
+        try {
+          const url = new URL(urlOrKey);
+          return url.pathname.substring(1);
+        } catch {
+          return urlOrKey;
+        }
+      }
+      return urlOrKey;
+    };
+
+    if (deletedDocuments && deletedDocuments.length > 0) {
+      const deletedKeys = deletedDocuments.map(extractKey);
+      await Promise.all(deletedKeys.map((key) => deleteImageFromS3(key)));
+      finalDocuments = finalDocuments.filter((doc) => {
+        const docKey = extractKey(doc);
+        return !deletedKeys.includes(docKey);
+      });
+    }
+
     const newDocs = (documents as string[]) || [];
-    const updatedDocuments =
-      newDocs.length > 0
-        ? [...existingPlayer.document, ...newDocs]
-        : existingPlayer.document;
+    finalDocuments = [...finalDocuments, ...newDocs];
 
     return this.prisma.player.update({
       where: { playerId: id },
       data: {
         ...restData,
-        document: updatedDocuments,
+        document: finalDocuments,
         ...(hashedPassword ? { password: hashedPassword } : {}),
       },
     });
@@ -109,6 +136,12 @@ export class PlayerService {
 
     if (!player || player.isDeleted) {
       throw new NotFoundException('Player not found');
+    }
+
+    if (player.document && player.document.length > 0) {
+      player.document = await Promise.all(
+        player.document.map(async (doc) => getPreSignedUrl(doc))
+      );
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -134,9 +167,53 @@ export class PlayerService {
       this.prisma.player.count({ where }),
     ]);
 
+    const safeData = await Promise.all(
+      data.map(async (player) => {
+        if (player.document && player.document.length > 0) {
+          player.document = await Promise.all(
+            player.document.map(async (doc) => getPreSignedUrl(doc))
+          );
+        }
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { password, ...playerWithoutPassword } = player;
+        return playerWithoutPassword;
+      }),
+    );
+
     const meta = calculatePaginationMeta(total, page, limit);
 
-    return { data, meta };
+    return { data: safeData, meta };
+  }
+
+  async recoverPlayer(token: string) {
+    try {
+      const payload = await this.jwtService.verifyAsync<{
+        sub: string;
+      }>(token);
+      const player = await this.prisma.player.findUnique({
+        where: { playerId: payload.sub },
+      });
+
+      if (!player) {
+        throw new NotFoundException('Player not found');
+      }
+
+      if (!player.isDeleted) {
+        throw new ConflictException('Player account is already active');
+      }
+
+      return await this.prisma.player.update({
+        where: { playerId: player.playerId },
+        data: {
+          isDeleted: false,
+        },
+      });
+    } catch (error) {
+      if (error.name === 'TokenExpiredError') {
+        throw new ConflictException('Recovery link has expired');
+      }
+      throw new ConflictException('Invalid recovery link');
+    }
   }
 
   async deletePlayer(id: string) {
@@ -144,8 +221,8 @@ export class PlayerService {
       where: { playerId: id },
     });
 
-    if (!player) {
-      throw new NotFoundException('Player not found');
+    if (!player || player.isDeleted) {
+      throw new NotFoundException('Player not found or already deleted');
     }
 
     return this.prisma.player.update({
