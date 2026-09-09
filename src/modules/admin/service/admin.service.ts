@@ -15,6 +15,7 @@ import {
   calculatePaginationMeta,
   QueryOptions,
 } from '../../utils/query.util';
+import { getPreSignedUrl } from '../../utils/s3.util';
 
 @Injectable()
 export class AdminService {
@@ -104,6 +105,10 @@ export class AdminService {
       throw new NotFoundException('Admin not found');
     }
 
+    if (admin.profileImage) {
+      admin.profileImage = await getPreSignedUrl(admin.profileImage);
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password, ...adminWithoutPassword } = admin;
     return adminWithoutPassword;
@@ -117,7 +122,7 @@ export class AdminService {
 
     where.isDeleted = false;
 
-    const [data, total] = await Promise.all([
+    let [data, total] = await Promise.all([
       this.prisma.admin.findMany({
         where,
         skip,
@@ -127,9 +132,21 @@ export class AdminService {
       this.prisma.admin.count({ where }),
     ]);
 
+    // Apply presigned URLs and exclude password
+    const safeData = await Promise.all(
+      data.map(async (admin) => {
+        if (admin.profileImage) {
+          admin.profileImage = await getPreSignedUrl(admin.profileImage);
+        }
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { password, ...adminWithoutPassword } = admin;
+        return adminWithoutPassword;
+      }),
+    );
+
     const meta = calculatePaginationMeta(total, page, limit);
 
-    return { data, meta };
+    return { data: safeData, meta };
   }
 
   async deleteAdmin(id: string) {

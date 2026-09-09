@@ -11,6 +11,7 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { ApiTags, ApiOperation, ApiConsumes, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
@@ -24,7 +25,7 @@ import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { Public } from '../../../common/decorators/public.decorator';
 import { AdminRole } from '@prisma/client';
-import { uploadImageToS3 } from '../../utils/s3.util';
+import { uploadImageToS3, deleteImageFromS3, getPreSignedUrl } from '../../utils/s3.util';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -43,12 +44,37 @@ export class AdminController {
     @Body() createAdminDto: CreateAdminDto,
     @UploadedFile() profileImage?: Express.Multer.File,
   ) {
+    let s3Filename: string | null = null;
     if (profileImage) {
-      const s3Url = await uploadImageToS3(profileImage);
-      createAdminDto.profileImage = s3Url;
+      try {
+        s3Filename = await uploadImageToS3(profileImage);
+        createAdminDto.profileImage = s3Filename;
+      } catch (error) {
+        throw new BadRequestException(
+          'Image upload failed. Please verify your AWS S3 bucket configuration.',
+        );
+      }
     }
-    const data = await this.adminService.createAdmin(createAdminDto);
-    return sendResponse({ message: 'Admin created successfully', data });
+
+    try {
+      const data = await this.adminService.createAdmin(createAdminDto);
+      
+      // Presign the image in the response immediately so frontend can view it
+      if (data.profileImage) {
+        data.profileImage = await getPreSignedUrl(data.profileImage);
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { password, ...safeData } = data;
+
+      return sendResponse({ message: 'Admin created successfully', data: safeData });
+    } catch (error) {
+      // If DB creation fails (e.g. duplicate email), rollback the uploaded S3 image
+      if (s3Filename) {
+        await deleteImageFromS3(s3Filename);
+      }
+      throw error;
+    }
   }
 
   @Public()
@@ -72,8 +98,15 @@ export class AdminController {
     @UploadedFile() profileImage?: Express.Multer.File,
   ) {
     if (profileImage) {
-      const s3Url = await uploadImageToS3(profileImage);
-      updateAdminDto.profileImage = s3Url;
+      try {
+        const s3Url = await uploadImageToS3(profileImage);
+        updateAdminDto.profileImage = s3Url;
+      } catch (error) {
+        console.error(error);
+        throw new BadRequestException(
+          'Image upload failed. Please verify your AWS S3 bucket configuration.',
+        );
+      }
     }
     const data = await this.adminService.updateAdmin(id, updateAdminDto);
     return sendResponse({ message: 'Admin updated successfully', data });
