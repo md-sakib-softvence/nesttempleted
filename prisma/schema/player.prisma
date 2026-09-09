@@ -6,8 +6,6 @@ model Player {
   email        String  @unique
   password     String
   phoneNumber  String
-  globalRecord String?
-  profession   String?
   isDeleted    Boolean @default(false)
 
   document String[]

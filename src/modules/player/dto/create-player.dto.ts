@@ -27,16 +27,6 @@ export class CreatePlayerDto {
   @IsNotEmpty()
   phoneNumber: string;
 
-  @ApiPropertyOptional({ description: 'Global Record' })
-  @IsOptional()
-  @IsString()
-  globalRecord?: string;
-
-  @ApiPropertyOptional({ description: 'Profession' })
-  @IsOptional()
-  @IsString()
-  profession?: string;
-
   @ApiPropertyOptional({
     type: 'array',
     items: { type: 'string', format: 'binary' },

@@ -13,6 +13,10 @@ model MarketingDataCollection {
   favoriteGameConsole  String
   favoriteFootballGame String
   registerAs           RegisterAs
+  gender               String
+  ageRange             String
+  globalRecord         String?
+  profession           String?
 
   instagramLink    String?
   facebookLink     String?
