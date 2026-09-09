@@ -10,11 +10,12 @@ import {
   Query,
   UseGuards,
   UseInterceptors,
-  UploadedFile,
+  UploadedFiles,
+  BadRequestException,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { ApiTags, ApiOperation, ApiConsumes, ApiQuery } from '@nestjs/swagger';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiConsumes, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { EmployeeService } from '../service/employee.service';
 import { CreateEmployeeDto } from '../dto/create-employee.dto';
 import { UpdateEmployeeDto } from '../dto/update-employee.dto';
@@ -25,9 +26,11 @@ import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { Public } from '../../../common/decorators/public.decorator';
 import { AdminRole } from '@prisma/client';
-import { uploadImageToS3 } from '../../utils/s3.util';
+import { getPreSignedUrl } from '../../utils/s3.util';
+import { uploadEmployeeFiles, rollbackEmployeeFiles } from '../utils/file-upload.util';
 
 @ApiTags('employee')
+@ApiBearerAuth()
 @Controller('employee')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
@@ -37,18 +40,52 @@ export class EmployeeController {
   @Post()
   @ApiOperation({ summary: 'Create Employee' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('profileImage'))
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'profileImage', maxCount: 1 },
+      { name: 'document', maxCount: parseInt(process.env.MAX_DOCUMENTS || '10', 10) },
+    ])
+  )
   @Roles(AdminRole.SUPER_ADMIN)
   async createEmployee(
     @Body() createEmployeeDto: CreateEmployeeDto,
-    @UploadedFile() profileImage?: Express.Multer.File,
+    @UploadedFiles() files: { profileImage?: Express.Multer.File[], document?: Express.Multer.File[] },
   ) {
-    if (profileImage) {
-      const s3Url = await uploadImageToS3(profileImage);
-      createEmployeeDto.profileImage = s3Url;
+    const uploadedFiles = await uploadEmployeeFiles(files);
+
+    if (uploadedFiles.profileImage) {
+      createEmployeeDto.profileImage = uploadedFiles.profileImage;
+    } else {
+      delete createEmployeeDto.profileImage;
     }
-    const data = await this.employeeService.createEmployee(createEmployeeDto);
-    return sendResponse({ message: 'Employee created successfully', data });
+    
+    if (uploadedFiles.document.length > 0) {
+      createEmployeeDto.document = uploadedFiles.document;
+    } else {
+      createEmployeeDto.document = [];
+    }
+
+    try {
+      const data = await this.employeeService.createEmployee(createEmployeeDto);
+      
+      if (data.profileImage) {
+        data.profileImage = await getPreSignedUrl(data.profileImage);
+      }
+      
+      if (data.document && data.document.length > 0) {
+        data.document = await Promise.all(
+          data.document.map(async (doc) => getPreSignedUrl(doc))
+        );
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { password, ...safeData } = data as any;
+
+      return sendResponse({ message: 'Employee created successfully', data: safeData });
+    } catch (error) {
+      await rollbackEmployeeFiles(uploadedFiles.profileImage, uploadedFiles.document);
+      throw error;
+    }
   }
 
   @Public()
@@ -65,21 +102,66 @@ export class EmployeeController {
   @Patch(':id')
   @ApiOperation({ summary: 'Update Employee' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('profileImage'))
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'profileImage', maxCount: 1 },
+      { name: 'document', maxCount: parseInt(process.env.MAX_DOCUMENTS || '10', 10) },
+    ])
+  )
   async updateEmployee(
     @Param('id') id: string,
     @Body() updateEmployeeDto: UpdateEmployeeDto,
-    @UploadedFile() profileImage?: Express.Multer.File,
+    @UploadedFiles() files: { profileImage?: Express.Multer.File[], document?: Express.Multer.File[] },
   ) {
-    if (profileImage) {
-      const s3Url = await uploadImageToS3(profileImage);
-      updateEmployeeDto.profileImage = s3Url;
+    if (updateEmployeeDto.deletedDocuments && typeof updateEmployeeDto.deletedDocuments === 'string') {
+      updateEmployeeDto.deletedDocuments = [updateEmployeeDto.deletedDocuments];
     }
-    const data = await this.employeeService.updateEmployee(
-      id,
-      updateEmployeeDto,
-    );
-    return sendResponse({ message: 'Employee updated successfully', data });
+
+    const uploadedFiles = await uploadEmployeeFiles(files);
+
+    if (uploadedFiles.profileImage) {
+      updateEmployeeDto.profileImage = uploadedFiles.profileImage;
+    } else {
+      delete updateEmployeeDto.profileImage;
+    }
+    
+    if (uploadedFiles.document.length > 0) {
+      updateEmployeeDto.document = uploadedFiles.document;
+    } else {
+      delete updateEmployeeDto.document;
+    }
+
+    try {
+      const data = await this.employeeService.updateEmployee(id, updateEmployeeDto);
+      
+      if (data.profileImage) {
+        data.profileImage = await getPreSignedUrl(data.profileImage);
+      }
+      
+      if (data.document && data.document.length > 0) {
+        data.document = await Promise.all(
+          data.document.map(async (doc) => getPreSignedUrl(doc))
+        );
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { password, ...safeData } = data as any;
+
+      return sendResponse({ message: 'Employee updated successfully', data: safeData });
+    } catch (error) {
+      await rollbackEmployeeFiles(uploadedFiles.profileImage, uploadedFiles.document);
+      throw error;
+    }
+  }
+
+  @Get(':id/documents')
+  @ApiOperation({ summary: 'Get all documents for a specific Employee' })
+  async getEmployeeDocuments(@Param('id') id: string) {
+    const data = await this.employeeService.getEmployeeDocuments(id);
+    return sendResponse({
+      message: 'Employee documents retrieved successfully',
+      data,
+    });
   }
 
   @Get('profile')
@@ -89,6 +171,16 @@ export class EmployeeController {
     const data = await this.employeeService.getEmployeeById(employeeId);
     return sendResponse({
       message: 'Employee profile retrieved successfully',
+      data,
+    });
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get a specific Employee by ID' })
+  async getEmployeeById(@Param('id') id: string) {
+    const data = await this.employeeService.getEmployeeById(id);
+    return sendResponse({
+      message: 'Employee retrieved successfully',
       data,
     });
   }

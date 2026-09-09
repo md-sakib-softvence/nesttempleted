@@ -15,6 +15,8 @@ import {
   calculatePaginationMeta,
   QueryOptions,
 } from '../../utils/query.util';
+import { getPreSignedUrl, deleteImageFromS3 } from '../../utils/s3.util';
+import { generateEmployeeId } from '../utils/generate-id.util';
 
 @Injectable()
 export class EmployeeService {
@@ -22,7 +24,7 @@ export class EmployeeService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private mailService: MailService,
-  ) {}
+  ) { }
 
   async createEmployee(createEmployeeDto: CreateEmployeeDto) {
     const existingEmployee = await this.prisma.employee.findUnique({
@@ -46,11 +48,14 @@ export class EmployeeService {
 
     const { password, ...rest } = createEmployeeDto;
     const hashedPassword = await bcrypt.hash(password, 10);
+    const showEmployeeId = await generateEmployeeId(this.prisma);
 
     return this.prisma.employee.create({
       data: {
         ...rest,
         password: hashedPassword,
+        showEmployeeId,
+        state: 'INACTIVE',
       },
     });
   }
@@ -81,10 +86,44 @@ export class EmployeeService {
     }
 
     // 3. Prepare data safely without using 'any'
-    const { password, ...restData } = updateEmployeeDto;
+    const { password, deletedDocuments, document, profileImage, ...restData } = updateEmployeeDto;
     let hashedPassword: string | undefined = undefined;
     if (password) {
       hashedPassword = await bcrypt.hash(password, 10);
+    }
+
+    // Handle old profile image deletion if a new one is uploaded
+    if (profileImage && existingEmployee.profileImage) {
+      await deleteImageFromS3(existingEmployee.profileImage);
+    }
+
+    // Extract S3 keys from pre-signed URLs if necessary
+    const extractKey = (urlOrKey: string) => {
+      if (urlOrKey.startsWith('http')) {
+        try {
+          const url = new URL(urlOrKey);
+          return url.pathname.substring(1);
+        } catch {
+          return urlOrKey;
+        }
+      }
+      return urlOrKey;
+    };
+
+    let finalDocuments = existingEmployee.document || [];
+
+    // Handle deleted documents
+    if (deletedDocuments && deletedDocuments.length > 0) {
+      const deletedKeys = deletedDocuments.map(extractKey);
+      for (const key of deletedKeys) {
+        await deleteImageFromS3(key);
+      }
+      finalDocuments = finalDocuments.filter((doc) => !deletedKeys.includes(doc));
+    }
+
+    // Append new documents
+    if (document && document.length > 0) {
+      finalDocuments = [...finalDocuments, ...document];
     }
 
     // 4. Perform the update
@@ -92,6 +131,8 @@ export class EmployeeService {
       where: { employeeId: id },
       data: {
         ...restData,
+        ...(profileImage ? { profileImage } : {}),
+        document: finalDocuments,
         ...(hashedPassword ? { password: hashedPassword } : {}),
       },
     });
@@ -110,9 +151,42 @@ export class EmployeeService {
       throw new NotFoundException('Employee not found');
     }
 
+    if (employee.profileImage) {
+      employee.profileImage = await getPreSignedUrl(employee.profileImage);
+    }
+
+    if (employee.document && employee.document.length > 0) {
+      employee.document = await Promise.all(
+        employee.document.map(async (doc) => getPreSignedUrl(doc))
+      );
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password, ...employeeWithoutPassword } = employee;
     return employeeWithoutPassword;
+  }
+
+  async getEmployeeDocuments(id: string) {
+    if (!id) {
+      throw new NotFoundException('Employee ID is required');
+    }
+
+    const employee = await this.prisma.employee.findUnique({
+      where: { employeeId: id },
+      select: { document: true, isDeleted: true },
+    });
+
+    if (!employee || employee.isDeleted) {
+      throw new NotFoundException('Employee not found');
+    }
+
+    if (employee.document && employee.document.length > 0) {
+      return Promise.all(
+        employee.document.map(async (doc) => getPreSignedUrl(doc))
+      );
+    }
+
+    return [];
   }
 
   async getAllEmployee(query: QueryOptions = {}) {
@@ -133,9 +207,27 @@ export class EmployeeService {
       this.prisma.employee.count({ where }),
     ]);
 
+    const safeData = await Promise.all(
+      data.map(async (employee) => {
+        if (employee.profileImage) {
+          employee.profileImage = await getPreSignedUrl(employee.profileImage);
+        }
+
+        if (employee.document && employee.document.length > 0) {
+          employee.document = await Promise.all(
+            employee.document.map(async (doc) => getPreSignedUrl(doc))
+          );
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { password, ...employeeWithoutPassword } = employee;
+        return employeeWithoutPassword;
+      }),
+    );
+
     const meta = calculatePaginationMeta(total, page, limit);
 
-    return { data, meta };
+    return { data: safeData, meta };
   }
 
   async deleteEmployee(id: string) {
@@ -143,8 +235,8 @@ export class EmployeeService {
       where: { employeeId: id },
     });
 
-    if (!employee) {
-      throw new NotFoundException('Employee not found');
+    if (!employee || employee.isDeleted) {
+      throw new NotFoundException('Employee not found or already deleted');
     }
 
     return this.prisma.employee.update({

@@ -11,11 +11,6 @@ import {
 import { EmployeeRole, EmployeeState } from '@prisma/client';
 
 export class CreateEmployeeDto {
-  @ApiProperty({ description: 'Employee Custom ID' })
-  @IsString()
-  @IsNotEmpty()
-  showEmployeeId: string;
-
   @ApiProperty({ description: 'Employee Name' })
   @IsString()
   @IsNotEmpty()
@@ -41,10 +36,7 @@ export class CreateEmployeeDto {
   @IsOptional()
   role?: EmployeeRole;
 
-  @ApiPropertyOptional({ enum: EmployeeState, description: 'Employee State' })
-  @IsEnum(EmployeeState)
-  @IsOptional()
-  state?: EmployeeState;
+
 
   @ApiPropertyOptional({
     type: 'string',
@@ -55,21 +47,11 @@ export class CreateEmployeeDto {
   profileImage?: any;
 
   @ApiPropertyOptional({
-    type: [String],
+    type: 'array',
+    items: { type: 'string', format: 'binary' },
     description: 'Documents',
   })
-  @IsArray()
-  @IsString({ each: true })
   @IsOptional()
-  document?: string[];
+  document?: any[];
 
-  @ApiPropertyOptional({ description: 'Is Cash Leader' })
-  @IsBoolean()
-  @IsOptional()
-  cashLeader?: boolean;
-
-  @ApiPropertyOptional({ description: 'Enable Post' })
-  @IsBoolean()
-  @IsOptional()
-  enablePost?: boolean;
 }

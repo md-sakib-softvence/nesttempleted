@@ -154,8 +154,8 @@ export class AdminService {
       where: { adminId: id },
     });
 
-    if (!admin) {
-      throw new NotFoundException('Admin not found');
+    if (!admin || admin.isDeleted) {
+      throw new NotFoundException('Admin not found or already deleted');
     }
 
     return this.prisma.admin.update({

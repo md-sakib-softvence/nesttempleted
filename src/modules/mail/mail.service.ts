@@ -8,7 +8,7 @@ export class MailService {
   async sendVerificationCode(email: string, code: string) {
     await this.mailerService.sendMail({
       to: email,
-      subject: 'Welcome to Aimalya - Verify Your Email',
+      subject: 'Welcome to Esports - Verify Your Email',
       template: './verification', // path to template file
       context: {
         code,
@@ -19,7 +19,7 @@ export class MailService {
   async sendPasswordReset(email: string, code: string) {
     await this.mailerService.sendMail({
       to: email,
-      subject: 'Aimalya - Password Reset Request',
+      subject: 'Esports - Password Reset Request',
       template: './password-reset',
       context: {
         code,
@@ -28,17 +28,14 @@ export class MailService {
   }
 
   async sendRecoveryLink(email: string, token: string) {
+    console.log(`[MAILER] Preparing to send recovery link to: ${email}`);
     // Note: Assuming there is a recovery template, or we'll just send a direct URL link.
     // In a real app, the token should be included in a query parameter of a frontend URL.
     const recoveryUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/recover?token=${token}`;
     await this.mailerService.sendMail({
       to: email,
-      subject: 'Aimalya - Account Recovery Request',
-      text: `Your account has been deactivated. You can recover it by clicking the following link: ${recoveryUrl}`,
-      // template: './recovery', // You can add a handlebars template later
-      context: {
-        recoveryUrl,
-      },
+      subject: 'Esports - Account Recovery Request',
+      html: `<p>Your account has been deactivated.</p><p>You can recover it by clicking the following link:</p><a href="${recoveryUrl}">${recoveryUrl}</a>`,
     });
   }
 }
