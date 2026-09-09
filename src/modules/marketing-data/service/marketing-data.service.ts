@@ -1,11 +1,13 @@
-import {
-  Injectable,
-  NotFoundException,
-  ConflictException,
-} from '@nestjs/common';
-import { CreateMarketingDataDto } from '../dto/create-marketing-data.dto';
-import { UpdateMarketingDataDto } from '../dto/update-marketing-data.dto';
+import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { CreateMarketingDataDto } from '../dto/create-marketing-data.dto';
+import * as bcrypt from 'bcrypt';
+import { RegisterAs } from '@prisma/client';
+import { generateFanId } from '../../fan/utils/generate-id.util';
+import { generatePlayerId } from '../../player/utils/generate-id.util';
+import { JwtService } from '@nestjs/jwt';
+import { MailService } from '../../mail/mail.service';
+import { UpdateMarketingDataDto } from '../dto/update-marketing-data.dto';
 import {
   buildPrismaQuery,
   calculatePaginationMeta,
@@ -14,67 +16,134 @@ import {
 
 @Injectable()
 export class MarketingDataService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
+    private readonly mailService: MailService,
+  ) {}
 
-  async createMarketingData(createMarketingDataDto: CreateMarketingDataDto) {
-    if (createMarketingDataDto.fanId) {
-      const existing = await this.prisma.marketingDataCollection.findUnique({
-        where: { fanId: createMarketingDataDto.fanId },
+  async createMarketingData(dto: CreateMarketingDataDto) {
+    // 1. Check if email already exists in Fan or Player
+    const [existingFan, existingPlayer] = await Promise.all([
+      this.prisma.fan.findUnique({ where: { email: dto.email } }),
+      this.prisma.player.findUnique({ where: { email: dto.email } }),
+    ]);
+
+    if (existingFan) {
+      if (existingFan.isDeleted) {
+        const token = await this.jwtService.signAsync(
+          { sub: existingFan.fanId, email: existingFan.email },
+          { expiresIn: (process.env.RECOVERY_TOKEN_EXPIRATION || '15m') as any },
+        );
+        await this.mailService.sendRecoveryLink(existingFan.email, token);
+        throw new ConflictException(
+          'This fan account has been deactivated. A recovery link has been sent to your email.',
+        );
+      }
+      throw new ConflictException('A fan with this email already exists.');
+    }
+
+    if (existingPlayer) {
+      if (existingPlayer.isDeleted) {
+        const token = await this.jwtService.signAsync(
+          { sub: existingPlayer.playerId, email: existingPlayer.email },
+          { expiresIn: (process.env.RECOVERY_TOKEN_EXPIRATION || '15m') as any },
+        );
+        await this.mailService.sendRecoveryLink(existingPlayer.email, token);
+        throw new ConflictException(
+          'This player account has been deactivated. A recovery link has been sent to your email.',
+        );
+      }
+      throw new ConflictException('A player with this email already exists.');
+    }
+
+    if (dto.employeeId) {
+      const existingEmployee = await this.prisma.employee.findUnique({
+        where: { employeeId: dto.employeeId },
       });
-      if (existing) {
-        throw new ConflictException('Marketing data for this Fan already exists');
+
+      if (!existingEmployee || existingEmployee.isDeleted) {
+        throw new NotFoundException('The provided employee ID does not exist or is deleted.');
       }
     }
 
-    if (createMarketingDataDto.playerId) {
-      const existing = await this.prisma.marketingDataCollection.findUnique({
-        where: { playerId: createMarketingDataDto.playerId },
-      });
-      if (existing) {
-        throw new ConflictException('Marketing data for this Player already exists');
+    const hashedPassword = await bcrypt.hash(dto.password, Number(process.env.BCRYPT_SALT_ROUNDS) || 10);
+
+    // Prepare marketing data omitting user-specific auth fields
+    const {
+      firstName,
+      lastName,
+      email,
+      password,
+      phoneNumber,
+      ...marketingDataFields
+    } = dto;
+
+    return this.prisma.$transaction(async (tx) => {
+      let createdMarketingData;
+
+      if (dto.registerAs === RegisterAs.FRIEND) {
+        // Create Fan
+        const showFanId = await generateFanId(tx as any);
+        
+        const createdFan = await tx.fan.create({
+          data: {
+            showFanId,
+            firstName,
+            email,
+            phoneNumber,
+            password: hashedPassword,
+            gender: dto.gender,
+            ageRange: dto.ageRange,
+            favoriteGame: dto.favoriteGameConsole,
+          },
+        });
+
+        // Create MarketingDataCollection linked to Fan
+        createdMarketingData = await tx.marketingDataCollection.create({
+          data: {
+            ...marketingDataFields,
+            fanId: createdFan.fanId,
+          },
+        });
+      } else if (dto.registerAs === RegisterAs.PLAYER) {
+        // Create Player
+        if (!lastName) {
+          throw new ConflictException('lastName is required to register as PLAYER');
+        }
+
+        const showPlayerId = await generatePlayerId(tx as any);
+
+        const createdPlayer = await tx.player.create({
+          data: {
+            showPlayerId,
+            firstName,
+            lastName,
+            email,
+            phoneNumber,
+            password: hashedPassword,
+          },
+        });
+
+        // Create MarketingDataCollection linked to Player
+        createdMarketingData = await tx.marketingDataCollection.create({
+          data: {
+            ...marketingDataFields,
+            playerId: createdPlayer.playerId,
+          },
+        });
+      } else {
+        throw new ConflictException('Invalid registerAs value');
       }
-    }
 
-    return this.prisma.marketingDataCollection.create({
-      data: createMarketingDataDto,
+      return createdMarketingData;
     });
-  }
-
-  async updateMarketingData(id: string, updateMarketingDataDto: UpdateMarketingDataDto) {
-    const existing = await this.prisma.marketingDataCollection.findUnique({
-      where: { marketingDataCollectionId: id },
-    });
-
-    if (!existing) {
-      throw new NotFoundException('Marketing Data not found');
-    }
-
-    return this.prisma.marketingDataCollection.update({
-      where: { marketingDataCollectionId: id },
-      data: updateMarketingDataDto,
-    });
-  }
-
-  async getMarketingDataById(id: string) {
-    if (!id) {
-      throw new NotFoundException('ID is required');
-    }
-
-    const data = await this.prisma.marketingDataCollection.findUnique({
-      where: { marketingDataCollectionId: id },
-    });
-
-    if (!data || data.isDeleted) {
-      throw new NotFoundException('Marketing Data not found');
-    }
-
-    return data;
   }
 
   async getAllMarketingData(query: QueryOptions = {}) {
     const { where, skip, take, orderBy, page, limit } = buildPrismaQuery(
       query,
-      ['gamerTag', 'parentName', 'occupation', 'area'],
+      ['gamerTag', 'favoriteGameConsole', 'favoriteFootballGame', 'profession', 'area'],
     );
 
     where.isDeleted = false;
@@ -94,20 +163,128 @@ export class MarketingDataService {
     return { data, meta };
   }
 
-  async deleteMarketingData(id: string) {
+  async getMarketingDataById(id: string) {
+    if (!id) {
+      throw new NotFoundException('Marketing Data ID is required');
+    }
+
     const data = await this.prisma.marketingDataCollection.findUnique({
       where: { marketingDataCollectionId: id },
     });
 
-    if (!data) {
-      throw new NotFoundException('Marketing Data not found');
+    if (!data || data.isDeleted) {
+      throw new NotFoundException('Marketing data not found');
     }
 
-    return this.prisma.marketingDataCollection.update({
+    return data;
+  }
+
+  async updateMarketingData(id: string, updateDto: UpdateMarketingDataDto) {
+    const existingData = await this.prisma.marketingDataCollection.findUnique({
       where: { marketingDataCollectionId: id },
-      data: {
-        isDeleted: true,
-      },
+      include: { fan: true, player: true },
+    });
+
+    if (!existingData || existingData.isDeleted) {
+      throw new NotFoundException('Marketing data not found');
+    }
+
+    const {
+      firstName,
+      lastName,
+      email,
+      password,
+      phoneNumber,
+      employeeId,
+      registerAs,
+      gender,
+      ageRange,
+      favoriteGameConsole,
+      ...marketingDataFields
+    } = updateDto;
+
+    if (registerAs && registerAs !== existingData.registerAs) {
+      throw new ConflictException('Cannot change the registerAs role (FRIEND/PLAYER) after creation.');
+    }
+
+    let hashedPassword;
+    if (password) {
+      hashedPassword = await bcrypt.hash(password, Number(process.env.BCRYPT_SALT_ROUNDS) || 10);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Validate employee ID if provided
+      if (employeeId !== undefined && employeeId !== existingData.employeeId) {
+        if (employeeId) {
+          const emp = await tx.employee.findUnique({ where: { employeeId } });
+          if (!emp || emp.isDeleted) {
+            throw new NotFoundException('The provided employee ID does not exist or is deleted.');
+          }
+        }
+      }
+
+      // 2. Validate email uniqueness if email is changed
+      if (email) {
+        const checkEmailFan = existingData.fan && email !== existingData.fan.email
+          ? await tx.fan.findUnique({ where: { email } })
+          : null;
+        
+        const checkEmailPlayer = existingData.player && email !== existingData.player.email
+          ? await tx.player.findUnique({ where: { email } })
+          : null;
+
+        if (checkEmailFan || checkEmailPlayer) {
+          throw new ConflictException('Email is already in use by another user.');
+        }
+      }
+
+      // 3. Update associated Fan or Player
+      if (existingData.registerAs === RegisterAs.FRIEND && existingData.fan) {
+        await tx.fan.update({
+          where: { fanId: existingData.fan.fanId },
+          data: {
+            ...(firstName ? { firstName } : {}),
+            ...(email ? { email } : {}),
+            ...(phoneNumber ? { phoneNumber } : {}),
+            ...(hashedPassword ? { password: hashedPassword } : {}),
+            ...(gender ? { gender } : {}),
+            ...(ageRange ? { ageRange } : {}),
+            ...(favoriteGameConsole ? { favoriteGame: favoriteGameConsole } : {}),
+          },
+        });
+      } else if (existingData.registerAs === RegisterAs.PLAYER && existingData.player) {
+        await tx.player.update({
+          where: { playerId: existingData.player.playerId },
+          data: {
+            ...(firstName ? { firstName } : {}),
+            ...(lastName ? { lastName } : {}),
+            ...(email ? { email } : {}),
+            ...(phoneNumber ? { phoneNumber } : {}),
+            ...(hashedPassword ? { password: hashedPassword } : {}),
+          },
+        });
+      }
+
+      // 4. Update MarketingDataCollection itself
+      return tx.marketingDataCollection.update({
+        where: { marketingDataCollectionId: existingData.marketingDataCollectionId },
+        data: {
+          ...marketingDataFields,
+          ...(gender ? { gender } : {}),
+          ...(ageRange ? { ageRange } : {}),
+          ...(favoriteGameConsole ? { favoriteGameConsole } : {}),
+          ...(employeeId !== undefined ? { employeeId } : {}),
+        },
+      });
+    });
+  }
+
+  async deleteMarketingData(id: string) {
+    const existingData = await this.getMarketingDataById(id);
+
+    return this.prisma.marketingDataCollection.update({
+      where: { marketingDataCollectionId: existingData.marketingDataCollectionId },
+      data: { isDeleted: true },
     });
   }
 }

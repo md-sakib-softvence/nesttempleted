@@ -45,7 +45,7 @@ export class FanService {
     }
 
     const { password, ...rest } = createFanDto;
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, Number(process.env.BCRYPT_SALT_ROUNDS) || 10);
     const showFanId = await generateFanId(this.prisma);
 
     return this.prisma.fan.create({
@@ -78,7 +78,7 @@ export class FanService {
     const { password, profileImage, ...restData } = updateFanDto;
     let hashedPassword: string | undefined = undefined;
     if (password) {
-      hashedPassword = await bcrypt.hash(password, 10);
+      hashedPassword = await bcrypt.hash(password, Number(process.env.BCRYPT_SALT_ROUNDS) || 10);
     }
     
     if (profileImage && existingFan.profileImage) {

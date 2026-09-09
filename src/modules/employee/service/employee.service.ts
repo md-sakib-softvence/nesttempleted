@@ -47,7 +47,7 @@ export class EmployeeService {
     }
 
     const { password, ...rest } = createEmployeeDto;
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, Number(process.env.BCRYPT_SALT_ROUNDS) || 10);
     const showEmployeeId = await generateEmployeeId(this.prisma);
 
     return this.prisma.employee.create({
@@ -89,7 +89,7 @@ export class EmployeeService {
     const { password, deletedDocuments, document, profileImage, ...restData } = updateEmployeeDto;
     let hashedPassword: string | undefined = undefined;
     if (password) {
-      hashedPassword = await bcrypt.hash(password, 10);
+      hashedPassword = await bcrypt.hash(password, Number(process.env.BCRYPT_SALT_ROUNDS) || 10);
     }
 
     // Handle old profile image deletion if a new one is uploaded
@@ -164,6 +164,23 @@ export class EmployeeService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password, ...employeeWithoutPassword } = employee;
     return employeeWithoutPassword;
+  }
+
+  async getEmployeeMarketingData(id: string) {
+    if (!id) {
+      throw new NotFoundException('Employee ID is required');
+    }
+
+    const employee = await this.prisma.employee.findUnique({
+      where: { employeeId: id },
+      include: { marketingData: true },
+    });
+
+    if (!employee || employee.isDeleted) {
+      throw new NotFoundException('Employee not found');
+    }
+
+    return employee.marketingData;
   }
 
   async getEmployeeDocuments(id: string) {

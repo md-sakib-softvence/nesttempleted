@@ -1,19 +1,20 @@
 model Employee {
-  employeeId     String        @id @default(uuid())
-  showEmployeeId String        @unique
+  employeeId     String                    @id @default(uuid())
+  showEmployeeId String                    @unique
   name           String
-  role           EmployeeRole  @default(EMPLOYEE)
-  state          EmployeeState @default(ACTIVE)
-  email          String        @unique
+  role           EmployeeRole              @default(EMPLOYEE)
+  state          EmployeeState             @default(ACTIVE)
+  email          String                    @unique
   phoneNumber    String
   profileImage   String?
   document       String[]
-  cashLeader     Boolean       @default(false)
-  enablePost     Boolean       @default(false)
+  cashLeader     Boolean                   @default(false)
+  enablePost     Boolean                   @default(false)
   password       String
-  isDeleted      Boolean       @default(false)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  isDeleted      Boolean                   @default(false)
+  marketingData  MarketingDataCollection[]
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
 }
 
 enum EmployeeRole {

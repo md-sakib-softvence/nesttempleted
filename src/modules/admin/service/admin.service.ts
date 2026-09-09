@@ -45,7 +45,7 @@ export class AdminService {
     }
 
     const { password, ...rest } = createAdminDto;
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, Number(process.env.BCRYPT_SALT_ROUNDS) || 10);
 
     return this.prisma.admin.create({
       data: {
@@ -79,7 +79,7 @@ export class AdminService {
     const { password, ...restData } = updateAdminDto;
     let hashedPassword: string | undefined = undefined;
     if (password) {
-      hashedPassword = await bcrypt.hash(password, 10);
+      hashedPassword = await bcrypt.hash(password, Number(process.env.BCRYPT_SALT_ROUNDS) || 10);
     }
 
     // 4. Perform the update

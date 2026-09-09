@@ -45,7 +45,7 @@ export class PlayerService {
     }
 
     const { password, documents, ...rest } = createPlayerDto;
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, Number(process.env.BCRYPT_SALT_ROUNDS) || 10);
     const showPlayerId = await generatePlayerId(this.prisma);
 
     return this.prisma.player.create({
@@ -82,7 +82,7 @@ export class PlayerService {
     const { password, documents, deletedDocuments, ...restData } = updatePlayerDto;
     let hashedPassword: string | undefined = undefined;
     if (password) {
-      hashedPassword = await bcrypt.hash(password, 10);
+      hashedPassword = await bcrypt.hash(password, Number(process.env.BCRYPT_SALT_ROUNDS) || 10);
     }
 
     let finalDocuments = existingPlayer.document || [];

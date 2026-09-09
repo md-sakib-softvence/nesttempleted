@@ -34,7 +34,7 @@ export class PrismaService
       });
 
       if (!existingSuperAdmin) {
-        const hashedPassword = await bcrypt.hash(superAdminPassword, 10);
+        const hashedPassword = await bcrypt.hash(superAdminPassword, Number(process.env.BCRYPT_SALT_ROUNDS) || 10);
         const superAdmin = await this.admin.create({
           data: {
             email: superAdminEmail,

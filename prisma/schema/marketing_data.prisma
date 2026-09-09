@@ -9,6 +9,10 @@ model MarketingDataCollection {
   playerId String? @unique
   player   Player? @relation(fields: [playerId], references: [playerId])
 
+  // Relation to Employee (Optional, One-to-Many)
+  employeeId String?
+  employee   Employee? @relation(fields: [employeeId], references: [employeeId])
+
   gamerTag             String
   favoriteGameConsole  String
   favoriteFootballGame String

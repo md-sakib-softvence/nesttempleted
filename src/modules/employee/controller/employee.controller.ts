@@ -25,7 +25,7 @@ import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { Public } from '../../../common/decorators/public.decorator';
-import { AdminRole } from '@prisma/client';
+import { AdminRole, EmployeeRole } from '@prisma/client';
 import { getPreSignedUrl } from '../../utils/s3.util';
 import { uploadEmployeeFiles, rollbackEmployeeFiles } from '../utils/file-upload.util';
 
@@ -160,6 +160,17 @@ export class EmployeeController {
     const data = await this.employeeService.getEmployeeDocuments(id);
     return sendResponse({
       message: 'Employee documents retrieved successfully',
+      data,
+    });
+  }
+
+  @Get(':id/marketing-data')
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.EMPLOYEE as any)
+  @ApiOperation({ summary: 'Get all marketing data collected by a specific Employee' })
+  async getEmployeeMarketingData(@Param('id') id: string) {
+    const data = await this.employeeService.getEmployeeMarketingData(id);
+    return sendResponse({
+      message: 'Employee marketing data retrieved successfully',
       data,
     });
   }

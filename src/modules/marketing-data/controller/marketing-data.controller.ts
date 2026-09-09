@@ -1,58 +1,46 @@
-import {
-  Controller,
-  Post,
-  Get,
-  Patch,
-  Delete,
-  Body,
-  Param,
-  Query,
-  UseGuards,
-} from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { Body, Controller, Post, Get, Patch, Delete, Param, Query, UseGuards } from '@nestjs/common';
+import { ApiOperation, ApiTags, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import { Public } from '../../../common/decorators/public.decorator';
 import { MarketingDataService } from '../service/marketing-data.service';
 import { CreateMarketingDataDto } from '../dto/create-marketing-data.dto';
 import { UpdateMarketingDataDto } from '../dto/update-marketing-data.dto';
 import { sendResponse } from '../../utils/response.util';
+import { QueryOptions } from '../../utils/query.util';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
-import { Role } from '@prisma/client';
+import { AdminRole, EmployeeRole } from '@prisma/client';
 
 @ApiTags('marketing-data')
+@ApiBearerAuth()
 @Controller('marketing-data')
-@UseGuards(JwtAuthGuard, RolesGuard)
 export class MarketingDataController {
   constructor(private readonly marketingDataService: MarketingDataService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create Marketing Data' })
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'fan' as Role, 'player' as Role)
-  async createMarketingData(@Body() createMarketingDataDto: CreateMarketingDataDto) {
-    const data = await this.marketingDataService.createMarketingData(createMarketingDataDto);
-    return sendResponse({ message: 'Marketing data created successfully', data });
-  }
-
-  @Patch(':id')
-  @ApiOperation({ summary: 'Update Marketing Data' })
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'fan' as Role, 'player' as Role)
-  async updateMarketingData(
-    @Param('id') id: string,
-    @Body() updateMarketingDataDto: UpdateMarketingDataDto,
-  ) {
-    const data = await this.marketingDataService.updateMarketingData(id, updateMarketingDataDto);
-    return sendResponse({ message: 'Marketing data updated successfully', data });
+  @Public()
+  @ApiOperation({
+    summary:
+      'Submit marketing form (Simultaneously registers Fan or Player)',
+  })
+  async createMarketingData(@Body() createDto: CreateMarketingDataDto) {
+    const data = await this.marketingDataService.createMarketingData(createDto);
+    return sendResponse({
+      message: 'Marketing data and user profile created successfully',
+      data,
+    });
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all Marketing Data' })
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.EMPLOYEE as any)
+  @ApiOperation({ summary: 'Get all marketing data' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'searchTerm', required: false, type: String })
   @ApiQuery({ name: 'sortBy', required: false, type: String })
   @ApiQuery({ name: 'sortOrder', required: false, enum: ['asc', 'desc'] })
-  async getAllMarketingData(@Query() query: any) {
+  async getAllMarketingData(@Query() query: QueryOptions) {
     const { data, meta } = await this.marketingDataService.getAllMarketingData(query);
     return sendResponse({
       message: 'Marketing data retrieved successfully',
@@ -62,8 +50,9 @@ export class MarketingDataController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get Marketing Data by ID' })
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'fan' as Role, 'player' as Role)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.EMPLOYEE as any)
+  @ApiOperation({ summary: 'Get a specific marketing data entry' })
   async getMarketingDataById(@Param('id') id: string) {
     const data = await this.marketingDataService.getMarketingDataById(id);
     return sendResponse({
@@ -72,11 +61,30 @@ export class MarketingDataController {
     });
   }
 
+  @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.EMPLOYEE as any)
+  @ApiOperation({ summary: 'Update a specific marketing data entry' })
+  async updateMarketingData(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateMarketingDataDto,
+  ) {
+    const data = await this.marketingDataService.updateMarketingData(id, updateDto);
+    return sendResponse({
+      message: 'Marketing data updated successfully',
+      data,
+    });
+  }
+
   @Delete(':id')
-  @ApiOperation({ summary: 'Soft delete Marketing Data' })
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.EMPLOYEE as any)
+  @ApiOperation({ summary: 'Soft delete a specific marketing data entry' })
   async deleteMarketingData(@Param('id') id: string) {
     const data = await this.marketingDataService.deleteMarketingData(id);
-    return sendResponse({ message: 'Marketing data deleted successfully', data });
+    return sendResponse({
+      message: 'Marketing data deleted successfully',
+      data,
+    });
   }
 }

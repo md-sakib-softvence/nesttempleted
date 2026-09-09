@@ -1,24 +1,49 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString, IsIn, IsUUID } from 'class-validator';
+import {
+  IsEmail,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  ValidateIf,
+} from 'class-validator';
 import { RegisterAs } from '@prisma/client';
 
 export class CreateMarketingDataDto {
-  @ApiPropertyOptional({ description: 'Fan ID (Optional)' })
-  @IsOptional()
-  @IsUUID()
-  fanId?: string;
+  // --- Common Fields for User (Fan/Player) ---
+  @ApiProperty({ description: 'First Name' })
+  @IsString()
+  @IsNotEmpty()
+  firstName: string;
 
-  @ApiPropertyOptional({ description: 'Player ID (Optional)' })
-  @IsOptional()
-  @IsUUID()
-  playerId?: string;
+  @ApiPropertyOptional({ description: 'Last Name (Required if PLAYER)' })
+  @ValidateIf((o) => o.registerAs === RegisterAs.PLAYER)
+  @IsString()
+  @IsNotEmpty()
+  lastName?: string;
 
+  @ApiProperty({ description: 'Email' })
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+
+  @ApiProperty({ description: 'Password' })
+  @IsString()
+  @IsNotEmpty()
+  password: string;
+
+  @ApiProperty({ description: 'Phone Number' })
+  @IsString()
+  @IsNotEmpty()
+  phoneNumber: string;
+
+  // --- Marketing Data Required Fields ---
   @ApiProperty({ description: 'Gamer Tag' })
   @IsString()
   @IsNotEmpty()
   gamerTag: string;
 
-  @ApiProperty({ description: 'Favorite Game Console' })
+  @ApiProperty({ description: 'Favorite Game Console / Favorite Game' })
   @IsString()
   @IsNotEmpty()
   favoriteGameConsole: string;
@@ -28,57 +53,78 @@ export class CreateMarketingDataDto {
   @IsNotEmpty()
   favoriteFootballGame: string;
 
-  @ApiProperty({ description: 'Register As', enum: RegisterAs })
+  @ApiProperty({ description: 'Register As (FRIEND or PLAYER)', enum: RegisterAs })
+  @IsEnum(RegisterAs)
   @IsNotEmpty()
-  @IsIn([RegisterAs.FRIEND, RegisterAs.PLAYER])
   registerAs: RegisterAs;
 
-  @ApiPropertyOptional({ description: 'Instagram Link Username' })
+  @ApiProperty({ description: 'Gender' })
+  @IsString()
+  @IsNotEmpty()
+  gender: string;
+
+  @ApiProperty({ description: 'Age Range (e.g. 18-24)' })
+  @IsString()
+  @IsNotEmpty()
+  ageRange: string;
+
+  // --- Marketing Data Optional Fields ---
+  @ApiPropertyOptional({ description: 'Global Record' })
+  @IsOptional()
+  @IsString()
+  globalRecord?: string;
+
+  @ApiPropertyOptional({ description: 'Profession' })
+  @IsOptional()
+  @IsString()
+  profession?: string;
+
+  @ApiPropertyOptional({ description: 'Instagram Link' })
   @IsOptional()
   @IsString()
   instagramLink?: string;
 
-  @ApiPropertyOptional({ description: 'Facebook Link Username' })
+  @ApiPropertyOptional({ description: 'Facebook Link' })
   @IsOptional()
   @IsString()
   facebookLink?: string;
 
-  @ApiPropertyOptional({ description: 'TikTok Link Username' })
+  @ApiPropertyOptional({ description: 'TikTok Link' })
   @IsOptional()
   @IsString()
   tiktokLink?: string;
 
-  @ApiPropertyOptional({ description: 'X Link Username' })
+  @ApiPropertyOptional({ description: 'X (Twitter) Link' })
   @IsOptional()
   @IsString()
   xLink?: string;
 
-  @ApiPropertyOptional({ description: 'YouTube Link Username' })
+  @ApiPropertyOptional({ description: 'YouTube Link' })
   @IsOptional()
   @IsString()
   youtubeLink?: string;
 
-  @ApiPropertyOptional({ description: 'Instagram Full URL' })
+  @ApiPropertyOptional({ description: 'Instagram Link URL' })
   @IsOptional()
   @IsString()
   instagramLinkUrl?: string;
 
-  @ApiPropertyOptional({ description: 'Facebook Full URL' })
+  @ApiPropertyOptional({ description: 'Facebook Link URL' })
   @IsOptional()
   @IsString()
   facebookLinkUrl?: string;
 
-  @ApiPropertyOptional({ description: 'TikTok Full URL' })
+  @ApiPropertyOptional({ description: 'TikTok Link URL' })
   @IsOptional()
   @IsString()
   tiktokLinkUrl?: string;
 
-  @ApiPropertyOptional({ description: 'X Full URL' })
+  @ApiPropertyOptional({ description: 'X (Twitter) Link URL' })
   @IsOptional()
   @IsString()
   xLinkUrl?: string;
 
-  @ApiPropertyOptional({ description: 'YouTube Full URL' })
+  @ApiPropertyOptional({ description: 'YouTube Link URL' })
   @IsOptional()
   @IsString()
   youtubeLinkUrl?: string;
@@ -102,4 +148,9 @@ export class CreateMarketingDataDto {
   @IsOptional()
   @IsString()
   area?: string;
+
+  @ApiPropertyOptional({ description: 'Employee ID responsible for this data' })
+  @IsOptional()
+  @IsString()
+  employeeId?: string;
 }
