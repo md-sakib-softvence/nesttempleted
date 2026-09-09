@@ -9,8 +9,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: md-sakib-softvence/nesttempleted:latest
-    container_name: nesttempleted_server
+    image: sakibsakib/esports:latest
+    container_name: esports_server
     profiles: [prod]
     restart: always
     env_file: .env
@@ -36,7 +36,7 @@ services:
   # ── PostgreSQL ──────────────────────────────────────────────
   db:
     image: postgres:15-alpine
-    container_name: nesttempleted_db
+    container_name: esports_db
     restart: always
     profiles: [prod, dev]
     ports:
@@ -58,7 +58,7 @@ services:
   # ── Redis ───────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
-    container_name: nesttempleted_redis
+    container_name: esports_redis
     restart: always
     profiles: [prod, dev]
     ports:
@@ -74,7 +74,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: nesttempleted_db_setup
+    container_name: esports_db_setup
     profiles: [dev]
     env_file: .env
     depends_on:

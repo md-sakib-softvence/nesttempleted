@@ -39,5 +39,7 @@ uploads-file/
 # Prisma
 prisma/migrations/*.sql.bak
 
+# Keys and Certificates
+*.pem
 # Misc
 *.tsbuildinfo

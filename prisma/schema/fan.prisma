@@ -1,0 +1,25 @@
+model Fan {
+  fanId        String    @id @default(uuid())
+  showFanId    String    @unique
+  firstName    String
+  phoneNumber  String
+  email        String    @unique
+  password     String
+  gender       String
+  ageRange     String
+  status       FanStatus @default(ACTIVE)
+  topPoint     Int       @default(0)
+  favoriteGame String
+  profileImage String?
+  isDeleted    Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  marketingData MarketingDataCollection?
+}
+
+enum FanStatus {
+  ACTIVE
+  INACTIVE
+  BANNED
+}

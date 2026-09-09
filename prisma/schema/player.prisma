@@ -1,0 +1,44 @@
+model Player {
+  playerId     String  @id @default(uuid())
+  showPlayerId String  @unique
+  firstName    String
+  lastName     String
+  email        String  @unique
+  password     String
+  phoneNumber  String
+  globalRecord String?
+  profession   String?
+  isDeleted    Boolean @default(false)
+
+  document String[]
+  status   PlayerStatus @default(ACTIVE)
+
+  marketingData       MarketingDataCollection?
+  registrationHistory PlayerRegistrationHistory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PlayerRegistrationHistory {
+  id       String @id @default(uuid())
+  playerId String
+  player   Player @relation(fields: [playerId], references: [playerId])
+
+  status RegistrationStatus
+  notes  String? // Optional notes for why it was approved/rejected
+
+  createdAt DateTime @default(now())
+}
+
+enum PlayerStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED_PERMANENTLY
+}
+
+enum RegistrationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}

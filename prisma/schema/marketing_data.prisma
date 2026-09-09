@@ -1,0 +1,42 @@
+model MarketingDataCollection {
+  marketingDataCollectionId String @id @default(uuid())
+
+  // Relation to Fan (Optional)
+  fanId String? @unique
+  fan   Fan?    @relation(fields: [fanId], references: [fanId])
+
+  // Relation to Player (Optional)
+  playerId String? @unique
+  player   Player? @relation(fields: [playerId], references: [playerId])
+
+  gamerTag             String
+  favoriteGameConsole  String
+  favoriteFootballGame String
+  registerAs           RegisterAs
+
+  instagramLink    String?
+  facebookLink     String?
+  tiktokLink       String?
+  xLink            String?
+  youtubeLink      String?
+  instagramLinkUrl String?
+  facebookLinkUrl  String?
+  tiktokLinkUrl    String?
+  xLinkUrl         String?
+  youtubeLinkUrl   String?
+
+  parentName        String?
+  parentPhoneNumber String?
+  occupation        String?
+  area              String?
+
+  isDeleted Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum RegisterAs {
+  FRIEND
+  PLAYER
+}

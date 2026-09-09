@@ -26,4 +26,19 @@ export class MailService {
       },
     });
   }
+
+  async sendRecoveryLink(email: string, token: string) {
+    // Note: Assuming there is a recovery template, or we'll just send a direct URL link.
+    // In a real app, the token should be included in a query parameter of a frontend URL.
+    const recoveryUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/recover?token=${token}`;
+    await this.mailerService.sendMail({
+      to: email,
+      subject: 'Aimalya - Account Recovery Request',
+      text: `Your account has been deactivated. You can recover it by clicking the following link: ${recoveryUrl}`,
+      // template: './recovery', // You can add a handlebars template later
+      context: {
+        recoveryUrl,
+      },
+    });
+  }
 }

@@ -5,7 +5,6 @@ model Notification {
   title          String
   description    String
   userId         String
-  user           User               @relation(fields: [userId], references: [userId], onDelete: Cascade)
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 

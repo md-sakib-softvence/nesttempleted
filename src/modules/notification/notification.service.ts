@@ -22,7 +22,9 @@ export class NotificationService {
       where: { notificationId },
     });
     if (!notification) {
-      throw new NotFoundException(`Notification with ID ${notificationId} not found`);
+      throw new NotFoundException(
+        `Notification with ID ${notificationId} not found`,
+      );
     }
     return notification;
   }

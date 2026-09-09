@@ -1,8 +1,0 @@
-model ContactUs {
-  contactUsId String   @id @default(uuid())
-  name        String
-  email       String
-  message     String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}

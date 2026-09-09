@@ -1,0 +1,30 @@
+model Employee {
+  employeeId     String        @id @default(uuid())
+  showEmployeeId String        @unique
+  name           String
+  role           EmployeeRole  @default(EMPLOYEE)
+  state          EmployeeState @default(ACTIVE)
+  email          String        @unique
+  phoneNumber    String
+  profileImage   String?
+  document       String[]
+  cashLeader     Boolean       @default(false)
+  enablePost     Boolean       @default(false)
+  password       String
+  isDeleted      Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+enum EmployeeRole {
+  SECURITY
+  EMPLOYEE
+  MANAGER
+  AMBASSADOR
+}
+
+enum EmployeeState {
+  ACTIVE
+  INACTIVE
+  TERMINATE
+}

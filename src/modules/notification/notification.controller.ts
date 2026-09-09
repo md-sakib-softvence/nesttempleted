@@ -1,5 +1,18 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { NotificationService } from './notification.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { UpdateNotificationDto } from './dto/update-notification.dto';
@@ -15,7 +28,10 @@ export class NotificationController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new notification' })
-  @ApiResponse({ status: 201, description: 'The notification has been successfully created.' })
+  @ApiResponse({
+    status: 201,
+    description: 'The notification has been successfully created.',
+  })
   create(@Body() createNotificationDto: CreateNotificationDto) {
     return this.notificationService.create(createNotificationDto);
   }
@@ -36,14 +52,23 @@ export class NotificationController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a notification' })
-  @ApiResponse({ status: 200, description: 'The notification has been successfully updated.' })
-  update(@Param('id') id: string, @Body() updateNotificationDto: UpdateNotificationDto) {
+  @ApiResponse({
+    status: 200,
+    description: 'The notification has been successfully updated.',
+  })
+  update(
+    @Param('id') id: string,
+    @Body() updateNotificationDto: UpdateNotificationDto,
+  ) {
     return this.notificationService.update(id, updateNotificationDto);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a notification' })
-  @ApiResponse({ status: 200, description: 'The notification has been successfully deleted.' })
+  @ApiResponse({
+    status: 200,
+    description: 'The notification has been successfully deleted.',
+  })
   remove(@Param('id') id: string) {
     return this.notificationService.remove(id);
   }

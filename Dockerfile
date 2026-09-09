@@ -3,7 +3,7 @@
 # ──────────────────────────────────────────
 FROM node:20-bullseye AS builder
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get -o Acquire::Check-Valid-Until=false update && apt-get install -y \
   python3 make g++ gcc postgresql-client \
   && ln -sf python3 /usr/bin/python \
   && rm -rf /var/lib/apt/lists/*
@@ -27,7 +27,7 @@ RUN npm run build
 # ──────────────────────────────────────────
 FROM node:20-bullseye AS runtime
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get -o Acquire::Check-Valid-Until=false update && apt-get install -y \
   postgresql-client \
   && rm -rf /var/lib/apt/lists/*
 
@@ -41,6 +41,7 @@ USER node
 COPY --from=builder --chown=node:node /usr/src/app/dist        ./dist
 COPY --from=builder --chown=node:node /usr/src/app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /usr/src/app/prisma      ./prisma
+COPY --from=builder --chown=node:node /usr/src/app/prisma.config.ts ./
 COPY --from=builder --chown=node:node /usr/src/app/package*.json ./
 
 ENV NODE_ENV=production
@@ -56,4 +57,4 @@ CMD ["bash", "-c", "\
   npx prisma migrate deploy; \
   echo '🚀 Starting API...'; \
   exec node dist/main.js \
-"]
+  "]

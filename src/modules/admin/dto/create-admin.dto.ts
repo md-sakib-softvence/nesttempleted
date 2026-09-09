@@ -1,21 +1,27 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength, IsEnum, IsOptional } from 'class-validator';
-import { AdminRole } from '@prisma/client';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateAdminDto {
+  @ApiProperty({ description: 'Admin Email' })
   @IsEmail()
   @IsNotEmpty()
   email: string;
 
-  @IsString()
-  @IsNotEmpty()
-  @MinLength(6)
-  password: string;
-
+  @ApiProperty({ description: 'Admin Name' })
   @IsString()
   @IsNotEmpty()
   name: string;
 
-  @IsEnum(AdminRole)
+  @ApiProperty({ description: 'Admin Password' })
+  @IsString()
+  @IsNotEmpty()
+  password: string;
+
+  @ApiPropertyOptional({
+    type: 'string',
+    format: 'binary',
+    description: 'Profile Image File',
+  })
   @IsOptional()
-  role?: AdminRole;
+  profileImage?: any;
 }

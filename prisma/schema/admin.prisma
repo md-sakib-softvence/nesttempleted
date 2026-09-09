@@ -1,14 +1,23 @@
 model Admin {
-  adminId  String    @id @default(uuid())
-  email    String    @unique
-  password String
-  name     String
-  role     AdminRole @default(ADMIN)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  adminId      String      @id @default(uuid())
+  email        String      @unique
+  profileImage String?
+  password     String
+  name         String
+  role         AdminRole   @default(ADMIN)
+  status       AdminStatus @default(ACTIVE)
+  isDeleted    Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 }
 
 enum AdminRole {
   ADMIN
   SUPER_ADMIN
+}
+
+enum AdminStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
 }
