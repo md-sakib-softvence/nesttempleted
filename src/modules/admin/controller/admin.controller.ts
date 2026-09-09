@@ -13,7 +13,7 @@ import {
   UploadedFile,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { ApiTags, ApiOperation, ApiConsumes, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiConsumes, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AdminService } from '../service/admin.service';
 import { CreateAdminDto } from '../dto/create-admin.dto';
@@ -27,6 +27,7 @@ import { AdminRole } from '@prisma/client';
 import { uploadImageToS3 } from '../../utils/s3.util';
 
 @ApiTags('admin')
+@ApiBearerAuth()
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)

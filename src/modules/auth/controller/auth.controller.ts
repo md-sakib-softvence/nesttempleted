@@ -12,7 +12,7 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Admin login' })
+  @ApiOperation({ summary: 'User login' })
   login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
   }
