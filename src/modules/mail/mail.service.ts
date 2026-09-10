@@ -27,6 +27,16 @@ export class MailService {
     });
   }
 
+  async sendPasswordResetLink(email: string, token: string) {
+    console.log(`[MAILER] Preparing to send password reset link to: ${email}`);
+    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${token}`;
+    await this.mailerService.sendMail({
+      to: email,
+      subject: 'Esports - Password Reset Request',
+      html: `<p>You requested to reset your password.</p><p>You can reset it by clicking the following link:</p><a href="${resetUrl}">${resetUrl}</a><p>This link will expire in 15 minutes.</p>`,
+    });
+  }
+
   async sendRecoveryLink(email: string, token: string) {
     console.log(`[MAILER] Preparing to send recovery link to: ${email}`);
     // Note: Assuming there is a recovery template, or we'll just send a direct URL link.

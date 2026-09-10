@@ -176,6 +176,7 @@ export class EmployeeController {
   }
 
   @Get('profile')
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, ...Object.values(EmployeeRole))
   @ApiOperation({ summary: 'Get logged in Employee' })
   async getLoginEmployee(@Req() req: Request & { user: { userId: string } }) {
     const employeeId = req.user.userId;
