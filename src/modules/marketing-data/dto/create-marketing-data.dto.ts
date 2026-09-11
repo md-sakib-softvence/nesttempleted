@@ -34,10 +34,10 @@ export class CreateMarketingDataDto {
   phoneNumber: string;
 
   // --- Marketing Data Required Fields ---
-  @ApiProperty({ description: 'Gamer Tag' })
+  @ApiPropertyOptional({ description: 'Surname' })
   @IsString()
-  @IsNotEmpty()
-  gamerTag: string;
+  @IsOptional()
+  surname?: string;
 
   @ApiProperty({ description: 'Favorite Game Console / Favorite Game' })
   @IsString()

@@ -13,7 +13,6 @@ model MarketingDataCollection {
   employeeId String?
   employee   Employee? @relation(fields: [employeeId], references: [employeeId])
 
-  gamerTag             String
   favoriteGameConsole  String
   favoriteFootballGame String
   registerAs           RegisterAs

@@ -87,6 +87,7 @@ export class MarketingDataService {
     const {
       firstName,
       lastName,
+      surname,
       email,
       phoneNumber,
       ...marketingDataFields
@@ -103,6 +104,7 @@ export class MarketingDataService {
           data: {
             showFanId,
             firstName,
+            surname,
             email,
             phoneNumber,
             password: hashedPassword,
@@ -134,6 +136,7 @@ export class MarketingDataService {
             showPlayerId,
             firstName,
             lastName,
+            surname,
             email,
             phoneNumber,
             password: hashedPassword,
@@ -159,7 +162,6 @@ export class MarketingDataService {
     const { where, skip, take, orderBy, page, limit } = buildPrismaQuery(
       query,
       [
-        'gamerTag',
         'favoriteGameConsole',
         'favoriteFootballGame',
         'profession',
@@ -213,6 +215,7 @@ export class MarketingDataService {
     const {
       firstName,
       lastName,
+      surname,
       email,
       phoneNumber,
       employeeId,
@@ -267,6 +270,7 @@ export class MarketingDataService {
           where: { fanId: existingData.fan.fanId },
           data: {
             ...(firstName ? { firstName } : {}),
+            ...(surname ? { surname } : {}),
             ...(email ? { email } : {}),
             ...(phoneNumber ? { phoneNumber } : {}),
             ...(gender ? { gender } : {}),
@@ -285,6 +289,7 @@ export class MarketingDataService {
           data: {
             ...(firstName ? { firstName } : {}),
             ...(lastName ? { lastName } : {}),
+            ...(surname ? { surname } : {}),
             ...(email ? { email } : {}),
             ...(phoneNumber ? { phoneNumber } : {}),
           },
