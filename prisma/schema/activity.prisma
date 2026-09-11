@@ -1,14 +1,10 @@
 model ActivityLog {
-  activityLogId String         @id @default(uuid())
+  activityLogId String   @id @default(uuid())
   title         String
-  status        ActivityStatus
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  description   String
+  role          Role
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  @@index([status])
-}
-
-enum ActivityStatus {
-  new_user
-  payment
+  @@index([title])
 }

@@ -13,6 +13,7 @@ import { formatAuthResponse } from '../utils/auth-response.util';
 import { refreshTokenUtil } from '../utils/refresh-token.util';
 import { forgetPasswordUtil } from '../utils/forget-password.util';
 import { MailService } from '../../mail/mail.service';
+import { createActivities } from '../../utils/activity.util';
 
 @Injectable()
 export class AuthService {
@@ -24,44 +25,57 @@ export class AuthService {
   ) {}
 
   async login(loginDto: LoginDto) {
+    let result;
     switch (loginDto.role) {
       case 'admin':
       case 'super_admin':
-        return adminLoginUtil(
+        result = await adminLoginUtil(
           loginDto,
           this.prisma,
           this.jwtService,
           this.configService,
         );
+        break;
       case 'security':
       case 'employee':
       case 'manager':
       case 'ambassador':
-        return employeeLoginUtil(
+        result = await employeeLoginUtil(
           loginDto,
           this.prisma,
           this.jwtService,
           this.configService,
         );
+        break;
       case 'fan':
-        return fanLoginUtil(
+        result = await fanLoginUtil(
           loginDto,
           this.prisma,
           this.jwtService,
           this.configService,
         );
+        break;
       case 'player':
-        return playerLoginUtil(
+        result = await playerLoginUtil(
           loginDto,
           this.prisma,
           this.jwtService,
           this.configService,
         );
+        break;
       default:
         throw new UnauthorizedException(
           `Login for role '${loginDto.role}' is not implemented yet.`,
         );
     }
+
+    // Record the login activity
+    const title = 'User Authentication';
+    const description = `User ${result.user.name} (${loginDto.email}) successfully authenticated and logged in with the role of '${loginDto.role}'.`;
+
+    await createActivities(this.prisma, title, description, loginDto.role);
+
+    return result;
   }
 
   async refreshToken(dto: RefreshTokenDto) {

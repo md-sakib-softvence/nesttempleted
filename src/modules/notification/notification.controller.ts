@@ -21,7 +21,7 @@ import { Role } from '@prisma/client';
 
 @ApiTags('Notification')
 @ApiBearerAuth()
-@Roles(Role.USER, Role.ADMIN, Role.SUPER_ADMIN)
+@Roles(Role.ADMIN, Role.SUPER_ADMIN)
 @Controller('notification')
 export class NotificationController {
   constructor(private readonly notificationService: NotificationService) {}

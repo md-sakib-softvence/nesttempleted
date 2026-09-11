@@ -84,6 +84,30 @@ export class PlayerService {
       }
     }
 
+    if (
+      updatePlayerDto.username &&
+      updatePlayerDto.username !== existingPlayer.username
+    ) {
+      const usernameTaken = await this.prisma.player.findFirst({
+        where: { username: updatePlayerDto.username },
+      });
+      if (usernameTaken) {
+        throw new ConflictException('This username is already used');
+      }
+    }
+
+    if (
+      updatePlayerDto.gamerTag &&
+      updatePlayerDto.gamerTag !== existingPlayer.gamerTag
+    ) {
+      const gamerTagTaken = await this.prisma.player.findFirst({
+        where: { gamerTag: updatePlayerDto.gamerTag },
+      });
+      if (gamerTagTaken) {
+        throw new ConflictException('This Gamer Tag is already used');
+      }
+    }
+
     const { password, documents, deletedDocuments, ...restData } =
       updatePlayerDto;
     let hashedPassword: string | undefined = undefined;

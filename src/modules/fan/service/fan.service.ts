@@ -80,6 +80,30 @@ export class FanService {
       }
     }
 
+    if (
+      updateFanDto.username &&
+      updateFanDto.username !== existingFan.username
+    ) {
+      const usernameTaken = await this.prisma.fan.findFirst({
+        where: { username: updateFanDto.username },
+      });
+      if (usernameTaken) {
+        throw new ConflictException('This username is already used');
+      }
+    }
+
+    if (
+      updateFanDto.gamerTag &&
+      updateFanDto.gamerTag !== existingFan.gamerTag
+    ) {
+      const gamerTagTaken = await this.prisma.fan.findFirst({
+        where: { gamerTag: updateFanDto.gamerTag },
+      });
+      if (gamerTagTaken) {
+        throw new ConflictException('This Gamer Tag is already used');
+      }
+    }
+
     const { password, profileImage, ...restData } = updateFanDto;
     let hashedPassword: string | undefined = undefined;
     if (password) {
