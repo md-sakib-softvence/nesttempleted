@@ -1,7 +1,7 @@
 # ──────────────────────────────────────────
 # Stage 1: Builder
 # ──────────────────────────────────────────
-FROM node:20-bullseye AS builder
+FROM node:20-bookworm AS builder
 
 RUN apt-get -o Acquire::Check-Valid-Until=false update && apt-get install -y \
   python3 make g++ gcc postgresql-client \
@@ -25,7 +25,7 @@ RUN npm run build
 # ──────────────────────────────────────────
 # Stage 2: Runtime (lean production image)
 # ──────────────────────────────────────────
-FROM node:20-bullseye AS runtime
+FROM node:20-bookworm AS runtime
 
 RUN apt-get -o Acquire::Check-Valid-Until=false update && apt-get install -y \
   postgresql-client \
