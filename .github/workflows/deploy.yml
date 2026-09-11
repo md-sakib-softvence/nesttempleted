@@ -70,7 +70,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -e
-            # EC2-তে আপনার প্রজেক্টের ফোল্ডারে প্রবেশ
+
             cd ~
 
             echo "🔄 Pulling latest image..."
@@ -80,11 +80,10 @@ jobs:
             docker compose --profile prod up -d --remove-orphans
 
             echo "🗄️ Running Prisma migrations on production..."
-            # প্রোডাকশনে ডাটাবেস মাইগ্রেশন রান করা হচ্ছে 
+
             docker exec esports_server npx prisma migrate deploy
 
             echo "🧹 Cleaning up dangling images..."
             docker system prune -af --volumes || true
 
             echo "✅ Deployment complete!"
-
