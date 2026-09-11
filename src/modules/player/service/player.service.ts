@@ -14,6 +14,7 @@ import {
 } from '../../utils/query.util';
 import { getPreSignedUrl, deleteImageFromS3 } from '../../utils/s3.util';
 import { generatePlayerId } from '../utils/generate-id.util';
+import { createActivities } from '../../utils/activity.util';
 import { JwtService } from '@nestjs/jwt';
 import { MailService } from '../../mail/mail.service';
 
@@ -53,7 +54,7 @@ export class PlayerService {
     );
     const showPlayerId = await generatePlayerId(this.prisma);
 
-    return this.prisma.player.create({
+    const newPlayer = await this.prisma.player.create({
       data: {
         ...rest,
         password: hashedPassword,
@@ -61,6 +62,12 @@ export class PlayerService {
         showPlayerId,
       },
     });
+
+    const title = 'Player Creation';
+    const description = `Player ${newPlayer.firstName} ${newPlayer.lastName} (${newPlayer.email}) was successfully created.`;
+    await createActivities(this.prisma, title, description, 'PLAYER');
+
+    return newPlayer;
   }
 
   async updatePlayer(id: string, updatePlayerDto: UpdatePlayerDto) {

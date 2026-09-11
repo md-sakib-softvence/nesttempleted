@@ -14,6 +14,7 @@ import {
 } from '../../utils/query.util';
 import { getPreSignedUrl, deleteImageFromS3 } from '../../utils/s3.util';
 import { generateFanId } from '../utils/generate-id.util';
+import { createActivities } from '../../utils/activity.util';
 import { JwtService } from '@nestjs/jwt';
 import { MailService } from '../../mail/mail.service';
 
@@ -53,13 +54,23 @@ export class FanService {
     );
     const showFanId = await generateFanId(this.prisma);
 
-    return this.prisma.fan.create({
+    const newFan = await this.prisma.fan.create({
       data: {
         ...rest,
         password: hashedPassword,
         showFanId,
       },
     });
+
+    const title = 'Fan Creation';
+    const description =
+      `Fan ${newFan.firstName} ${newFan.surname || ''} (${newFan.email}) was successfully created.`.replace(
+        '  ',
+        ' ',
+      );
+    await createActivities(this.prisma, title, description, 'FAN');
+
+    return newFan;
   }
 
   async updateFan(id: string, updateFanDto: UpdateFanDto) {

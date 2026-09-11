@@ -17,6 +17,7 @@ import { EmployeeModule } from './modules/employee/employee.module';
 import { FanModule } from './modules/fan/fan.module';
 import { PlayerModule } from './modules/player/player.module';
 import { MarketingDataModule } from './modules/marketing-data/marketing-data.module';
+import { SystemModule } from './modules/system/system.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { MarketingDataModule } from './modules/marketing-data/marketing-data.mod
     FanModule,
     PlayerModule,
     MarketingDataModule,
+    SystemModule,
   ],
   controllers: [AppController],
   providers: [

@@ -25,6 +25,29 @@ export class PrismaService
   async onModuleInit() {
     await this.$connect();
     await this.seedSuperAdmin();
+    await this.seedSystemConfig();
+  }
+
+  private async seedSystemConfig() {
+    this.logger.log('🌱 Checking for system config...');
+    try {
+      const config = await this.systemConfig.findFirst();
+      if (!config) {
+        await this.systemConfig.create({
+          data: {
+            fanPredictions: false,
+            staffPosSystem: false,
+            newBracketViewBeta: false,
+            automatedPayouts: false,
+          },
+        });
+        this.logger.log('✅ Created default system configuration');
+      } else {
+        this.logger.log('✅ System configuration already exists, skipping seed.');
+      }
+    } catch (error) {
+      this.logger.error('Failed to seed system configuration', error);
+    }
   }
 
   private async seedSuperAdmin() {

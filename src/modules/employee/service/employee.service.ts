@@ -17,6 +17,7 @@ import {
 } from '../../utils/query.util';
 import { getPreSignedUrl, deleteImageFromS3 } from '../../utils/s3.util';
 import { generateEmployeeId } from '../utils/generate-id.util';
+import { createActivities } from '../../utils/activity.util';
 
 @Injectable()
 export class EmployeeService {
@@ -53,7 +54,7 @@ export class EmployeeService {
     );
     const showEmployeeId = await generateEmployeeId(this.prisma);
 
-    return this.prisma.employee.create({
+    const newEmployee = await this.prisma.employee.create({
       data: {
         ...rest,
         password: hashedPassword,
@@ -61,6 +62,12 @@ export class EmployeeService {
         state: 'INACTIVE',
       },
     });
+
+    const title = 'Employee Creation';
+    const description = `Employee ${newEmployee.name} (${newEmployee.email}) was successfully created.`;
+    await createActivities(this.prisma, title, description, 'EMPLOYEE');
+
+    return newEmployee;
   }
 
   async updateEmployee(id: string, updateEmployeeDto: UpdateEmployeeDto) {

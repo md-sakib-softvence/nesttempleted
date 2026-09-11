@@ -1,0 +1,9 @@
+model SystemConfig {
+  id                 String   @id @default(uuid())
+  fanPredictions     Boolean  @default(false)
+  staffPosSystem     Boolean  @default(false)
+  newBracketViewBeta Boolean  @default(false)
+  automatedPayouts   Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
