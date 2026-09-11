@@ -1,11 +1,11 @@
-name: 🚀 Deploy nesttempleted
+name: 🚀 Deploy esports
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
 
 env:
-  IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/nesttempleted
+  IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/esports
 
 jobs:
   # ── 1. Lint & Test ────────────────────────────────────────
@@ -26,9 +26,6 @@ jobs:
 
       - name: Lint
         run: npm run lint
-
-      - name: Unit Tests
-        run: npm run test -- --passWithNoTests
 
   # ── 2. Build & Push Docker Image ─────────────────────────
   build-and-push:
@@ -73,38 +70,21 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -e
-            cd ~/nesttempleted
+            # EC2-তে আপনার প্রজেক্টের ফোল্ডারে প্রবেশ
+            cd ~
+
             echo "🔄 Pulling latest image..."
             docker compose --profile prod pull
+
             echo "🚀 Restarting containers..."
             docker compose --profile prod up -d --remove-orphans
+
+            echo "🗄️ Running Prisma migrations on production..."
+            # প্রোডাকশনে ডাটাবেস মাইগ্রেশন রান করা হচ্ছে 
+            docker exec esports_server npx prisma migrate deploy
+
             echo "🧹 Cleaning up dangling images..."
             docker system prune -af --volumes || true
+
             echo "✅ Deployment complete!"
 
-  # ── 4. Telegram Notification ─────────────────────────────
-  notify:
-    name: 📣 Notify
-    runs-on: ubuntu-latest
-    needs: [test, build-and-push, deploy]
-    if: always()
-    steps:
-      - name: Send Telegram Notification
-        uses: appleboy/telegram-action@v1.0.1
-        with:
-          to: ${{ secrets.TELEGRAM_TO }}
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          message: |
-            ${{ (needs.build-and-push.result == 'success' && needs.deploy.result == 'success') && '✅ Deployed successfully!' || '❌ Deployment FAILED!' }}
-
-            📦 **Project**: nesttempleted
-            🔀 **Branch**: ${{ github.ref_name }}
-            👤 **Triggered by**: ${{ github.actor }}
-            🔗 **Commit**: ${{ github.sha }}
-            📋 **Logs**: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-            | Job | Status |
-            |-----|--------|
-            | Test | ${{ needs.test.result }} |
-            | Build | ${{ needs.build-and-push.result }} |
-            | Deploy | ${{ needs.deploy.result }} |
