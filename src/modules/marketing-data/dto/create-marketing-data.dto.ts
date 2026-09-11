@@ -27,10 +27,6 @@ export class CreateMarketingDataDto {
   @IsNotEmpty()
   email: string;
 
-  @ApiProperty({ description: 'Password' })
-  @IsString()
-  @IsNotEmpty()
-  password: string;
 
   @ApiProperty({ description: 'Phone Number' })
   @IsString()
@@ -53,7 +49,10 @@ export class CreateMarketingDataDto {
   @IsNotEmpty()
   favoriteFootballGame: string;
 
-  @ApiProperty({ description: 'Register As (FRIEND or PLAYER)', enum: RegisterAs })
+  @ApiProperty({
+    description: 'Register As (FRIEND or PLAYER)',
+    enum: RegisterAs,
+  })
   @IsEnum(RegisterAs)
   @IsNotEmpty()
   registerAs: RegisterAs;

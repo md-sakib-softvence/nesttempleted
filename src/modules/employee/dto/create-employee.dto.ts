@@ -36,8 +36,6 @@ export class CreateEmployeeDto {
   @IsOptional()
   role?: EmployeeRole;
 
-
-
   @ApiPropertyOptional({
     type: 'string',
     format: 'binary',
@@ -53,5 +51,4 @@ export class CreateEmployeeDto {
   })
   @IsOptional()
   document?: any[];
-
 }

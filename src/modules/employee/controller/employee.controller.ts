@@ -14,7 +14,13 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { ApiTags, ApiOperation, ApiConsumes, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiConsumes,
+  ApiQuery,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { EmployeeService } from '../service/employee.service';
 import { CreateEmployeeDto } from '../dto/create-employee.dto';
@@ -27,7 +33,10 @@ import { Roles } from '../../../common/decorators/roles.decorator';
 import { Public } from '../../../common/decorators/public.decorator';
 import { AdminRole, EmployeeRole } from '@prisma/client';
 import { getPreSignedUrl } from '../../utils/s3.util';
-import { uploadEmployeeFiles, rollbackEmployeeFiles } from '../utils/file-upload.util';
+import {
+  uploadEmployeeFiles,
+  rollbackEmployeeFiles,
+} from '../utils/file-upload.util';
 
 @ApiTags('employee')
 @ApiBearerAuth()
@@ -43,13 +52,20 @@ export class EmployeeController {
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'profileImage', maxCount: 1 },
-      { name: 'document', maxCount: parseInt(process.env.MAX_DOCUMENTS || '10', 10) },
-    ])
+      {
+        name: 'document',
+        maxCount: parseInt(process.env.MAX_DOCUMENTS || '10', 10),
+      },
+    ]),
   )
   @Roles(AdminRole.SUPER_ADMIN)
   async createEmployee(
     @Body() createEmployeeDto: CreateEmployeeDto,
-    @UploadedFiles() files: { profileImage?: Express.Multer.File[], document?: Express.Multer.File[] },
+    @UploadedFiles()
+    files: {
+      profileImage?: Express.Multer.File[];
+      document?: Express.Multer.File[];
+    },
   ) {
     const uploadedFiles = await uploadEmployeeFiles(files);
 
@@ -58,7 +74,7 @@ export class EmployeeController {
     } else {
       delete createEmployeeDto.profileImage;
     }
-    
+
     if (uploadedFiles.document.length > 0) {
       createEmployeeDto.document = uploadedFiles.document;
     } else {
@@ -67,23 +83,29 @@ export class EmployeeController {
 
     try {
       const data = await this.employeeService.createEmployee(createEmployeeDto);
-      
+
       if (data.profileImage) {
         data.profileImage = await getPreSignedUrl(data.profileImage);
       }
-      
+
       if (data.document && data.document.length > 0) {
         data.document = await Promise.all(
-          data.document.map(async (doc) => getPreSignedUrl(doc))
+          data.document.map(async (doc) => getPreSignedUrl(doc)),
         );
       }
 
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { password, ...safeData } = data as any;
 
-      return sendResponse({ message: 'Employee created successfully', data: safeData });
+      return sendResponse({
+        message: 'Employee created successfully',
+        data: safeData,
+      });
     } catch (error) {
-      await rollbackEmployeeFiles(uploadedFiles.profileImage, uploadedFiles.document);
+      await rollbackEmployeeFiles(
+        uploadedFiles.profileImage,
+        uploadedFiles.document,
+      );
       throw error;
     }
   }
@@ -105,15 +127,25 @@ export class EmployeeController {
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'profileImage', maxCount: 1 },
-      { name: 'document', maxCount: parseInt(process.env.MAX_DOCUMENTS || '10', 10) },
-    ])
+      {
+        name: 'document',
+        maxCount: parseInt(process.env.MAX_DOCUMENTS || '10', 10),
+      },
+    ]),
   )
   async updateEmployee(
     @Param('id') id: string,
     @Body() updateEmployeeDto: UpdateEmployeeDto,
-    @UploadedFiles() files: { profileImage?: Express.Multer.File[], document?: Express.Multer.File[] },
+    @UploadedFiles()
+    files: {
+      profileImage?: Express.Multer.File[];
+      document?: Express.Multer.File[];
+    },
   ) {
-    if (updateEmployeeDto.deletedDocuments && typeof updateEmployeeDto.deletedDocuments === 'string') {
+    if (
+      updateEmployeeDto.deletedDocuments &&
+      typeof updateEmployeeDto.deletedDocuments === 'string'
+    ) {
       updateEmployeeDto.deletedDocuments = [updateEmployeeDto.deletedDocuments];
     }
 
@@ -124,7 +156,7 @@ export class EmployeeController {
     } else {
       delete updateEmployeeDto.profileImage;
     }
-    
+
     if (uploadedFiles.document.length > 0) {
       updateEmployeeDto.document = uploadedFiles.document;
     } else {
@@ -132,24 +164,33 @@ export class EmployeeController {
     }
 
     try {
-      const data = await this.employeeService.updateEmployee(id, updateEmployeeDto);
-      
+      const data = await this.employeeService.updateEmployee(
+        id,
+        updateEmployeeDto,
+      );
+
       if (data.profileImage) {
         data.profileImage = await getPreSignedUrl(data.profileImage);
       }
-      
+
       if (data.document && data.document.length > 0) {
         data.document = await Promise.all(
-          data.document.map(async (doc) => getPreSignedUrl(doc))
+          data.document.map(async (doc) => getPreSignedUrl(doc)),
         );
       }
 
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { password, ...safeData } = data as any;
 
-      return sendResponse({ message: 'Employee updated successfully', data: safeData });
+      return sendResponse({
+        message: 'Employee updated successfully',
+        data: safeData,
+      });
     } catch (error) {
-      await rollbackEmployeeFiles(uploadedFiles.profileImage, uploadedFiles.document);
+      await rollbackEmployeeFiles(
+        uploadedFiles.profileImage,
+        uploadedFiles.document,
+      );
       throw error;
     }
   }
@@ -165,8 +206,10 @@ export class EmployeeController {
   }
 
   @Get(':id/marketing-data')
-  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.EMPLOYEE as any)
-  @ApiOperation({ summary: 'Get all marketing data collected by a specific Employee' })
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.EMPLOYEE)
+  @ApiOperation({
+    summary: 'Get all marketing data collected by a specific Employee',
+  })
   async getEmployeeMarketingData(@Param('id') id: string) {
     const data = await this.employeeService.getEmployeeMarketingData(id);
     return sendResponse({

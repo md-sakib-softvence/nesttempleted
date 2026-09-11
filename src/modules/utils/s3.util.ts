@@ -1,4 +1,9 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { v4 as uuidv4 } from 'uuid';
 import * as path from 'path';
@@ -54,7 +59,10 @@ export const uploadMultipleFilesToS3 = async (
  */
 export const getPreSignedUrl = async (
   fileName: string,
-  expiresIn: number = parseInt(process.env.AWS_PRESIGNED_URL_EXPIRES_IN || '3600', 10),
+  expiresIn: number = parseInt(
+    process.env.AWS_PRESIGNED_URL_EXPIRES_IN || '3600',
+    10,
+  ),
 ): Promise<string> => {
   if (!fileName) return '';
 
@@ -63,7 +71,7 @@ export const getPreSignedUrl = async (
   if (fileName.startsWith('http')) {
     const url = new URL(fileName);
     // The pathname usually starts with a slash, e.g., /654b825f-a2ae-4e27-9832-79b1e607ddc1.jpeg
-    key = url.pathname.substring(1); 
+    key = url.pathname.substring(1);
   }
 
   const s3Client = new S3Client({
@@ -76,7 +84,9 @@ export const getPreSignedUrl = async (
 
   const bucketName = process.env.AWS_S3_BUCKET_NAME || '';
   if (!bucketName) {
-    throw new Error('AWS_S3_BUCKET_NAME is not defined in environment variables');
+    throw new Error(
+      'AWS_S3_BUCKET_NAME is not defined in environment variables',
+    );
   }
 
   const command = new GetObjectCommand({
@@ -104,7 +114,9 @@ export const deleteImageFromS3 = async (fileName: string): Promise<void> => {
 
   const bucketName = process.env.AWS_S3_BUCKET_NAME || '';
   if (!bucketName) {
-    throw new Error('AWS_S3_BUCKET_NAME is not defined in environment variables');
+    throw new Error(
+      'AWS_S3_BUCKET_NAME is not defined in environment variables',
+    );
   }
 
   const command = new DeleteObjectCommand({

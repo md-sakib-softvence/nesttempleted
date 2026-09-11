@@ -113,7 +113,7 @@ export const refreshTokenUtil = async (
   const newAccessToken = jwtService.sign(newPayload);
   const newRefreshToken = jwtService.sign(newPayload, {
     secret: refreshSecret,
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+
     expiresIn: refreshExpiresIn as any,
   });
 

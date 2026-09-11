@@ -13,7 +13,13 @@ import {
   UploadedFile,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { ApiTags, ApiOperation, ApiConsumes, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiConsumes,
+  ApiQuery,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { FanService } from '../service/fan.service';
 import { CreateFanDto } from '../dto/create-fan.dto';
@@ -23,14 +29,18 @@ import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { Public } from '../../../common/decorators/public.decorator';
-import { uploadImageToS3, deleteImageFromS3, getPreSignedUrl } from '../../utils/s3.util';
+import {
+  uploadImageToS3,
+  deleteImageFromS3,
+  getPreSignedUrl,
+} from '../../utils/s3.util';
 import { Role } from '@prisma/client';
 
 @ApiTags('fan')
 @ApiBearerAuth()
 @Controller('fan')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN, Role.SUPER_ADMIN, 'fan' as Role)
+@Roles(Role.ADMIN, Role.SUPER_ADMIN, 'fan')
 export class FanController {
   constructor(private readonly fanService: FanService) {}
 
@@ -44,7 +54,7 @@ export class FanController {
     @UploadedFile() profileImage?: Express.Multer.File,
   ) {
     let s3ProfileImageFilename: string | null = null;
-    
+
     if (profileImage) {
       s3ProfileImageFilename = await uploadImageToS3(profileImage);
       createFanDto.profileImage = s3ProfileImageFilename;
@@ -54,11 +64,11 @@ export class FanController {
 
     try {
       const data = await this.fanService.createFan(createFanDto);
-      
+
       if (data.profileImage) {
         data.profileImage = await getPreSignedUrl(data.profileImage);
       }
-      
+
       return sendResponse({ message: 'Fan created successfully', data });
     } catch (error) {
       if (s3ProfileImageFilename) {
@@ -88,11 +98,11 @@ export class FanController {
 
     try {
       const data = await this.fanService.updateFan(id, updateFanDto);
-      
+
       if (data.profileImage) {
         data.profileImage = await getPreSignedUrl(data.profileImage);
       }
-      
+
       return sendResponse({ message: 'Fan updated successfully', data });
     } catch (error) {
       if (s3ProfileImageFilename) {
@@ -115,7 +125,7 @@ export class FanController {
 
   @Get('profile')
   @ApiOperation({ summary: 'Get logged in Fan' })
-  @Roles('fan' as Role)
+  @Roles('fan')
   async getLoginFan(@Req() req: Request & { user: { userId: string } }) {
     const fanId = req.user.userId;
     const data = await this.fanService.getFanById(fanId);

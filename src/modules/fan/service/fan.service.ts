@@ -34,7 +34,9 @@ export class FanService {
       if (existingFan.isDeleted) {
         const token = await this.jwtService.signAsync(
           { sub: existingFan.fanId, email: existingFan.email },
-          { expiresIn: (process.env.RECOVERY_TOKEN_EXPIRATION || '15m') as any },
+          {
+            expiresIn: (process.env.RECOVERY_TOKEN_EXPIRATION || '15m') as any,
+          },
         );
         await this.mailService.sendRecoveryLink(existingFan.email, token);
         throw new ConflictException(
@@ -45,7 +47,10 @@ export class FanService {
     }
 
     const { password, ...rest } = createFanDto;
-    const hashedPassword = await bcrypt.hash(password, Number(process.env.BCRYPT_SALT_ROUNDS) || 10);
+    const hashedPassword = await bcrypt.hash(
+      password,
+      Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
+    );
     const showFanId = await generateFanId(this.prisma);
 
     return this.prisma.fan.create({
@@ -78,9 +83,12 @@ export class FanService {
     const { password, profileImage, ...restData } = updateFanDto;
     let hashedPassword: string | undefined = undefined;
     if (password) {
-      hashedPassword = await bcrypt.hash(password, Number(process.env.BCRYPT_SALT_ROUNDS) || 10);
+      hashedPassword = await bcrypt.hash(
+        password,
+        Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
+      );
     }
-    
+
     if (profileImage && existingFan.profileImage) {
       await deleteImageFromS3(existingFan.profileImage);
     }

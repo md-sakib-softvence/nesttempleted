@@ -13,7 +13,13 @@ import {
   UploadedFiles,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { ApiTags, ApiOperation, ApiConsumes, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiConsumes,
+  ApiQuery,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { PlayerService } from '../service/player.service';
 import { CreatePlayerDto } from '../dto/create-player.dto';
@@ -23,14 +29,18 @@ import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { Public } from '../../../common/decorators/public.decorator';
-import { uploadMultipleFilesToS3, deleteImageFromS3, getPreSignedUrl } from '../../utils/s3.util';
+import {
+  uploadMultipleFilesToS3,
+  deleteImageFromS3,
+  getPreSignedUrl,
+} from '../../utils/s3.util';
 import { Role } from '@prisma/client';
 
 @ApiTags('player')
 @ApiBearerAuth()
 @Controller('player')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN, Role.SUPER_ADMIN, 'player' as Role)
+@Roles(Role.ADMIN, Role.SUPER_ADMIN, 'player')
 export class PlayerController {
   constructor(private readonly playerService: PlayerService) {}
 
@@ -54,17 +64,19 @@ export class PlayerController {
 
     try {
       const data = await this.playerService.createPlayer(createPlayerDto);
-      
+
       if (data.document && data.document.length > 0) {
         data.document = await Promise.all(
-          data.document.map(async (doc) => getPreSignedUrl(doc))
+          data.document.map(async (doc) => getPreSignedUrl(doc)),
         );
       }
-      
+
       return sendResponse({ message: 'Player created successfully', data });
     } catch (error) {
       if (s3DocumentFilenames.length > 0) {
-        await Promise.all(s3DocumentFilenames.map((key) => deleteImageFromS3(key)));
+        await Promise.all(
+          s3DocumentFilenames.map((key) => deleteImageFromS3(key)),
+        );
       }
       throw error;
     }
@@ -80,7 +92,10 @@ export class PlayerController {
     @UploadedFiles() documents?: Express.Multer.File[],
   ) {
     // Convert deletedDocuments to array if it is a string from multipart/form-data
-    if (updatePlayerDto.deletedDocuments && typeof updatePlayerDto.deletedDocuments === 'string') {
+    if (
+      updatePlayerDto.deletedDocuments &&
+      typeof updatePlayerDto.deletedDocuments === 'string'
+    ) {
       updatePlayerDto.deletedDocuments = [updatePlayerDto.deletedDocuments];
     }
 
@@ -95,17 +110,19 @@ export class PlayerController {
 
     try {
       const data = await this.playerService.updatePlayer(id, updatePlayerDto);
-      
+
       if (data.document && data.document.length > 0) {
         data.document = await Promise.all(
-          data.document.map(async (doc) => getPreSignedUrl(doc))
+          data.document.map(async (doc) => getPreSignedUrl(doc)),
         );
       }
-      
+
       return sendResponse({ message: 'Player updated successfully', data });
     } catch (error) {
       if (s3DocumentFilenames.length > 0) {
-        await Promise.all(s3DocumentFilenames.map((key) => deleteImageFromS3(key)));
+        await Promise.all(
+          s3DocumentFilenames.map((key) => deleteImageFromS3(key)),
+        );
       }
       throw error;
     }
@@ -124,7 +141,7 @@ export class PlayerController {
 
   @Get('profile')
   @ApiOperation({ summary: 'Get logged in Player' })
-  @Roles('player' as Role)
+  @Roles('player')
   async getLoginPlayer(@Req() req: Request & { user: { userId: string } }) {
     const playerId = req.user.userId;
     const data = await this.playerService.getPlayerById(playerId);

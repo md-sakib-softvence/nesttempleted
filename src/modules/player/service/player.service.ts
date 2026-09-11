@@ -34,7 +34,9 @@ export class PlayerService {
       if (existingPlayer.isDeleted) {
         const token = await this.jwtService.signAsync(
           { sub: existingPlayer.playerId, email: existingPlayer.email },
-          { expiresIn: (process.env.RECOVERY_TOKEN_EXPIRATION || '15m') as any },
+          {
+            expiresIn: (process.env.RECOVERY_TOKEN_EXPIRATION || '15m') as any,
+          },
         );
         await this.mailService.sendRecoveryLink(existingPlayer.email, token);
         throw new ConflictException(
@@ -45,7 +47,10 @@ export class PlayerService {
     }
 
     const { password, documents, ...rest } = createPlayerDto;
-    const hashedPassword = await bcrypt.hash(password, Number(process.env.BCRYPT_SALT_ROUNDS) || 10);
+    const hashedPassword = await bcrypt.hash(
+      password,
+      Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
+    );
     const showPlayerId = await generatePlayerId(this.prisma);
 
     return this.prisma.player.create({
@@ -79,10 +84,14 @@ export class PlayerService {
       }
     }
 
-    const { password, documents, deletedDocuments, ...restData } = updatePlayerDto;
+    const { password, documents, deletedDocuments, ...restData } =
+      updatePlayerDto;
     let hashedPassword: string | undefined = undefined;
     if (password) {
-      hashedPassword = await bcrypt.hash(password, Number(process.env.BCRYPT_SALT_ROUNDS) || 10);
+      hashedPassword = await bcrypt.hash(
+        password,
+        Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
+      );
     }
 
     let finalDocuments = existingPlayer.document || [];
@@ -140,7 +149,7 @@ export class PlayerService {
 
     if (player.document && player.document.length > 0) {
       player.document = await Promise.all(
-        player.document.map(async (doc) => getPreSignedUrl(doc))
+        player.document.map(async (doc) => getPreSignedUrl(doc)),
       );
     }
 
@@ -171,7 +180,7 @@ export class PlayerService {
       data.map(async (player) => {
         if (player.document && player.document.length > 0) {
           player.document = await Promise.all(
-            player.document.map(async (doc) => getPreSignedUrl(doc))
+            player.document.map(async (doc) => getPreSignedUrl(doc)),
           );
         }
         // eslint-disable-next-line @typescript-eslint/no-unused-vars

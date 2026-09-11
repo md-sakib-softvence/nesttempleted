@@ -1,5 +1,20 @@
-import { Body, Controller, Post, Get, Patch, Delete, Param, Query, UseGuards } from '@nestjs/common';
-import { ApiOperation, ApiTags, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Delete,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiOperation,
+  ApiTags,
+  ApiQuery,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { Public } from '../../../common/decorators/public.decorator';
 import { MarketingDataService } from '../service/marketing-data.service';
 import { CreateMarketingDataDto } from '../dto/create-marketing-data.dto';
@@ -20,8 +35,7 @@ export class MarketingDataController {
   @Post()
   @Public()
   @ApiOperation({
-    summary:
-      'Submit marketing form (Simultaneously registers Fan or Player)',
+    summary: 'Submit marketing form (Simultaneously registers Fan or Player)',
   })
   async createMarketingData(@Body() createDto: CreateMarketingDataDto) {
     const data = await this.marketingDataService.createMarketingData(createDto);
@@ -33,7 +47,7 @@ export class MarketingDataController {
 
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.EMPLOYEE as any)
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.EMPLOYEE)
   @ApiOperation({ summary: 'Get all marketing data' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -41,7 +55,8 @@ export class MarketingDataController {
   @ApiQuery({ name: 'sortBy', required: false, type: String })
   @ApiQuery({ name: 'sortOrder', required: false, enum: ['asc', 'desc'] })
   async getAllMarketingData(@Query() query: QueryOptions) {
-    const { data, meta } = await this.marketingDataService.getAllMarketingData(query);
+    const { data, meta } =
+      await this.marketingDataService.getAllMarketingData(query);
     return sendResponse({
       message: 'Marketing data retrieved successfully',
       data,
@@ -51,7 +66,7 @@ export class MarketingDataController {
 
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.EMPLOYEE as any)
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.EMPLOYEE)
   @ApiOperation({ summary: 'Get a specific marketing data entry' })
   async getMarketingDataById(@Param('id') id: string) {
     const data = await this.marketingDataService.getMarketingDataById(id);
@@ -63,13 +78,16 @@ export class MarketingDataController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.EMPLOYEE as any)
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.EMPLOYEE)
   @ApiOperation({ summary: 'Update a specific marketing data entry' })
   async updateMarketingData(
     @Param('id') id: string,
     @Body() updateDto: UpdateMarketingDataDto,
   ) {
-    const data = await this.marketingDataService.updateMarketingData(id, updateDto);
+    const data = await this.marketingDataService.updateMarketingData(
+      id,
+      updateDto,
+    );
     return sendResponse({
       message: 'Marketing data updated successfully',
       data,
@@ -78,7 +96,7 @@ export class MarketingDataController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.EMPLOYEE as any)
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.EMPLOYEE)
   @ApiOperation({ summary: 'Soft delete a specific marketing data entry' })
   async deleteMarketingData(@Param('id') id: string) {
     const data = await this.marketingDataService.deleteMarketingData(id);

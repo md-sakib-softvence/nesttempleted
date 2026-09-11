@@ -6,6 +6,9 @@ model Player {
   email        String  @unique
   password     String
   phoneNumber  String
+  username     String?
+  gamerTag     String?
+  surname      String?
   isDeleted    Boolean @default(false)
 
   document String[]

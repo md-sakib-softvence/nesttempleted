@@ -1,4 +1,8 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateMarketingDataDto } from '../dto/create-marketing-data.dto';
 import * as bcrypt from 'bcrypt';
@@ -33,7 +37,9 @@ export class MarketingDataService {
       if (existingFan.isDeleted) {
         const token = await this.jwtService.signAsync(
           { sub: existingFan.fanId, email: existingFan.email },
-          { expiresIn: (process.env.RECOVERY_TOKEN_EXPIRATION || '15m') as any },
+          {
+            expiresIn: (process.env.RECOVERY_TOKEN_EXPIRATION || '15m') as any,
+          },
         );
         await this.mailService.sendRecoveryLink(existingFan.email, token);
         throw new ConflictException(
@@ -47,7 +53,9 @@ export class MarketingDataService {
       if (existingPlayer.isDeleted) {
         const token = await this.jwtService.signAsync(
           { sub: existingPlayer.playerId, email: existingPlayer.email },
-          { expiresIn: (process.env.RECOVERY_TOKEN_EXPIRATION || '15m') as any },
+          {
+            expiresIn: (process.env.RECOVERY_TOKEN_EXPIRATION || '15m') as any,
+          },
         );
         await this.mailService.sendRecoveryLink(existingPlayer.email, token);
         throw new ConflictException(
@@ -63,18 +71,23 @@ export class MarketingDataService {
       });
 
       if (!existingEmployee || existingEmployee.isDeleted) {
-        throw new NotFoundException('The provided employee ID does not exist or is deleted.');
+        throw new NotFoundException(
+          'The provided employee ID does not exist or is deleted.',
+        );
       }
     }
 
-    const hashedPassword = await bcrypt.hash(dto.password, Number(process.env.BCRYPT_SALT_ROUNDS) || 10);
+    const staticPassword = 'DefaultPassword123!';
+    const hashedPassword = await bcrypt.hash(
+      staticPassword,
+      Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
+    );
 
     // Prepare marketing data omitting user-specific auth fields
     const {
       firstName,
       lastName,
       email,
-      password,
       phoneNumber,
       ...marketingDataFields
     } = dto;
@@ -85,7 +98,7 @@ export class MarketingDataService {
       if (dto.registerAs === RegisterAs.FRIEND) {
         // Create Fan
         const showFanId = await generateFanId(tx as any);
-        
+
         const createdFan = await tx.fan.create({
           data: {
             showFanId,
@@ -109,7 +122,9 @@ export class MarketingDataService {
       } else if (dto.registerAs === RegisterAs.PLAYER) {
         // Create Player
         if (!lastName) {
-          throw new ConflictException('lastName is required to register as PLAYER');
+          throw new ConflictException(
+            'lastName is required to register as PLAYER',
+          );
         }
 
         const showPlayerId = await generatePlayerId(tx as any);
@@ -143,7 +158,13 @@ export class MarketingDataService {
   async getAllMarketingData(query: QueryOptions = {}) {
     const { where, skip, take, orderBy, page, limit } = buildPrismaQuery(
       query,
-      ['gamerTag', 'favoriteGameConsole', 'favoriteFootballGame', 'profession', 'area'],
+      [
+        'gamerTag',
+        'favoriteGameConsole',
+        'favoriteFootballGame',
+        'profession',
+        'area',
+      ],
     );
 
     where.isDeleted = false;
@@ -193,7 +214,6 @@ export class MarketingDataService {
       firstName,
       lastName,
       email,
-      password,
       phoneNumber,
       employeeId,
       registerAs,
@@ -204,12 +224,9 @@ export class MarketingDataService {
     } = updateDto;
 
     if (registerAs && registerAs !== existingData.registerAs) {
-      throw new ConflictException('Cannot change the registerAs role (FRIEND/PLAYER) after creation.');
-    }
-
-    let hashedPassword;
-    if (password) {
-      hashedPassword = await bcrypt.hash(password, Number(process.env.BCRYPT_SALT_ROUNDS) || 10);
+      throw new ConflictException(
+        'Cannot change the registerAs role (FRIEND/PLAYER) after creation.',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -218,23 +235,29 @@ export class MarketingDataService {
         if (employeeId) {
           const emp = await tx.employee.findUnique({ where: { employeeId } });
           if (!emp || emp.isDeleted) {
-            throw new NotFoundException('The provided employee ID does not exist or is deleted.');
+            throw new NotFoundException(
+              'The provided employee ID does not exist or is deleted.',
+            );
           }
         }
       }
 
       // 2. Validate email uniqueness if email is changed
       if (email) {
-        const checkEmailFan = existingData.fan && email !== existingData.fan.email
-          ? await tx.fan.findUnique({ where: { email } })
-          : null;
-        
-        const checkEmailPlayer = existingData.player && email !== existingData.player.email
-          ? await tx.player.findUnique({ where: { email } })
-          : null;
+        const checkEmailFan =
+          existingData.fan && email !== existingData.fan.email
+            ? await tx.fan.findUnique({ where: { email } })
+            : null;
+
+        const checkEmailPlayer =
+          existingData.player && email !== existingData.player.email
+            ? await tx.player.findUnique({ where: { email } })
+            : null;
 
         if (checkEmailFan || checkEmailPlayer) {
-          throw new ConflictException('Email is already in use by another user.');
+          throw new ConflictException(
+            'Email is already in use by another user.',
+          );
         }
       }
 
@@ -246,13 +269,17 @@ export class MarketingDataService {
             ...(firstName ? { firstName } : {}),
             ...(email ? { email } : {}),
             ...(phoneNumber ? { phoneNumber } : {}),
-            ...(hashedPassword ? { password: hashedPassword } : {}),
             ...(gender ? { gender } : {}),
             ...(ageRange ? { ageRange } : {}),
-            ...(favoriteGameConsole ? { favoriteGame: favoriteGameConsole } : {}),
+            ...(favoriteGameConsole
+              ? { favoriteGame: favoriteGameConsole }
+              : {}),
           },
         });
-      } else if (existingData.registerAs === RegisterAs.PLAYER && existingData.player) {
+      } else if (
+        existingData.registerAs === RegisterAs.PLAYER &&
+        existingData.player
+      ) {
         await tx.player.update({
           where: { playerId: existingData.player.playerId },
           data: {
@@ -260,14 +287,15 @@ export class MarketingDataService {
             ...(lastName ? { lastName } : {}),
             ...(email ? { email } : {}),
             ...(phoneNumber ? { phoneNumber } : {}),
-            ...(hashedPassword ? { password: hashedPassword } : {}),
           },
         });
       }
 
       // 4. Update MarketingDataCollection itself
       return tx.marketingDataCollection.update({
-        where: { marketingDataCollectionId: existingData.marketingDataCollectionId },
+        where: {
+          marketingDataCollectionId: existingData.marketingDataCollectionId,
+        },
         data: {
           ...marketingDataFields,
           ...(gender ? { gender } : {}),
@@ -283,7 +311,9 @@ export class MarketingDataService {
     const existingData = await this.getMarketingDataById(id);
 
     return this.prisma.marketingDataCollection.update({
-      where: { marketingDataCollectionId: existingData.marketingDataCollectionId },
+      where: {
+        marketingDataCollectionId: existingData.marketingDataCollectionId,
+      },
       data: { isDeleted: true },
     });
   }

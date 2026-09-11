@@ -40,7 +40,10 @@ export class UpdateEmployeeDto extends PartialType(CreateEmployeeDto) {
   @IsOptional()
   deletedDocuments?: string[];
 
-  @ApiPropertyOptional({ enum: EmployeeState, description: 'Employee State (Status)' })
+  @ApiPropertyOptional({
+    enum: EmployeeState,
+    description: 'Employee State (Status)',
+  })
   @IsEnum(EmployeeState)
   @IsOptional()
   state?: EmployeeState;

@@ -21,7 +21,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly mailService: MailService,
-  ) { }
+  ) {}
 
   async login(loginDto: LoginDto) {
     switch (loginDto.role) {

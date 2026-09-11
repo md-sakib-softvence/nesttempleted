@@ -14,7 +14,13 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { ApiTags, ApiOperation, ApiConsumes, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiConsumes,
+  ApiQuery,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AdminService } from '../service/admin.service';
 import { CreateAdminDto } from '../dto/create-admin.dto';
@@ -25,7 +31,11 @@ import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { Public } from '../../../common/decorators/public.decorator';
 import { AdminRole } from '@prisma/client';
-import { uploadImageToS3, deleteImageFromS3, getPreSignedUrl } from '../../utils/s3.util';
+import {
+  uploadImageToS3,
+  deleteImageFromS3,
+  getPreSignedUrl,
+} from '../../utils/s3.util';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -58,7 +68,7 @@ export class AdminController {
 
     try {
       const data = await this.adminService.createAdmin(createAdminDto);
-      
+
       // Presign the image in the response immediately so frontend can view it
       if (data.profileImage) {
         data.profileImage = await getPreSignedUrl(data.profileImage);
@@ -67,7 +77,10 @@ export class AdminController {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { password, ...safeData } = data;
 
-      return sendResponse({ message: 'Admin created successfully', data: safeData });
+      return sendResponse({
+        message: 'Admin created successfully',
+        data: safeData,
+      });
     } catch (error) {
       // If DB creation fails (e.g. duplicate email), rollback the uploaded S3 image
       if (s3Filename) {
@@ -112,7 +125,7 @@ export class AdminController {
 
     try {
       const data = await this.adminService.updateAdmin(id, updateAdminDto);
-      
+
       // Presign the image in the response immediately so frontend can view it
       if (data.profileImage) {
         data.profileImage = await getPreSignedUrl(data.profileImage);
@@ -121,7 +134,10 @@ export class AdminController {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { password, ...safeData } = data;
 
-      return sendResponse({ message: 'Admin updated successfully', data: safeData });
+      return sendResponse({
+        message: 'Admin updated successfully',
+        data: safeData,
+      });
     } catch (error) {
       // If DB update fails, rollback the newly uploaded S3 image
       if (s3Filename) {

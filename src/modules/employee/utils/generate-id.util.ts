@@ -1,6 +1,8 @@
 import { PrismaService } from '../../../prisma/prisma.service';
 
-export async function generateEmployeeId(prisma: PrismaService): Promise<string> {
+export async function generateEmployeeId(
+  prisma: PrismaService,
+): Promise<string> {
   const lastEmployee = await prisma.employee.findFirst({
     orderBy: { createdAt: 'desc' },
     select: { showEmployeeId: true },

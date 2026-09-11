@@ -24,7 +24,7 @@ export class EmployeeService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private mailService: MailService,
-  ) { }
+  ) {}
 
   async createEmployee(createEmployeeDto: CreateEmployeeDto) {
     const existingEmployee = await this.prisma.employee.findUnique({
@@ -47,7 +47,10 @@ export class EmployeeService {
     }
 
     const { password, ...rest } = createEmployeeDto;
-    const hashedPassword = await bcrypt.hash(password, Number(process.env.BCRYPT_SALT_ROUNDS) || 10);
+    const hashedPassword = await bcrypt.hash(
+      password,
+      Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
+    );
     const showEmployeeId = await generateEmployeeId(this.prisma);
 
     return this.prisma.employee.create({
@@ -86,10 +89,14 @@ export class EmployeeService {
     }
 
     // 3. Prepare data safely without using 'any'
-    const { password, deletedDocuments, document, profileImage, ...restData } = updateEmployeeDto;
+    const { password, deletedDocuments, document, profileImage, ...restData } =
+      updateEmployeeDto;
     let hashedPassword: string | undefined = undefined;
     if (password) {
-      hashedPassword = await bcrypt.hash(password, Number(process.env.BCRYPT_SALT_ROUNDS) || 10);
+      hashedPassword = await bcrypt.hash(
+        password,
+        Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
+      );
     }
 
     // Handle old profile image deletion if a new one is uploaded
@@ -118,7 +125,9 @@ export class EmployeeService {
       for (const key of deletedKeys) {
         await deleteImageFromS3(key);
       }
-      finalDocuments = finalDocuments.filter((doc) => !deletedKeys.includes(doc));
+      finalDocuments = finalDocuments.filter(
+        (doc) => !deletedKeys.includes(doc),
+      );
     }
 
     // Append new documents
@@ -157,7 +166,7 @@ export class EmployeeService {
 
     if (employee.document && employee.document.length > 0) {
       employee.document = await Promise.all(
-        employee.document.map(async (doc) => getPreSignedUrl(doc))
+        employee.document.map(async (doc) => getPreSignedUrl(doc)),
       );
     }
 
@@ -199,7 +208,7 @@ export class EmployeeService {
 
     if (employee.document && employee.document.length > 0) {
       return Promise.all(
-        employee.document.map(async (doc) => getPreSignedUrl(doc))
+        employee.document.map(async (doc) => getPreSignedUrl(doc)),
       );
     }
 
@@ -232,7 +241,7 @@ export class EmployeeService {
 
         if (employee.document && employee.document.length > 0) {
           employee.document = await Promise.all(
-            employee.document.map(async (doc) => getPreSignedUrl(doc))
+            employee.document.map(async (doc) => getPreSignedUrl(doc)),
           );
         }
 
