@@ -7,7 +7,7 @@ import {
   IsString,
   ValidateIf,
 } from 'class-validator';
-import { RegisterAs } from '@prisma/client';
+
 
 export class CreateMarketingDataDto {
   // --- Common Fields for User (Fan/Player) ---
@@ -16,11 +16,6 @@ export class CreateMarketingDataDto {
   @IsNotEmpty()
   firstName: string;
 
-  @ApiPropertyOptional({ description: 'Last Name (Required if PLAYER)' })
-  @ValidateIf((o) => o.registerAs === RegisterAs.PLAYER)
-  @IsString()
-  @IsNotEmpty()
-  lastName?: string;
 
   @ApiProperty({ description: 'Email' })
   @IsEmail()
@@ -49,13 +44,10 @@ export class CreateMarketingDataDto {
   @IsNotEmpty()
   favoriteFootballGame: string;
 
-  @ApiProperty({
-    description: 'Register As (FRIEND or PLAYER)',
-    enum: RegisterAs,
-  })
-  @IsEnum(RegisterAs)
-  @IsNotEmpty()
-  registerAs: RegisterAs;
+  @ApiPropertyOptional({ description: 'Register As' })
+  @IsString()
+  @IsOptional()
+  registerAs?: string;
 
   @ApiProperty({ description: 'Gender' })
   @IsString()

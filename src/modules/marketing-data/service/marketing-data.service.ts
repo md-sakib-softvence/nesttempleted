@@ -6,9 +6,7 @@ import {
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateMarketingDataDto } from '../dto/create-marketing-data.dto';
 import * as bcrypt from 'bcrypt';
-import { RegisterAs } from '@prisma/client';
 import { generateFanId } from '../../fan/utils/generate-id.util';
-import { generatePlayerId } from '../../player/utils/generate-id.util';
 import { JwtService } from '@nestjs/jwt';
 import { MailService } from '../../mail/mail.service';
 import { UpdateMarketingDataDto } from '../dto/update-marketing-data.dto';
@@ -28,10 +26,7 @@ export class MarketingDataService {
 
   async createMarketingData(dto: CreateMarketingDataDto) {
     // 1. Check if email already exists in Fan or Player
-    const [existingFan, existingPlayer] = await Promise.all([
-      this.prisma.fan.findUnique({ where: { email: dto.email } }),
-      this.prisma.player.findUnique({ where: { email: dto.email } }),
-    ]);
+    const existingFan = await this.prisma.fan.findUnique({ where: { email: dto.email } });
 
     if (existingFan) {
       if (existingFan.isDeleted) {
@@ -47,22 +42,6 @@ export class MarketingDataService {
         );
       }
       throw new ConflictException('A fan with this email already exists.');
-    }
-
-    if (existingPlayer) {
-      if (existingPlayer.isDeleted) {
-        const token = await this.jwtService.signAsync(
-          { sub: existingPlayer.playerId, email: existingPlayer.email },
-          {
-            expiresIn: (process.env.RECOVERY_TOKEN_EXPIRATION || '15m') as any,
-          },
-        );
-        await this.mailService.sendRecoveryLink(existingPlayer.email, token);
-        throw new ConflictException(
-          'This player account has been deactivated. A recovery link has been sent to your email.',
-        );
-      }
-      throw new ConflictException('A player with this email already exists.');
     }
 
     if (dto.employeeId) {
@@ -86,76 +65,48 @@ export class MarketingDataService {
     // Prepare marketing data omitting user-specific auth fields
     const {
       firstName,
-      lastName,
       surname,
       email,
       phoneNumber,
       ...marketingDataFields
     } = dto;
 
-    return this.prisma.$transaction(async (tx) => {
-      let createdMarketingData;
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Create Fan
+      const showFanId = await generateFanId(tx as any);
 
-      if (dto.registerAs === RegisterAs.FRIEND) {
-        // Create Fan
-        const showFanId = await generateFanId(tx as any);
+      const createdFan = await tx.fan.create({
+        data: {
+          showFanId,
+          firstName,
+          surname,
+          email,
+          phoneNumber,
+          password: hashedPassword,
+          gender: dto.gender,
+          ageRange: dto.ageRange,
+          favoriteGame: dto.favoriteGameConsole,
+        },
+      });
 
-        const createdFan = await tx.fan.create({
-          data: {
-            showFanId,
-            firstName,
-            surname,
-            email,
-            phoneNumber,
-            password: hashedPassword,
-            gender: dto.gender,
-            ageRange: dto.ageRange,
-            favoriteGame: dto.favoriteGameConsole,
-          },
-        });
-
-        // Create MarketingDataCollection linked to Fan
-        createdMarketingData = await tx.marketingDataCollection.create({
-          data: {
-            ...marketingDataFields,
-            fanId: createdFan.fanId,
-          },
-        });
-      } else if (dto.registerAs === RegisterAs.PLAYER) {
-        // Create Player
-        if (!lastName) {
-          throw new ConflictException(
-            'lastName is required to register as PLAYER',
-          );
-        }
-
-        const showPlayerId = await generatePlayerId(tx as any);
-
-        const createdPlayer = await tx.player.create({
-          data: {
-            showPlayerId,
-            firstName,
-            lastName,
-            surname,
-            email,
-            phoneNumber,
-            password: hashedPassword,
-          },
-        });
-
-        // Create MarketingDataCollection linked to Player
-        createdMarketingData = await tx.marketingDataCollection.create({
-          data: {
-            ...marketingDataFields,
-            playerId: createdPlayer.playerId,
-          },
-        });
-      } else {
-        throw new ConflictException('Invalid registerAs value');
-      }
+      // Create MarketingDataCollection linked to Fan
+      const createdMarketingData = await tx.marketingDataCollection.create({
+        data: {
+          ...marketingDataFields,
+          fanId: createdFan.fanId,
+        },
+      });
 
       return createdMarketingData;
     });
+
+    try {
+      await this.mailService.sendWelcomeEmail(email, firstName, staticPassword);
+    } catch (error) {
+      console.error('Failed to send welcome email:', error);
+    }
+
+    return result;
   }
 
   async getAllMarketingData(query: QueryOptions = {}) {
@@ -205,7 +156,7 @@ export class MarketingDataService {
   async updateMarketingData(id: string, updateDto: UpdateMarketingDataDto) {
     const existingData = await this.prisma.marketingDataCollection.findUnique({
       where: { marketingDataCollectionId: id },
-      include: { fan: true, player: true },
+      include: { fan: true },
     });
 
     if (!existingData || existingData.isDeleted) {
@@ -214,23 +165,15 @@ export class MarketingDataService {
 
     const {
       firstName,
-      lastName,
       surname,
       email,
       phoneNumber,
       employeeId,
-      registerAs,
       gender,
       ageRange,
       favoriteGameConsole,
       ...marketingDataFields
-    } = updateDto;
-
-    if (registerAs && registerAs !== existingData.registerAs) {
-      throw new ConflictException(
-        'Cannot change the registerAs role (FRIEND/PLAYER) after creation.',
-      );
-    }
+    } = updateDto as any;
 
     return this.prisma.$transaction(async (tx) => {
       // 1. Validate employee ID if provided
@@ -252,20 +195,15 @@ export class MarketingDataService {
             ? await tx.fan.findUnique({ where: { email } })
             : null;
 
-        const checkEmailPlayer =
-          existingData.player && email !== existingData.player.email
-            ? await tx.player.findUnique({ where: { email } })
-            : null;
-
-        if (checkEmailFan || checkEmailPlayer) {
+        if (checkEmailFan) {
           throw new ConflictException(
             'Email is already in use by another user.',
           );
         }
       }
 
-      // 3. Update associated Fan or Player
-      if (existingData.registerAs === RegisterAs.FRIEND && existingData.fan) {
+      // 3. Update associated Fan
+      if (existingData.fan) {
         await tx.fan.update({
           where: { fanId: existingData.fan.fanId },
           data: {
@@ -278,20 +216,6 @@ export class MarketingDataService {
             ...(favoriteGameConsole
               ? { favoriteGame: favoriteGameConsole }
               : {}),
-          },
-        });
-      } else if (
-        existingData.registerAs === RegisterAs.PLAYER &&
-        existingData.player
-      ) {
-        await tx.player.update({
-          where: { playerId: existingData.player.playerId },
-          data: {
-            ...(firstName ? { firstName } : {}),
-            ...(lastName ? { lastName } : {}),
-            ...(surname ? { surname } : {}),
-            ...(email ? { email } : {}),
-            ...(phoneNumber ? { phoneNumber } : {}),
           },
         });
       }

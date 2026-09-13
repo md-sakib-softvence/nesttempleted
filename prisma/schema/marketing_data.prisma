@@ -15,7 +15,7 @@ model MarketingDataCollection {
 
   favoriteGameConsole  String
   favoriteFootballGame String
-  registerAs           RegisterAs
+  registerAs           String?
   gender               String
   ageRange             String
   globalRecord         String?

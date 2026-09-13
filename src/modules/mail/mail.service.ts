@@ -48,4 +48,17 @@ export class MailService {
       html: `<p>Your account has been deactivated.</p><p>You can recover it by clicking the following link:</p><a href="${recoveryUrl}">${recoveryUrl}</a>`,
     });
   }
+
+  async sendWelcomeEmail(email: string, name: string, password?: string) {
+    console.log(`[MAILER] Preparing to send welcome email to: ${email}`);
+    await this.mailerService.sendMail({
+      to: email,
+      subject: 'Welcome to Esports!',
+      template: './welcome',
+      context: {
+        name,
+        password,
+      },
+    });
+  }
 }
