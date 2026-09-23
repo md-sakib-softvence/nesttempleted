@@ -1,0 +1,33 @@
+model Announcement {
+  announcementId String             @id @default(uuid())
+  title          String
+  content        String
+  audience       String             @default("GLOBAL")
+  channels       String[]           @default(["APP"])
+  status         AnnouncementStatus @default(SENT)
+  isDeleted      Boolean            @default(false)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([status])
+  @@index([audience])
+}
+
+enum AnnouncementStatus {
+  SENT
+  DRAFT
+}
+
+model AnnouncementTemplate {
+  templateId     String   @id @default(uuid())
+  key            String   @unique
+  title          String
+  description    String
+  variables      String[]
+  message        String
+  defaultMessage String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([key])
+}

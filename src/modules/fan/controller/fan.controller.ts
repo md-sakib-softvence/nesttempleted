@@ -42,7 +42,7 @@ import { Role } from '@prisma/client';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'fan')
 export class FanController {
-  constructor(private readonly fanService: FanService) {}
+  constructor(private readonly fanService: FanService) { }
 
   @Post()
   @ApiOperation({ summary: 'Create Fan' })
@@ -152,6 +152,7 @@ export class FanController {
   @ApiQuery({ name: 'searchTerm', required: false, type: String })
   @ApiQuery({ name: 'sortBy', required: false, type: String })
   @ApiQuery({ name: 'sortOrder', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'marketing', required: false, type: Boolean })
   async getAllFan(@Query() query: any) {
     const { data, meta } = await this.fanService.getAllFan(query);
     return sendResponse({

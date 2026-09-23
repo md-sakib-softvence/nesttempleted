@@ -24,7 +24,7 @@ export class FanService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private mailService: MailService,
-  ) {}
+  ) { }
 
   async createFan(createFanDto: CreateFanDto) {
     const existingFan = await this.prisma.fan.findUnique({
@@ -166,7 +166,15 @@ export class FanService {
       ['firstName', 'email', 'showFanId', 'phoneNumber'],
     );
 
+    const marketing = where.marketing;
+    delete where.marketing;
+
     where.isDeleted = false;
+
+    const includeOptions: any = {};
+    if (marketing === 'true' || marketing === true) {
+      includeOptions.marketingData = true;
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.fan.findMany({
@@ -174,6 +182,7 @@ export class FanService {
         skip,
         take,
         orderBy,
+        ...(Object.keys(includeOptions).length > 0 && { include: includeOptions }),
       }),
       this.prisma.fan.count({ where }),
     ]);

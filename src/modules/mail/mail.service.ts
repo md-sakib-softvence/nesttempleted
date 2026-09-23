@@ -53,9 +53,10 @@ export class MailService {
     console.log(`[MAILER] Preparing to send welcome email to: ${email}`);
     await this.mailerService.sendMail({
       to: email,
-      subject: 'Welcome to Esports!',
+      subject: 'Welcome to LeFC Series 1! 🎮⚽️',
       template: './welcome',
       context: {
+        firstName: name,
         name,
         password,
       },

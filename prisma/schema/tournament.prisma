@@ -1,0 +1,164 @@
+model Tournament {
+  tournamentId           String                  @id @default(uuid())
+  name                   String
+  gameTitle              String
+  tournamentFormat       TournamentFormat
+  numberOfTeams          Int
+  entryFee               Float
+  currency               Currency
+  paymentWindow          Int
+  prizeRule              PrizeRule
+  percentage             Float?
+  houseRake              Float?
+  couponCreation         Boolean                 @default(false)
+  registrationCutOffMode RegistrationCutOffMode?
+  startDate              DateTime
+  deadline               DateTime
+  capacity               Int
+  dailyStart             String
+  dailyEnd               String
+  matchDuration          Int
+  turnoverDuration       Int
+  lunchBreakTime         String?
+  lunchDuration          Int?
+  buffer                 Int
+  frequencyStatus        FrequencyStatus
+  frequencyArray         String[]
+  canvasImage            String?
+  playerOrgUrl           String?
+  prOrgUrl               String?
+  tournamentLogoUrl      String?
+  rules                  String[]
+  tsAndTc                String[]
+  schedulingMode         SchedulingMode          @default(MANUAL)
+  schedule               Json?
+  status                 TournamentStatus        @default(UPCOMING)
+  isDeleted              Boolean                 @default(false)
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  manageEventCosts  ManageEventCost[]
+  manageEventPrizes ManageEventPrize[]
+  venues            Venue[]
+  sponsors          Sponsor[]
+}
+
+model ManageEventCost {
+  manageEventCostId String      @id @default(uuid())
+  costCategory      String
+  amount            Float
+  tournamentId      String?
+  tournament        Tournament? @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+}
+
+model ManageEventPrize {
+  manageEventPrizeId String      @id @default(uuid())
+  prizeCategory      String
+  amount             Float
+  tournamentId       String?
+  tournament         Tournament? @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+}
+
+model Venue {
+  venueId      String      @id @default(uuid())
+  name         String
+  address      String
+  tournamentId String?
+  tournament   Tournament? @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+  screens      Screen[]
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model Screen {
+  screenId   String     @id @default(uuid())
+  screenName String
+  venueId    String?
+  venue      Venue?     @relation(fields: [venueId], references: [venueId], onDelete: Cascade)
+  schedules  Schedule[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+}
+
+model Schedule {
+  scheduleId String   @id @default(uuid())
+  screenId   String?
+  screen     Screen?  @relation(fields: [screenId], references: [screenId], onDelete: Cascade)
+  fanId      String?
+  fan        Fan?     @relation(fields: [fanId], references: [fanId], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Sponsor {
+  sponsorId    String        @id @default(uuid())
+  name         String
+  logo         String?
+  website      String?
+  priority     String?
+  contact      String?
+  value        Float?
+  status       SponsorStatus @default(BOTH)
+  tournamentId String?
+  tournament   Tournament?   @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+enum SponsorStatus {
+  BOTH
+  PLAYER
+  FAN
+}
+
+enum TournamentFormat {
+  LEAGUE
+  LEAGUE_DOUBLE
+  LEAGUE_AND_KNOCKOUT
+  LEAGUE_AND_KNOCKOUT_DOUBLE
+  SINGLE_ELIMINATION
+  DOUBLE_ELIMINATION
+}
+
+enum Currency {
+  USD
+  GBP
+  NGN
+}
+
+enum PrizeRule {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+enum RegistrationCutOffMode {
+  DEADLINE
+  CAPACITY
+  BOTH
+  MANUAL
+}
+
+enum FrequencyStatus {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum TournamentStatus {
+  DRAFT
+  UPCOMING
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum SchedulingMode {
+  MANUAL
+  AUTO_HOME_VENUE
+  PLAYER_SELF
+  AUTO_RANDOM
+}

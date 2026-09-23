@@ -19,6 +19,7 @@ model Fan {
   updatedAt    DateTime  @updatedAt
 
   marketingData MarketingDataCollection?
+  schedules     Schedule[]
 }
 
 enum FanStatus {
