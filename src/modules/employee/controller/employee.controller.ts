@@ -206,7 +206,12 @@ export class EmployeeController {
   }
 
   @Get(':id/marketing-data')
-  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.EMPLOYEE)
+  @Roles(
+    AdminRole.ADMIN,
+    AdminRole.SUPER_ADMIN,
+    EmployeeRole.EMPLOYEE,
+    EmployeeRole.AMBASSADOR,
+  )
   @ApiOperation({
     summary: 'Get all marketing data collected by a specific Employee',
   })

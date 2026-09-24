@@ -3,176 +3,160 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <title>Welcome to LeFC Series 1!</title>
   <style>
+    body, table, td, p, a, li, blockquote {
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+    }
+    table, td {
+      mso-table-lspace: 0pt;
+      mso-table-rspace: 0pt;
+    }
+    img {
+      -ms-interpolation-mode: bicubic;
+      border: 0;
+      height: auto;
+      line-height: 100%;
+      outline: none;
+      text-decoration: none;
+      display: block;
+    }
     body {
-      margin: 0;
-      padding: 0;
-      background-color: #f4f6f9;
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100% !important;
+      background-color: #70818e;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      color: #1a202c;
-      -webkit-font-smoothing: antialiased;
     }
     .wrapper {
-      width: 100%;
-      background-color: #f4f6f9;
-      padding: 30px 0;
+      width: 100% !important;
+      table-layout: fixed;
+      background-color: #70818e;
+      padding: 30px 10px;
+      box-sizing: border-box;
     }
     .email-container {
       max-width: 600px;
+      width: 100%;
       margin: 0 auto;
-      background: #ffffff;
-      border-radius: 12px;
+      background-color: #ffffff;
+      border-radius: 8px;
       overflow: hidden;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-      border: 1px solid #e2e8f0;
+      padding: 12px;
+      box-sizing: border-box;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
     }
-    .header {
-      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-      padding: 32px 28px;
-      text-align: center;
-      color: #ffffff;
+    .banner-img {
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 10px;
     }
-    .header h1 {
-      margin: 0;
-      font-size: 24px;
-      font-weight: 800;
-      letter-spacing: -0.5px;
-      color: #ffffff;
-    }
-    .header-badge {
-      display: inline-block;
-      margin-top: 8px;
-      padding: 4px 12px;
-      background: rgba(59, 130, 246, 0.2);
-      border: 1px solid rgba(59, 130, 246, 0.4);
-      border-radius: 20px;
-      color: #60a5fa;
-      font-size: 12px;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-    }
-    .content {
-      padding: 32px 28px;
+    .content-area {
+      padding: 28px 16px 20px 16px;
       font-size: 15px;
       line-height: 1.65;
-      color: #334155;
-    }
-    .content p {
-      margin: 0 0 16px 0;
+      color: #2b3542;
     }
     .greeting {
-      font-size: 18px;
+      font-size: 16px;
       font-weight: 700;
       color: #0f172a;
+      margin: 0 0 20px 0;
     }
-    .social-box {
-      background-color: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      padding: 16px 20px;
-      margin: 20px 0;
+    .body-text {
+      margin: 0 0 18px 0;
+      color: #334155;
+      font-size: 15px;
+      line-height: 1.65;
     }
-    .social-box p {
-      margin-bottom: 12px;
-      font-weight: 600;
-      color: #0f172a;
-    }
-    .social-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-    .social-list li {
-      margin-bottom: 8px;
-      font-size: 14px;
-      color: #475569;
-    }
-    .social-list li:last-child {
-      margin-bottom: 0;
-    }
-    .social-list a {
-      color: #2563eb;
-      text-decoration: none;
-      font-weight: 600;
-    }
-    .social-list a:hover {
-      text-decoration: underline;
-    }
-    .highlight-card {
-      background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%);
-      color: #ffffff;
-      padding: 16px 20px;
-      border-radius: 8px;
-      text-align: center;
-      font-size: 17px;
+    .highlight-text {
+      font-size: 15px;
+      line-height: 1.65;
       font-weight: 700;
-      margin: 24px 0;
-      letter-spacing: 0.3px;
+      color: #0f172a;
+      margin: 0 0 18px 0;
     }
     .signoff {
-      margin-top: 28px;
-      padding-top: 20px;
-      border-top: 1px solid #e2e8f0;
-      font-size: 14px;
-      color: #64748b;
+      margin-top: 24px;
       line-height: 1.5;
+      color: #334155;
+      font-size: 14px;
     }
-    .signoff strong {
-      color: #0f172a;
-    }
-    .footer {
-      background-color: #f8fafc;
-      padding: 16px 28px;
-      text-align: center;
-      font-size: 12px;
-      color: #94a3b8;
-      border-top: 1px solid #e2e8f0;
+    .signoff p {
+      margin: 0;
+      line-height: 1.5;
     }
   </style>
 </head>
-<body>
-  <div class="wrapper">
-    <div class="email-container">
-      <div class="header">
-        <h1>Welcome to LeFC Series 1! 🎮⚽️</h1>
-        <div class="header-badge">EA SPORTS FC Tournament</div>
-      </div>
-      <div class="content">
-        <p class="greeting">Hi {{firstName}},</p>
-        <p>Welcome to LeFC Series 1! Your registration has been successfully received.</p>
-        <p>Get ready for an exciting EA SPORTS FC competition featuring 128 players, PlayStation 5, and a ₦5 Million cash prize.</p>
-        <p>Keep an eye on your email, WhatsApp and our social media platforms for updates, registration details and event announcements.</p>
-        
-        <div class="social-box">
-          <p>Don't forget to follow us on our social media platforms;</p>
-          <ul class="social-list">
-            <li><strong>Instagram</strong> - <a href="https://instagram.com/thelefcofficial" target="_blank" rel="noopener noreferrer">thelefcofficial</a></li>
-            <li><strong>Snapchat</strong> – <a href="https://www.snapchat.com/add/wearelefc" target="_blank" rel="noopener noreferrer">wearelefc</a></li>
-            <li><strong>Tiktok</strong> - <a href="https://www.tiktok.com/@thelefcofficial" target="_blank" rel="noopener noreferrer">thelefcofficial</a></li>
-            <li><strong>X</strong> – <a href="https://x.com/TheLeFCOfficial" target="_blank" rel="noopener noreferrer">TheLeFCOfficial</a></li>
-          </ul>
-        </div>
+<body style="margin: 0; padding: 0; background-color: #70818e;">
+  <center>
+    <div class="wrapper" style="width: 100%; background-color: #70818e; padding: 30px 10px; box-sizing: border-box;">
+      <table class="email-container" role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; width: 100%; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; padding: 12px; box-sizing: border-box; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+        <!-- HEADER IMAGE -->
+        <tr>
+          <td align="center" style="padding: 0;">
+            <img class="banner-img" src="cid:headerImage" alt="Lagos eSport Football Championship SERIES 1" width="576" style="width: 100%; max-width: 100%; height: auto; display: block; border-radius: 10px;" />
+          </td>
+        </tr>
 
-        <div class="highlight-card">
-          128 Players. ₦5 Million. One Champion. 🏆
-        </div>
+        <!-- CONTENT BODY -->
+        <tr>
+          <td class="content-area" style="padding: 28px 16px 20px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.65; color: #2b3542;">
+            <p class="greeting" style="font-size: 16px; font-weight: 700; color: #0f172a; margin: 0 0 20px 0;">
+              Dear {{firstName}},
+            </p>
 
-        <p>We’re excited to have you on this journey.</p>
-        <p>See you on the pitch! 🎮⚽️</p>
+            <p class="body-text" style="margin: 0 0 18px 0; color: #334155; font-size: 15px; line-height: 1.65;">
+              Welcome to LeFC Series 1! Your registration has been successfully received.
+            </p>
 
-        <div class="signoff">
-          Warm regards,<br>
-          <strong>The LeFC Team</strong><br>
-          Lagos eSports Football Championship – Series 1<br>
-          <em>Powered by TAPE Gaming</em>
-        </div>
-      </div>
-      <div class="footer">
-        &copy; Lagos eSports Football Championship. All rights reserved.
-      </div>
+            <p class="body-text" style="margin: 0 0 18px 0; color: #334155; font-size: 15px; line-height: 1.65;">
+              Get ready for an exciting EA SPORTS FC competition featuring 128 players, PlayStation 5, and a ₦5 Million cash prize.
+            </p>
+
+            <p class="body-text" style="margin: 0 0 18px 0; color: #334155; font-size: 15px; line-height: 1.65;">
+              Keep an eye on your email, WhatsApp and our social media platforms for updates, registration details and event announcements.
+            </p>
+
+            <p class="highlight-text" style="font-size: 15px; line-height: 1.65; font-weight: 700; color: #0f172a; margin: 0 0 18px 0;">
+              128 Players. ₦5 Million. One Champion. 🏆
+            </p>
+
+            <p class="body-text" style="margin: 0 0 18px 0; color: #334155; font-size: 15px; line-height: 1.65;">
+              We’re excited to have you on this journey.
+            </p>
+
+            <p class="body-text" style="margin: 0 0 24px 0; color: #334155; font-size: 15px; line-height: 1.65;">
+              See you on the pitch! 🎮⚽
+            </p>
+
+            <div class="signoff" style="margin-top: 24px; line-height: 1.5; color: #334155; font-size: 14px;">
+              <p style="margin: 0 0 12px 0;">Warm regards,</p>
+              <p style="margin: 0; font-weight: 700; color: #0f172a;">The LeFC Team</p>
+              <p style="margin: 0; color: #475569;">Lagos eSports Football Championship – Series 1</p>
+              <p style="margin: 2px 0 0 0; color: #475569;">Powered by TAPE Gaming</p>
+            </div>
+          </td>
+        </tr>
+
+        <!-- FOOTER IMAGE -->
+        <tr>
+          <td align="center" style="padding: 0 0 4px 0;">
+            <img class="banner-img" src="cid:footerImage" alt="Follow Us on our Social Media Platforms" width="576" usemap="#socialmap" style="width: 100%; max-width: 100%; height: auto; display: block; border-radius: 10px;" />
+            <map name="socialmap">
+              <area shape="rect" coords="40,80,170,145" href="https://instagram.com/thelefcofficial" target="_blank" alt="Instagram">
+              <area shape="rect" coords="175,80,310,145" href="https://x.com/TheLeFCOfficial" target="_blank" alt="X">
+              <area shape="rect" coords="315,80,420,145" href="https://www.snapchat.com/add/wearelefc" target="_blank" alt="Snapchat">
+              <area shape="rect" coords="425,80,560,145" href="https://www.tiktok.com/@thelefcofficial" target="_blank" alt="TikTok">
+            </map>
+          </td>
+        </tr>
+      </table>
     </div>
-  </div>
+  </center>
 </body>
 </html>

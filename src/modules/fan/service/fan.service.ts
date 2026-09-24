@@ -70,6 +70,16 @@ export class FanService {
       );
     await createActivities(this.prisma, title, description, 'FAN');
 
+    try {
+      await this.mailService.sendWelcomeEmail(
+        newFan.email,
+        newFan.firstName,
+        password,
+      );
+    } catch (error) {
+      console.error('Failed to send welcome email to fan:', error);
+    }
+
     return newFan;
   }
 

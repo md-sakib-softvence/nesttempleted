@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { MailerService } from '@nestjs-modules/mailer';
+import { join } from 'path';
+import { existsSync } from 'fs';
 
 @Injectable()
 export class MailService {
@@ -51,15 +53,47 @@ export class MailService {
 
   async sendWelcomeEmail(email: string, name: string, password?: string) {
     console.log(`[MAILER] Preparing to send welcome email to: ${email}`);
+
+    const headerImagePath = existsSync(
+      join(__dirname, 'templates/images/header.png'),
+    )
+      ? join(__dirname, 'templates/images/header.png')
+      : join(process.cwd(), 'src/modules/mail/templates/images/header.png');
+
+    const footerImagePath = existsSync(
+      join(__dirname, 'templates/images/footer.png'),
+    )
+      ? join(__dirname, 'templates/images/footer.png')
+      : join(process.cwd(), 'src/modules/mail/templates/images/footer.png');
+
+    const attachments: any[] = [];
+    if (existsSync(headerImagePath)) {
+      attachments.push({
+        filename: 'header.png',
+        path: headerImagePath,
+        cid: 'headerImage',
+      });
+    }
+    if (existsSync(footerImagePath)) {
+      attachments.push({
+        filename: 'footer.png',
+        path: footerImagePath,
+        cid: 'footerImage',
+      });
+    }
+
+    const firstName = name ? name.trim() : 'Fan';
+
     await this.mailerService.sendMail({
       to: email,
       subject: 'Welcome to LeFC Series 1! 🎮⚽️',
       template: './welcome',
       context: {
-        firstName: name,
-        name,
+        firstName,
+        name: firstName,
         password,
       },
+      attachments,
     });
   }
 }
