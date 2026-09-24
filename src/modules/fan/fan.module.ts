@@ -3,10 +3,10 @@ import { FanService } from './service/fan.service';
 import { FanController } from './controller/fan.controller';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { MailModule } from '../mail/mail.module';
-import { JwtModule } from '@nestjs/jwt';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [PrismaModule, MailModule, JwtModule.register({})],
+  imports: [PrismaModule, MailModule, AuthModule],
   controllers: [FanController],
   providers: [FanService],
   exports: [FanService],

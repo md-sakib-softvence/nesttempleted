@@ -36,6 +36,7 @@ export class FanService {
         const token = await this.jwtService.signAsync(
           { sub: existingFan.fanId, email: existingFan.email },
           {
+            secret: process.env.JWT_SECRET,
             expiresIn: (process.env.RECOVERY_TOKEN_EXPIRATION || '15m') as any,
           },
         );
