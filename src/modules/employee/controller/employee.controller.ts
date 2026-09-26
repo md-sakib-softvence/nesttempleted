@@ -215,11 +215,29 @@ export class EmployeeController {
   @ApiOperation({
     summary: 'Get all marketing data collected by a specific Employee',
   })
-  async getEmployeeMarketingData(@Param('id') id: string) {
-    const data = await this.employeeService.getEmployeeMarketingData(id);
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'searchTerm', required: false, type: String })
+  @ApiQuery({ name: 'sortBy', required: false, type: String })
+  @ApiQuery({ name: 'sortOrder', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({
+    name: 'isDeleted',
+    required: false,
+    type: Boolean,
+    description: 'Filter marketing data by isDeleted status (true/false)',
+  })
+  async getEmployeeMarketingData(
+    @Param('id') id: string,
+    @Query() query: QueryOptions,
+  ) {
+    const { data, meta } = await this.employeeService.getEmployeeMarketingData(
+      id,
+      query,
+    );
     return sendResponse({
       message: 'Employee marketing data retrieved successfully',
       data,
+      meta,
     });
   }
 

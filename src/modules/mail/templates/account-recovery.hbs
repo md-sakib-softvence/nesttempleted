@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>Recover Your LeFC Account</title>
+  <style>
+    body, table, td, p, a, li, blockquote {
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+    }
+    table, td {
+      mso-table-lspace: 0pt;
+      mso-table-rspace: 0pt;
+    }
+    img {
+      -ms-interpolation-mode: bicubic;
+      border: 0;
+      height: auto;
+      line-height: 100%;
+      outline: none;
+      text-decoration: none;
+      display: block;
+    }
+    body {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100% !important;
+      background-color: #70818e;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+    .wrapper {
+      width: 100% !important;
+      table-layout: fixed;
+      background-color: #70818e;
+      padding: 30px 10px;
+      box-sizing: border-box;
+    }
+    .email-container {
+      max-width: 600px;
+      width: 100%;
+      margin: 0 auto;
+      background-color: #ffffff;
+      border-radius: 8px;
+      overflow: hidden;
+      padding: 12px;
+      box-sizing: border-box;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    }
+    .banner-img {
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 10px;
+    }
+    .content-area {
+      padding: 28px 16px 20px 16px;
+      font-size: 15px;
+      line-height: 1.65;
+      color: #2b3542;
+    }
+    .greeting {
+      font-size: 16px;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0 0 20px 0;
+    }
+    .body-text {
+      margin: 0 0 18px 0;
+      color: #334155;
+      font-size: 15px;
+      line-height: 1.65;
+    }
+    .highlight-text {
+      font-size: 15px;
+      line-height: 1.65;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0 0 18px 0;
+    }
+    .signoff {
+      margin-top: 24px;
+      line-height: 1.5;
+      color: #334155;
+      font-size: 14px;
+    }
+    .signoff p {
+      margin: 0;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #70818e;">
+  <center>
+    <div class="wrapper" style="width: 100%; background-color: #70818e; padding: 30px 10px; box-sizing: border-box;">
+      <table class="email-container" role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; width: 100%; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; padding: 12px; box-sizing: border-box; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+        <!-- HEADER IMAGE -->
+        <tr>
+          <td align="center" style="padding: 0;">
+            <img class="banner-img" src="cid:headerImage" alt="Lagos eSport Football Championship SERIES 1" width="576" style="width: 100%; max-width: 100%; height: auto; display: block; border-radius: 10px;" />
+          </td>
+        </tr>
+
+        <!-- CONTENT BODY -->
+        <tr>
+          <td class="content-area" style="padding: 28px 16px 20px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.65; color: #2b3542;">
+            <p class="greeting" style="font-size: 16px; font-weight: 700; color: #0f172a; margin: 0 0 20px 0;">
+              Dear {{firstName}},
+            </p>
+
+            <p class="body-text" style="margin: 0 0 18px 0; color: #334155; font-size: 15px; line-height: 1.65;">
+              We noticed that your account is currently deactivated.
+            </p>
+
+            <p class="body-text" style="margin: 0 0 18px 0; color: #334155; font-size: 15px; line-height: 1.65;">
+              If you would like to reactivate your account and regain access to LeFC, please click the button below:
+            </p>
+
+            <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin: 24px auto 20px auto; text-align: center;">
+              <tr>
+                <td align="center" style="border-radius: 6px; background-color: #0f172a;">
+                  <a href="{{recoveryUrl}}" target="_blank" style="font-size: 15px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 6px; display: inline-block; font-weight: 700; letter-spacing: 0.5px;">Reactivate Account</a>
+                </td>
+              </tr>
+            </table>
+
+            <p class="body-text" style="font-size: 13px; color: #64748b; margin: 0 0 18px 0; word-break: break-all;">
+              Or copy and paste this link into your browser:<br />
+              <a href="{{recoveryUrl}}" target="_blank" style="color: #2563eb; text-decoration: underline;">{{recoveryUrl}}</a>
+            </p>
+
+            <p class="body-text" style="font-size: 13px; color: #64748b; margin: 0 0 18px 0;">
+              <strong>Note:</strong> This reactivation link will expire in 15 minutes. If you did not make this request or wish to keep your account deactivated, you can safely ignore this email.
+            </p>
+
+            <div class="signoff" style="margin-top: 24px; line-height: 1.5; color: #334155; font-size: 14px;">
+              <p style="margin: 0 0 12px 0;">Warm regards,</p>
+              <p style="margin: 0; font-weight: 700; color: #0f172a;">The LeFC Team</p>
+              <p style="margin: 0; color: #475569;">Lagos eSports Football Championship – Series 1</p>
+              <p style="margin: 2px 0 0 0; color: #475569;">Powered by TAPE Gaming</p>
+            </div>
+          </td>
+        </tr>
+
+        <!-- FOOTER IMAGE -->
+        <tr>
+          <td align="center" style="padding: 0 0 4px 0;">
+            <img class="banner-img" src="cid:footerImage" alt="Follow Us on our Social Media Platforms" width="576" usemap="#socialmap" style="width: 100%; max-width: 100%; height: auto; display: block; border-radius: 10px;" />
+            <map name="socialmap">
+              <area shape="rect" coords="40,80,170,145" href="https://instagram.com/thelefcofficial" target="_blank" alt="Instagram">
+              <area shape="rect" coords="175,80,310,145" href="https://x.com/TheLeFCOfficial" target="_blank" alt="X">
+              <area shape="rect" coords="315,80,420,145" href="https://www.snapchat.com/add/wearelefc" target="_blank" alt="Snapchat">
+              <area shape="rect" coords="425,80,560,145" href="https://www.tiktok.com/@thelefcofficial" target="_blank" alt="TikTok">
+            </map>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </center>
+</body>
+</html>

@@ -36,7 +36,11 @@ export class AdminService {
           { sub: existingAdmin.adminId, email: existingAdmin.email },
           { expiresIn: '15m' },
         );
-        await this.mailService.sendRecoveryLink(existingAdmin.email, token);
+        await this.mailService.sendRecoveryLink(
+          existingAdmin.email,
+          token,
+          existingAdmin.name,
+        );
         throw new ConflictException(
           'This account has been deactivated. A recovery link has been sent to your email.',
         );

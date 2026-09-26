@@ -31,7 +31,12 @@ export class MailService {
 
   async sendPasswordResetLink(email: string, token: string) {
     console.log(`[MAILER] Preparing to send password reset link to: ${email}`);
-    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${token}`;
+    const frontendBase = (
+      process.env.FRONTEND_URL ||
+      process.env.FRONTEND_DOMAIN ||
+      'http://localhost:3000'
+    ).replace(/\/+$/, '');
+    const resetUrl = `${frontendBase}/reset-password?token=${token}`;
     await this.mailerService.sendMail({
       to: email,
       subject: 'Esports - Password Reset Request',
@@ -39,21 +44,7 @@ export class MailService {
     });
   }
 
-  async sendRecoveryLink(email: string, token: string) {
-    console.log(`[MAILER] Preparing to send recovery link to: ${email}`);
-    // Note: Assuming there is a recovery template, or we'll just send a direct URL link.
-    // In a real app, the token should be included in a query parameter of a frontend URL.
-    const recoveryUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/recover?token=${token}`;
-    await this.mailerService.sendMail({
-      to: email,
-      subject: 'Esports - Account Recovery Request',
-      html: `<p>Your account has been deactivated.</p><p>You can recover it by clicking the following link:</p><a href="${recoveryUrl}">${recoveryUrl}</a>`,
-    });
-  }
-
-  async sendWelcomeEmail(email: string, name: string, password?: string) {
-    console.log(`[MAILER] Preparing to send welcome email to: ${email}`);
-
+  private getEmailAttachments() {
     const headerImagePath = existsSync(
       join(__dirname, 'templates/images/header.png'),
     )
@@ -82,6 +73,36 @@ export class MailService {
       });
     }
 
+    return attachments;
+  }
+
+  async sendRecoveryLink(email: string, token: string, name?: string) {
+    console.log(`[MAILER] Preparing to send recovery link to: ${email}`);
+    const frontendBase = (
+      process.env.FRONTEND_URL ||
+      process.env.FRONTEND_DOMAIN ||
+      'http://localhost:3000'
+    ).replace(/\/+$/, '');
+    const recoveryUrl = `${frontendBase}/recover?token=${token}`;
+    const attachments = this.getEmailAttachments();
+    const firstName = name ? name.trim() : 'Gamer';
+
+    await this.mailerService.sendMail({
+      to: email,
+      subject: 'Recover Your LeFC Account 🎮⚽️',
+      template: './account-recovery',
+      context: {
+        firstName,
+        name: firstName,
+        recoveryUrl,
+      },
+      attachments,
+    });
+  }
+
+  async sendWelcomeEmail(email: string, name: string, password?: string) {
+    console.log(`[MAILER] Preparing to send welcome email to: ${email}`);
+    const attachments = this.getEmailAttachments();
     const firstName = name ? name.trim() : 'Fan';
 
     await this.mailerService.sendMail({

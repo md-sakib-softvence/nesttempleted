@@ -40,7 +40,11 @@ export class FanService {
             expiresIn: (process.env.RECOVERY_TOKEN_EXPIRATION || '15m') as any,
           },
         );
-        await this.mailService.sendRecoveryLink(existingFan.email, token);
+        await this.mailService.sendRecoveryLink(
+          existingFan.email,
+          token,
+          existingFan.firstName,
+        );
         throw new ConflictException(
           'This account has been deactivated. A recovery link has been sent to your email.',
         );
@@ -180,7 +184,13 @@ export class FanService {
     const marketing = where.marketing;
     delete where.marketing;
 
-    where.isDeleted = false;
+    if (query.isDeleted === 'all') {
+      delete where.isDeleted;
+    } else if (query.isDeleted !== undefined) {
+      where.isDeleted = query.isDeleted === 'true' || query.isDeleted === true;
+    } else {
+      where.isDeleted = false;
+    }
 
     const includeOptions: any = {};
     if (marketing === 'true' || marketing === true) {
@@ -246,16 +256,68 @@ export class FanService {
   }
 
   async deleteFan(id: string) {
-    const fan = await this.prisma.fan.findUnique({
+    let fan = await this.prisma.fan.findUnique({
       where: { fanId: id },
     });
 
-    if (!fan || fan.isDeleted) {
+    if (!fan) {
+      fan = await this.prisma.fan.findFirst({
+        where: {
+          OR: [
+            { email: { equals: id, mode: 'insensitive' } },
+            { showFanId: id },
+          ],
+        },
+      });
+    }
+
+    if (!fan) {
+      throw new NotFoundException('Fan not found');
+    }
+
+    const HARD_DELETE_EMAILS = [
+      'sunkanmybabatunde@gmail.co',
+      'sunkanmybabatunde@gmail.com',
+      'kabir.babatunde07@gmail.com',
+      'kabir.babatunde17@gmail.com',
+      'lordpyper7@gmail.com',
+      'lawalx@gmail.com',
+    ];
+
+    const isHardDelete = HARD_DELETE_EMAILS.includes(
+      fan.email.trim().toLowerCase(),
+    );
+
+    if (!isHardDelete && fan.isDeleted) {
       throw new NotFoundException('Fan not found or already deleted');
     }
 
+    if (isHardDelete) {
+      return await this.prisma.$transaction(async (tx) => {
+        // Delete related MarketingDataCollection
+        await tx.marketingDataCollection.deleteMany({
+          where: { fanId: fan.fanId },
+        });
+
+        // Delete related Schedules
+        await tx.schedule.deleteMany({
+          where: { fanId: fan.fanId },
+        });
+
+        // Delete any related Notifications
+        await tx.notification.deleteMany({
+          where: { userId: fan.fanId },
+        });
+
+        // Hard delete Fan record
+        return await tx.fan.delete({
+          where: { fanId: fan.fanId },
+        });
+      });
+    }
+
     return this.prisma.fan.update({
-      where: { fanId: id },
+      where: { fanId: fan.fanId },
       data: {
         isDeleted: true,
       },

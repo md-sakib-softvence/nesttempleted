@@ -37,7 +37,11 @@ export class MarketingDataService {
             expiresIn: (process.env.RECOVERY_TOKEN_EXPIRATION || '15m') as any,
           },
         );
-        await this.mailService.sendRecoveryLink(existingFan.email, token);
+        await this.mailService.sendRecoveryLink(
+          existingFan.email,
+          token,
+          existingFan.firstName,
+        );
         throw new ConflictException(
           'This fan account has been deactivated. A recovery link has been sent to your email.',
         );

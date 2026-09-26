@@ -39,7 +39,11 @@ export class EmployeeService {
           { expiresIn: '15m' },
         );
         // Using the same recovery link logic as admin
-        await this.mailService.sendRecoveryLink(existingEmployee.email, token);
+        await this.mailService.sendRecoveryLink(
+          existingEmployee.email,
+          token,
+          existingEmployee.name,
+        );
         throw new ConflictException(
           'This account has been deactivated. A recovery link has been sent to your email.',
         );
@@ -182,21 +186,107 @@ export class EmployeeService {
     return employeeWithoutPassword;
   }
 
-  async getEmployeeMarketingData(id: string) {
+  async getEmployeeMarketingData(id: string, query: QueryOptions = {}) {
     if (!id) {
       throw new NotFoundException('Employee ID is required');
     }
 
     const employee = await this.prisma.employee.findUnique({
       where: { employeeId: id },
-      include: { marketingData: true },
     });
 
     if (!employee || employee.isDeleted) {
       throw new NotFoundException('Employee not found');
     }
 
-    return employee.marketingData;
+    const { where, skip, take, orderBy, page, limit } = buildPrismaQuery(
+      query,
+      [
+        'favoriteGameConsole',
+        'favoriteFootballGame',
+        'profession',
+        'area',
+        'parentName',
+        'parentPhoneNumber',
+        'registerAs',
+        'gender',
+        'occupation',
+      ],
+    );
+
+    where.employeeId = id;
+
+    if (query.isDeleted === 'all') {
+      delete where.isDeleted;
+    } else if (query.isDeleted !== undefined) {
+      where.isDeleted = query.isDeleted === 'true' || query.isDeleted === true;
+    } else {
+      where.isDeleted = false;
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.marketingDataCollection.findMany({
+        where,
+        skip,
+        take,
+        orderBy,
+        include: {
+          fan: {
+            select: {
+              fanId: true,
+              showFanId: true,
+              firstName: true,
+              phoneNumber: true,
+              email: true,
+              gender: true,
+              ageRange: true,
+              status: true,
+              topPoint: true,
+              favoriteGame: true,
+              profileImage: true,
+              username: true,
+              gamerTag: true,
+              surname: true,
+              isDeleted: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
+          player: {
+            select: {
+              playerId: true,
+              showPlayerId: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              phoneNumber: true,
+              username: true,
+              gamerTag: true,
+              surname: true,
+              document: true,
+              status: true,
+              isDeleted: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
+        },
+      }),
+      this.prisma.marketingDataCollection.count({ where }),
+    ]);
+
+    const safeData = await Promise.all(
+      data.map(async (item) => {
+        if (item.fan?.profileImage) {
+          item.fan.profileImage = await getPreSignedUrl(item.fan.profileImage);
+        }
+        return item;
+      }),
+    );
+
+    const meta = calculatePaginationMeta(total, page, limit);
+
+    return { data: safeData, meta };
   }
 
   async getEmployeeDocuments(id: string) {

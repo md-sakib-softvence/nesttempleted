@@ -153,6 +153,7 @@ export class FanController {
   @ApiQuery({ name: 'sortBy', required: false, type: String })
   @ApiQuery({ name: 'sortOrder', required: false, enum: ['asc', 'desc'] })
   @ApiQuery({ name: 'marketing', required: false, type: Boolean })
+  @ApiQuery({ name: 'isDeleted', required: false, type: Boolean, description: 'Filter fans by isDeleted status (true/false)' })
   async getAllFan(@Query() query: any) {
     const { data, meta } = await this.fanService.getAllFan(query);
     return sendResponse({

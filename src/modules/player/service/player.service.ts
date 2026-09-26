@@ -40,7 +40,11 @@ export class PlayerService {
             expiresIn: (process.env.RECOVERY_TOKEN_EXPIRATION || '15m') as any,
           },
         );
-        await this.mailService.sendRecoveryLink(existingPlayer.email, token);
+        await this.mailService.sendRecoveryLink(
+          existingPlayer.email,
+          token,
+          existingPlayer.firstName,
+        );
         throw new ConflictException(
           'This account has been deactivated. A recovery link has been sent to your email.',
         );
