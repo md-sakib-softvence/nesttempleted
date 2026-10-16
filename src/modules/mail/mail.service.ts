@@ -83,7 +83,10 @@ export class MailService {
       process.env.FRONTEND_DOMAIN ||
       'http://localhost:3000'
     ).replace(/\/+$/, '');
-    const recoveryUrl = `${frontendBase}/recover?token=${token}`;
+    const recoveryPath = (
+      process.env.FRONTEND_RECOVERY_PATH || 'activeaccount'
+    ).replace(/^\/+/, '');
+    const recoveryUrl = `${frontendBase}/${recoveryPath}?token=${token}`;
     const attachments = this.getEmailAttachments();
     const firstName = name ? name.trim() : 'Gamer';
 

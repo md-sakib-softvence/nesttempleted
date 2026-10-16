@@ -22,6 +22,9 @@ import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { TournamentService } from '../../service/tournament.service';
 import { CreateTournamentDto } from '../../dto/tournament/create-tournament.dto';
 import { UpdateTournamentDto } from '../../dto/tournament/update-tournament.dto';
+import { AllocateMatchDto } from '../../dto/tournament/allocate-match.dto';
+import { GenerateCalendarDto } from '../../dto/tournament/generate-calendar.dto';
+import { AutoAllocationDto } from '../../dto/tournament/auto-allocation.dto';
 import { sendResponse } from '../../../utils/response.util';
 import { QueryOptions } from '../../../utils/query.util';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard';
@@ -35,7 +38,7 @@ import {
 
 @ApiTags('tournament')
 @ApiBearerAuth()
-@Controller('tournament')
+@Controller(['tournament', 'tournaments'])
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN, Role.SUPER_ADMIN)
 export class TournamentController {
@@ -43,7 +46,8 @@ export class TournamentController {
 
   @Post()
   @ApiOperation({
-    summary: 'Create a new Tournament with images and documents',
+    summary:
+      'Structure Generation (POST /tournaments): Create tournament, calculate match count, generate canonical match entities & schedule',
   })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
@@ -104,7 +108,7 @@ export class TournamentController {
     try {
       const data = await this.tournamentService.createTournament(createDto);
       return sendResponse({
-        message: 'Tournament created successfully',
+        message: 'Tournament created successfully with canonical structure and schedule',
         data,
       });
     } catch (error) {
@@ -236,5 +240,125 @@ export class TournamentController {
       data,
     });
   }
-}
 
+  @Post(':id/calendar')
+  @ApiOperation({
+    summary:
+      'Calendar Generation (POST /tournaments/{id}/calendar): Generate grid of dates, screens, and empty timeslots based on venue screens and hours',
+  })
+  async generateCalendar(
+    @Param('id') id: string,
+    @Body() body?: GenerateCalendarDto,
+  ) {
+    const data = await this.tournamentService.generateCalendarForTournament(
+      id,
+      body,
+    );
+    return sendResponse({
+      message: 'Tournament calendar generated successfully',
+      data,
+    });
+  }
+
+  @Get(':id/calendar')
+  @ApiOperation({ summary: 'Get Tournament calendar grid' })
+  async getCalendar(@Param('id') id: string) {
+    const data = await this.tournamentService.getTournamentCalendar(id);
+    return sendResponse({
+      message: 'Tournament calendar retrieved successfully',
+      data,
+    });
+  }
+
+  @Get(':id/schedule')
+  @ApiOperation({ summary: 'Get Tournament schedule and joined matches' })
+  async getSchedule(@Param('id') id: string) {
+    const data = await this.tournamentService.getTournamentCalendar(id);
+    return sendResponse({
+      message: 'Tournament schedule retrieved successfully',
+      data,
+    });
+  }
+
+  @Get(':id/matches')
+  @ApiOperation({ summary: 'Get all canonical matches of a Tournament' })
+  async getMatches(@Param('id') id: string) {
+    const data = await this.tournamentService.getTournamentMatches(id);
+    return sendResponse({
+      message: 'Tournament matches retrieved successfully',
+      data,
+    });
+  }
+
+  @Get(':id/capacity')
+  @ApiOperation({
+    summary:
+      'Get Tournament capacity calculations (daily slots, capacity, playing days needed)',
+  })
+  async getCapacity(@Param('id') id: string) {
+    const data = await this.tournamentService.getTournamentCapacity(id);
+    return sendResponse({
+      message: 'Tournament capacity calculation retrieved successfully',
+      data,
+    });
+  }
+
+  @Post([':id/matches/:matchId/allocate', ':id/matches/:matchId/allocation'])
+  @ApiOperation({
+    summary:
+      'Physical Allocations (POST /tournaments/{id}/matches/{id}/allocate): Link a canonical match ID to a physical slot (venueId, screenId, date, time). Never overwrites scores.',
+  })
+  async allocateMatch(
+    @Param('id') id: string,
+    @Param('matchId') matchId: string,
+    @Body() body: AllocateMatchDto,
+  ) {
+    const data = await this.tournamentService.allocateTournamentMatch(
+      id,
+      matchId,
+      body,
+    );
+    return sendResponse({
+      message: 'Match allocated to physical slot successfully',
+      data,
+    });
+  }
+
+  @Delete([':id/matches/:matchId/allocate', ':id/matches/:matchId/allocation'])
+  @ApiOperation({
+    summary:
+      'Remove physical allocation of a match, freeing the calendar slot while preserving scores',
+  })
+  async unallocateMatch(
+    @Param('id') id: string,
+    @Param('matchId') matchId: string,
+  ) {
+    const data = await this.tournamentService.unallocateTournamentMatch(
+      id,
+      matchId,
+    );
+    return sendResponse({
+      message: 'Match unallocated successfully',
+      data,
+    });
+  }
+
+  @Post(':id/auto-allocation')
+  @ApiOperation({
+    summary:
+      'Automatically assign unallocated matches to open slots based on scheduling mode',
+  })
+  async autoAllocate(
+    @Param('id') id: string,
+    @Body() body?: AutoAllocationDto,
+  ) {
+    const data = await this.tournamentService.autoAllocateTournamentMatches(
+      id,
+      body,
+    );
+    return sendResponse({
+      message: 'Matches auto-allocated successfully',
+      data,
+    });
+  }
+}

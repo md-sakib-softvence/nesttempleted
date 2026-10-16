@@ -299,10 +299,14 @@ export class FanService {
           where: { fanId: fan.fanId },
         });
 
-        // Delete related Schedules
-        await tx.schedule.deleteMany({
-          where: { fanId: fan.fanId },
-        });
+        // Delete related Schedules safely if table exists
+        try {
+          await tx.schedule.deleteMany({
+            where: { fanId: fan.fanId },
+          });
+        } catch (e) {
+          if (e?.code !== 'P2021') throw e;
+        }
 
         // Delete any related Notifications
         await tx.notification.deleteMany({

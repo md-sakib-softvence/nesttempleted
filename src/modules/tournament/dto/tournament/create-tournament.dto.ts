@@ -319,4 +319,24 @@ export class CreateTournamentDto {
   })
   @IsOptional()
   playerIds?: any;
+
+  @ApiPropertyOptional({
+    description: 'Number of groups (for LEAGUE_AND_KNOCKOUT formats)',
+    example: 4,
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  groupsCount?: number;
+
+  @ApiPropertyOptional({
+    description: 'Enable 3rd place playoff match',
+    default: true,
+  })
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  @IsOptional()
+  thirdPlacePlayoffEnabled?: boolean;
 }
+
