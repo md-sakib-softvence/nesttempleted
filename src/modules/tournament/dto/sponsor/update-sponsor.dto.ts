@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsEnum,
   IsNumber,
@@ -9,6 +9,7 @@ import {
   Min,
 } from 'class-validator';
 import { SponsorStatus } from '@prisma/client';
+import { SponsorPriority } from './create-sponsor.dto';
 
 export class UpdateSponsorDto {
   @ApiPropertyOptional({
@@ -37,11 +38,20 @@ export class UpdateSponsorDto {
 
   @ApiPropertyOptional({
     description: 'Sponsorship priority level',
-    example: 'Secondary',
+    enum: SponsorPriority,
+    example: SponsorPriority.SECONDARY,
   })
-  @IsString()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      const upper = value.toUpperCase();
+      if (upper === 'TERTIARY') return SponsorPriority.THIRD;
+      return upper as SponsorPriority;
+    }
+    return value;
+  })
+  @IsEnum(SponsorPriority)
   @IsOptional()
-  priority?: string;
+  priority?: SponsorPriority;
 
   @ApiPropertyOptional({
     description: 'Contact person or info',

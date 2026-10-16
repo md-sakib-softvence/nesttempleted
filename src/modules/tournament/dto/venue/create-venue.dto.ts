@@ -4,7 +4,6 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  IsUUID,
 } from 'class-validator';
 
 export class CreateVenueDto {
@@ -25,14 +24,6 @@ export class CreateVenueDto {
   address: string;
 
   @ApiPropertyOptional({
-    description: 'Tournament ID associated with this venue (optional)',
-    example: 'b7c25e8e-8a1a-4279-8dc6-8c467a840e71',
-  })
-  @IsUUID('4', { message: 'tournamentId must be a valid UUID' })
-  @IsOptional()
-  tournamentId?: string;
-
-  @ApiPropertyOptional({
     description: 'List of screen names for this venue (optional)',
     example: ['Screen 1', 'Screen 2'],
     type: [String],
@@ -42,3 +33,4 @@ export class CreateVenueDto {
   @IsOptional()
   screens?: string[];
 }
+

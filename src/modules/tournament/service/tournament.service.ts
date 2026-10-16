@@ -21,14 +21,15 @@ import {
   ScheduleVenueInput,
   TournamentSchedulePayload,
 } from './tournament-schedule.service';
-import { SchedulingMode } from '@prisma/client';
+import { SchedulingMode, SponsorStatus } from '@prisma/client';
+import { normalizeStringArray } from '../utils/file-upload.util';
 
 @Injectable()
 export class TournamentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tournamentScheduleService: TournamentScheduleService,
-  ) {}
+  ) { }
 
   private async presignTournamentMedia<T extends Record<string, any>>(
     tournament: T,
@@ -102,42 +103,155 @@ export class TournamentService {
       startDate,
       deadline,
       venues: inputVenues,
+      sponsors: inputSponsors,
+      manageEventCosts: inputManageEventCosts,
+      manageEventPrizes: inputManageEventPrizes,
       playerIds: inputPlayerIds,
       groupsCount,
       thirdPlacePlayoffEnabled = true,
       ...rest
     } = createTournamentDto;
+    console.log('createTournamentDto', createTournamentDto);
+
+    // 1. Resolve & Create Sponsors first
+    const resolvedSponsorIds: string[] = [];
+    if (inputSponsors && Array.isArray(inputSponsors)) {
+      for (const item of inputSponsors) {
+        if (typeof item === 'string') {
+          resolvedSponsorIds.push(item);
+        } else if (typeof item === 'object' && item !== null && item.name) {
+          const createdSponsor = await this.prisma.sponsor.create({
+            data: {
+              name: item.name,
+              logo: item.logo,
+              website: item.website,
+              priority: item.priority,
+              contact: item.contact,
+              value: item.value !== undefined ? Number(item.value) : undefined,
+              status: item.status || SponsorStatus.BOTH,
+            },
+          });
+          resolvedSponsorIds.push(createdSponsor.sponsorId);
+        }
+      }
+    }
+
+    // 2. Resolve & Create Venues (with Screens) first
+    const resolvedVenueIds: string[] = [];
+    if (inputVenues && Array.isArray(inputVenues)) {
+      for (const item of inputVenues) {
+        if (typeof item === 'string') {
+          resolvedVenueIds.push(item);
+        } else if (
+          typeof item === 'object' &&
+          item !== null &&
+          (item.name || item.address)
+        ) {
+          const screens =
+            item.screens && Array.isArray(item.screens)
+              ? item.screens.map((s: any) => ({
+                  screenName:
+                    typeof s === 'string' ? s : s.screenName || 'Screen',
+                }))
+              : [];
+
+          const createdVenue = await this.prisma.venue.create({
+            data: {
+              name: item.name || 'Venue',
+              address: item.address || '',
+              ...(screens.length > 0 && {
+                screens: {
+                  create: screens,
+                },
+              }),
+            },
+            include: { screens: true },
+          });
+          resolvedVenueIds.push(createdVenue.venueId);
+        }
+      }
+    }
+
+    // 3. Resolve & Create Event Costs first
+    const resolvedCostIds: string[] = [];
+    if (inputManageEventCosts && Array.isArray(inputManageEventCosts)) {
+      for (const item of inputManageEventCosts) {
+        if (typeof item === 'string') {
+          resolvedCostIds.push(item);
+        } else if (
+          typeof item === 'object' &&
+          item !== null &&
+          item.costCategory
+        ) {
+          const createdCost = await this.prisma.manageEventCost.create({
+            data: {
+              costCategory: item.costCategory,
+              amount: Number(item.amount) || 0,
+            },
+          });
+          resolvedCostIds.push(createdCost.manageEventCostId);
+        }
+      }
+    }
+
+    // 4. Resolve & Create Event Prizes first
+    const resolvedPrizeIds: string[] = [];
+    if (inputManageEventPrizes && Array.isArray(inputManageEventPrizes)) {
+      for (const item of inputManageEventPrizes) {
+        if (typeof item === 'string') {
+          resolvedPrizeIds.push(item);
+        } else if (
+          typeof item === 'object' &&
+          item !== null &&
+          item.prizeCategory
+        ) {
+          const createdPrize = await this.prisma.manageEventPrize.create({
+            data: {
+              prizeCategory: item.prizeCategory,
+              amount: Number(item.amount) || 0,
+            },
+          });
+          resolvedPrizeIds.push(createdPrize.manageEventPrizeId);
+        }
+      }
+    }
 
     const schedulingMode = rest.schedulingMode || SchedulingMode.MANUAL;
+    const rules = normalizeStringArray(rest.rules);
+    const tsAndTc = normalizeStringArray(rest.tsAndTc);
+    const frequencyArray = normalizeStringArray(rest.frequencyArray);
 
     const tournament = await this.prisma.tournament.create({
       data: {
         ...rest,
+        rules,
+        tsAndTc,
+        frequencyArray,
         schedulingMode,
         startDate: new Date(startDate),
         deadline: new Date(deadline),
-        ...(inputVenues &&
-          Array.isArray(inputVenues) &&
-          inputVenues.length > 0 && {
-            venues: {
-              create: inputVenues.map((v: any) => ({
-                name: v.name || 'Venue',
-                address: v.address || '',
-                ...(v.screens &&
-                  Array.isArray(v.screens) &&
-                  v.screens.length > 0 && {
-                    screens: {
-                      create: v.screens.map((s: any) => ({
-                        screenName:
-                          typeof s === 'string'
-                            ? s
-                            : s.screenName || 'Screen',
-                      })),
-                    },
-                  }),
-              })),
-            },
-          }),
+        ...(resolvedCostIds.length > 0 && {
+          manageEventCosts: {
+            connect: resolvedCostIds.map((id) => ({ manageEventCostId: id })),
+          },
+        }),
+        ...(resolvedPrizeIds.length > 0 && {
+          manageEventPrizes: {
+            connect: resolvedPrizeIds.map((id) => ({
+              manageEventPrizeId: id,
+            })),
+          },
+        }),
+        ...(resolvedSponsorIds.length > 0 && {
+          sponsors: {
+            connect: resolvedSponsorIds.map((id) => ({ sponsorId: id })),
+          },
+        }),
+        ...(resolvedVenueIds.length > 0 && {
+          venues: {
+            connect: resolvedVenueIds.map((id) => ({ venueId: id })),
+          },
+        }),
       },
       include: {
         manageEventCosts: true,
@@ -153,7 +267,7 @@ export class TournamentService {
 
     let tournamentVenues = tournament.venues;
 
-    // Fallback: If no venues were created inline, check existing venues in DB
+    // Fallback: If no venues were linked or created, check existing venues in DB
     if (tournamentVenues.length === 0) {
       const existingVenues = await this.prisma.venue.findMany({
         include: { screens: true },
@@ -322,7 +436,15 @@ export class TournamentService {
       throw new NotFoundException('Tournament not found or has been deleted');
     }
 
-    const { startDate, deadline, ...rest } = updateTournamentDto;
+    const {
+      startDate,
+      deadline,
+      venues: updateVenues,
+      sponsors: updateSponsors,
+      manageEventCosts: updateManageEventCosts,
+      manageEventPrizes: updateManageEventPrizes,
+      ...rest
+    } = updateTournamentDto;
 
     const updateData: Record<string, any> = { ...rest };
     if (startDate) {
@@ -330,6 +452,131 @@ export class TournamentService {
     }
     if (deadline) {
       updateData.deadline = new Date(deadline);
+    }
+    if (rest.rules !== undefined) {
+      updateData.rules = normalizeStringArray(rest.rules);
+    }
+    if (rest.tsAndTc !== undefined) {
+      updateData.tsAndTc = normalizeStringArray(rest.tsAndTc);
+    }
+    if (rest.frequencyArray !== undefined) {
+      updateData.frequencyArray = normalizeStringArray(rest.frequencyArray);
+    }
+
+    // Resolve & Create Costs
+    const resolvedCostIds: string[] = [];
+    if (updateManageEventCosts && Array.isArray(updateManageEventCosts)) {
+      for (const item of updateManageEventCosts) {
+        if (typeof item === 'string') {
+          resolvedCostIds.push(item);
+        } else if (typeof item === 'object' && item !== null && item.costCategory) {
+          const createdCost = await this.prisma.manageEventCost.create({
+            data: {
+              costCategory: item.costCategory,
+              amount: Number(item.amount) || 0,
+            },
+          });
+          resolvedCostIds.push(createdCost.manageEventCostId);
+        }
+      }
+    }
+    if (resolvedCostIds.length > 0) {
+      updateData.manageEventCosts = {
+        connect: resolvedCostIds.map((costId: string) => ({
+          manageEventCostId: costId,
+        })),
+      };
+    }
+
+    // Resolve & Create Prizes
+    const resolvedPrizeIds: string[] = [];
+    if (updateManageEventPrizes && Array.isArray(updateManageEventPrizes)) {
+      for (const item of updateManageEventPrizes) {
+        if (typeof item === 'string') {
+          resolvedPrizeIds.push(item);
+        } else if (typeof item === 'object' && item !== null && item.prizeCategory) {
+          const createdPrize = await this.prisma.manageEventPrize.create({
+            data: {
+              prizeCategory: item.prizeCategory,
+              amount: Number(item.amount) || 0,
+            },
+          });
+          resolvedPrizeIds.push(createdPrize.manageEventPrizeId);
+        }
+      }
+    }
+    if (resolvedPrizeIds.length > 0) {
+      updateData.manageEventPrizes = {
+        connect: resolvedPrizeIds.map((prizeId: string) => ({
+          manageEventPrizeId: prizeId,
+        })),
+      };
+    }
+
+    // Resolve & Create Sponsors
+    const resolvedSponsorIds: string[] = [];
+    if (updateSponsors && Array.isArray(updateSponsors)) {
+      for (const item of updateSponsors) {
+        if (typeof item === 'string') {
+          resolvedSponsorIds.push(item);
+        } else if (typeof item === 'object' && item !== null && item.name) {
+          const createdSponsor = await this.prisma.sponsor.create({
+            data: {
+              name: item.name,
+              logo: item.logo,
+              website: item.website,
+              priority: item.priority,
+              contact: item.contact,
+              value: item.value !== undefined ? Number(item.value) : undefined,
+              status: item.status || SponsorStatus.BOTH,
+            },
+          });
+          resolvedSponsorIds.push(createdSponsor.sponsorId);
+        }
+      }
+    }
+    if (resolvedSponsorIds.length > 0) {
+      updateData.sponsors = {
+        connect: resolvedSponsorIds.map((sponsorId: string) => ({
+          sponsorId,
+        })),
+      };
+    }
+
+    // Resolve & Create Venues
+    const resolvedUpdateVenueIds: string[] = [];
+    if (updateVenues && Array.isArray(updateVenues)) {
+      for (const item of updateVenues) {
+        if (typeof item === 'string') {
+          resolvedUpdateVenueIds.push(item);
+        } else if (typeof item === 'object' && item !== null && (item.name || item.address)) {
+          const screens =
+            item.screens && Array.isArray(item.screens)
+              ? item.screens.map((s: any) => ({
+                  screenName: typeof s === 'string' ? s : s.screenName || 'Screen',
+                }))
+              : [];
+
+          const createdVenue = await this.prisma.venue.create({
+            data: {
+              name: item.name || 'Venue',
+              address: item.address || '',
+              ...(screens.length > 0 && {
+                screens: {
+                  create: screens,
+                },
+              }),
+            },
+            include: { screens: true },
+          });
+          resolvedUpdateVenueIds.push(createdVenue.venueId);
+        }
+      }
+    }
+    if (resolvedUpdateVenueIds.length > 0) {
+      updateData.venues = {
+        connect: resolvedUpdateVenueIds.map((venueId: string) => ({ venueId })),
+      };
     }
 
     const updated = await this.prisma.tournament.update({

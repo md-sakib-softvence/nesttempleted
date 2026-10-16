@@ -34,6 +34,7 @@ import { Role, SchedulingMode } from '@prisma/client';
 import {
   uploadTournamentFiles,
   rollbackTournamentFiles,
+  normalizeStringArray,
 } from '../../utils/file-upload.util';
 
 @ApiTags('tournament')
@@ -45,10 +46,7 @@ export class TournamentController {
   constructor(private readonly tournamentService: TournamentService) {}
 
   @Post()
-  @ApiOperation({
-    summary:
-      'Structure Generation (POST /tournaments): Create tournament, calculate match count, generate canonical match entities & schedule',
-  })
+  @ApiOperation({ summary: 'Create a new Tournament' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileFieldsInterceptor([
@@ -95,14 +93,14 @@ export class TournamentController {
 
     if (uploadedFiles.rules.length > 0) {
       createDto.rules = uploadedFiles.rules;
-    } else if (!createDto.rules) {
-      createDto.rules = [];
+    } else {
+      createDto.rules = normalizeStringArray(createDto.rules);
     }
 
     if (uploadedFiles.tsAndTc.length > 0) {
       createDto.tsAndTc = uploadedFiles.tsAndTc;
-    } else if (!createDto.tsAndTc) {
-      createDto.tsAndTc = [];
+    } else {
+      createDto.tsAndTc = normalizeStringArray(createDto.tsAndTc);
     }
 
     try {
@@ -193,10 +191,14 @@ export class TournamentController {
 
     if (uploadedFiles.rules.length > 0) {
       updateDto.rules = uploadedFiles.rules;
+    } else if (updateDto.rules !== undefined) {
+      updateDto.rules = normalizeStringArray(updateDto.rules);
     }
 
     if (uploadedFiles.tsAndTc.length > 0) {
       updateDto.tsAndTc = uploadedFiles.tsAndTc;
+    } else if (updateDto.tsAndTc !== undefined) {
+      updateDto.tsAndTc = normalizeStringArray(updateDto.tsAndTc);
     }
 
     try {

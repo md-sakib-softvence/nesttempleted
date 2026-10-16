@@ -111,3 +111,40 @@ export async function rollbackTournamentFiles(files: {
     }
   }
 }
+
+/**
+ * Normalizes input (array, JSON string, comma-separated string, or single string) into a clean string array.
+ * Filters out Swagger dummy placeholders (e.g. "string") and empty whitespace.
+ */
+export function normalizeStringArray(val: any): string[] {
+  if (val === undefined || val === null) return [];
+  if (Array.isArray(val)) {
+    return val
+      .map((x) => (typeof x === 'string' ? x.trim() : String(x)))
+      .filter((x) => x.length > 0 && x !== 'string');
+  }
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (!trimmed || trimmed === 'string') return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((x) => (typeof x === 'string' ? x.trim() : String(x)))
+          .filter((x) => x.length > 0 && x !== 'string');
+      }
+      if (typeof parsed === 'string' && parsed.trim() && parsed.trim() !== 'string') {
+        return [parsed.trim()];
+      }
+    } catch {
+      if (trimmed.includes(',')) {
+        return trimmed
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0 && s !== 'string');
+      }
+      return [trimmed];
+    }
+  }
+  return [];
+}

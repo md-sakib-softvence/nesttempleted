@@ -8,18 +8,6 @@ export class ManageEventPrizeService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateManageEventPrizeDto) {
-    if (dto.tournamentId) {
-      const tournament = await this.prisma.tournament.findUnique({
-        where: { tournamentId: dto.tournamentId },
-      });
-
-      if (!tournament || tournament.isDeleted) {
-        throw new NotFoundException(
-          `Tournament with ID ${dto.tournamentId} not found`,
-        );
-      }
-    }
-
     return this.prisma.manageEventPrize.create({
       data: dto,
       include: {

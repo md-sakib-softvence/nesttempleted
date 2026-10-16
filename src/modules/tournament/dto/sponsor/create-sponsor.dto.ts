@@ -1,15 +1,20 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsEnum,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
-  IsUUID,
   Min,
 } from 'class-validator';
 import { SponsorStatus } from '@prisma/client';
+
+export enum SponsorPriority {
+  PRIMARY = 'PRIMARY',
+  SECONDARY = 'SECONDARY',
+  THIRD = 'THIRD',
+}
 
 export class CreateSponsorDto {
   @ApiProperty({
@@ -38,11 +43,20 @@ export class CreateSponsorDto {
 
   @ApiPropertyOptional({
     description: 'Sponsorship priority level',
-    example: 'Primary',
+    enum: SponsorPriority,
+    example: SponsorPriority.PRIMARY,
   })
-  @IsString()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      const upper = value.toUpperCase();
+      if (upper === 'TERTIARY') return SponsorPriority.THIRD;
+      return upper as SponsorPriority;
+    }
+    return value;
+  })
+  @IsEnum(SponsorPriority)
   @IsOptional()
-  priority?: string;
+  priority?: SponsorPriority;
 
   @ApiPropertyOptional({
     description: 'Contact person or info',
@@ -70,12 +84,4 @@ export class CreateSponsorDto {
   @IsEnum(SponsorStatus)
   @IsOptional()
   status?: SponsorStatus;
-
-  @ApiPropertyOptional({
-    description: 'Tournament ID associated with this sponsor (optional)',
-    example: 'b7c25e8e-8a1a-4279-8dc6-8c467a840e71',
-  })
-  @IsUUID('4', { message: 'tournamentId must be a valid UUID' })
-  @IsOptional()
-  tournamentId?: string;
 }

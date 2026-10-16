@@ -21,6 +21,11 @@ import {
   TournamentStatus,
   SchedulingMode,
 } from '@prisma/client';
+import { CreateSponsorDto } from '../sponsor/create-sponsor.dto';
+import { CreateVenueDto } from '../venue/create-venue.dto';
+import { CreateManageEventCostDto } from '../manage-event-cost/create-manage-event-cost.dto';
+import { CreateManageEventPrizeDto } from '../manage-event-prize/create-manage-event-prize.dto';
+import { normalizeStringArray } from '../../utils/file-upload.util';
 
 export class CreateTournamentDto {
   @ApiProperty({
@@ -120,15 +125,25 @@ export class CreateTournamentDto {
   schedulingMode?: SchedulingMode;
 
   @ApiProperty({
-    description: 'Start Date (ISO string)',
+    description: 'Start Date (UTC ISO string)',
     example: '2026-10-01T10:00:00.000Z',
+  })
+  @Transform(({ value }) => {
+    if (!value) return value;
+    const date = new Date(value);
+    return isNaN(date.getTime()) ? value : date.toISOString();
   })
   @IsDateString()
   startDate: string;
 
   @ApiProperty({
-    description: 'Registration Deadline (ISO string)',
+    description: 'Registration Deadline (UTC ISO string)',
     example: '2026-09-30T23:59:59.000Z',
+  })
+  @Transform(({ value }) => {
+    if (!value) return value;
+    const date = new Date(value);
+    return isNaN(date.getTime()) ? value : date.toISOString();
   })
   @IsDateString()
   deadline: string;
@@ -193,24 +208,28 @@ export class CreateTournamentDto {
   @IsEnum(FrequencyStatus)
   frequencyStatus: FrequencyStatus;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'Days of the week array (JSON string or array)',
     example: ['Sun', 'Mon', 'Tue'],
     type: [String],
+    default: [],
   })
   @Transform(({ value }) => {
+    if (!value) return [];
     if (typeof value === 'string') {
       try {
-        return JSON.parse(value);
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [parsed];
       } catch {
         return value.split(',').map((s: string) => s.trim());
       }
     }
-    return value;
+    return Array.isArray(value) ? value : [value];
   })
   @IsArray()
   @IsString({ each: true })
-  frequencyArray: string[];
+  @IsOptional()
+  frequencyArray?: string[];
 
   @ApiPropertyOptional({
     type: 'string',
@@ -269,6 +288,7 @@ export class CreateTournamentDto {
     items: { type: 'string', format: 'binary' },
     description: 'Rules document files',
   })
+  @Transform(({ value }) => normalizeStringArray(value))
   @IsOptional()
   rules?: any;
 
@@ -277,15 +297,18 @@ export class CreateTournamentDto {
     items: { type: 'string', format: 'binary' },
     description: 'Terms & Conditions document files',
   })
+  @Transform(({ value }) => normalizeStringArray(value))
   @IsOptional()
   tsAndTc?: any;
 
   @ApiPropertyOptional({
-    description: 'Venues with screens for this tournament (JSON string or array)',
+    description:
+      'Venues with screens to create and link with this tournament (array of full venue objects, JSON string, or array of venue IDs)',
+    type: [CreateVenueDto],
     example: [
       {
         name: 'Main Arena',
-        address: '123 Arena Way',
+        address: '123 Esports Blvd, Lagos',
         screens: ['Screen 1', 'Screen 2'],
       },
     ],
@@ -293,15 +316,97 @@ export class CreateTournamentDto {
   @Transform(({ value }) => {
     if (typeof value === 'string') {
       try {
-        return JSON.parse(value);
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [parsed];
       } catch {
-        return value;
+        return [value];
       }
     }
-    return value;
+    return Array.isArray(value) ? value : value ? [value] : [];
   })
   @IsOptional()
-  venues?: any;
+  venues?: CreateVenueDto[] | any;
+
+  @ApiPropertyOptional({
+    description:
+      'Sponsors to create and link with this tournament (array of full sponsor objects or JSON string)',
+    type: [CreateSponsorDto],
+    example: [
+      {
+        name: 'Red Bull',
+        logo: 'https://example.com/logo.png',
+        website: 'https://redbull.com',
+        priority: 'PRIMARY',
+        contact: 'sponsor@redbull.com',
+        value: 10000,
+        status: 'BOTH',
+      },
+    ],
+  })
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [parsed];
+      } catch {
+        return [value];
+      }
+    }
+    return Array.isArray(value) ? value : value ? [value] : [];
+  })
+  @IsOptional()
+  sponsors?: CreateSponsorDto[] | any;
+
+  @ApiPropertyOptional({
+    description:
+      'Event Costs to create and link with this tournament (array of full cost objects or JSON string)',
+    type: [CreateManageEventCostDto],
+    example: [
+      {
+        costCategory: 'Venue Rental',
+        amount: 500,
+      },
+    ],
+  })
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [parsed];
+      } catch {
+        return [value];
+      }
+    }
+    return Array.isArray(value) ? value : value ? [value] : [];
+  })
+  @IsOptional()
+  manageEventCosts?: CreateManageEventCostDto[] | any;
+
+  @ApiPropertyOptional({
+    description:
+      'Event Prizes to create and link with this tournament (array of full prize objects or JSON string)',
+    type: [CreateManageEventPrizeDto],
+    example: [
+      {
+        prizeCategory: '1st Place Winner',
+        amount: 1000,
+      },
+    ],
+  })
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [parsed];
+      } catch {
+        return [value];
+      }
+    }
+    return Array.isArray(value) ? value : value ? [value] : [];
+  })
+  @IsOptional()
+  manageEventPrizes?: CreateManageEventPrizeDto[] | any;
+
 
   @ApiPropertyOptional({
     description: 'List of participating player IDs or participants (JSON string or array)',
@@ -339,4 +444,5 @@ export class CreateTournamentDto {
   @IsOptional()
   thirdPlacePlayoffEnabled?: boolean;
 }
+
 
