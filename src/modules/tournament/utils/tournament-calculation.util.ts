@@ -379,9 +379,7 @@ export function calculateHybridMatches(
       // 2 legs for every round before the single final, plus 1 for the final
       // Formula: 2 * (K - 2) + 1 = 2K - 3 (for K >= 2)
       knockoutMatches =
-        totalQualifiers === 2
-          ? 1
-          : 2 * (totalQualifiers - 2) + 1;
+        totalQualifiers === 2 ? 1 : 2 * (totalQualifiers - 2) + 1;
     } else {
       // Standard single elimination knockout: K - 1
       knockoutMatches = totalQualifiers - 1;
@@ -580,11 +578,7 @@ export function calculateCapacity(
   const grossMinutes = Math.max(0, endMinutes - startMinutes);
 
   let lunchMinutes = 0;
-  if (
-    input.lunchBreakTime &&
-    input.lunchDuration &&
-    input.lunchDuration > 0
-  ) {
+  if (input.lunchBreakTime && input.lunchDuration && input.lunchDuration > 0) {
     lunchMinutes = input.lunchDuration;
   }
 
@@ -705,7 +699,7 @@ export function generatePlayingDates(
 
   const start = new Date(startDate);
   const dates: string[] = [];
-  let currentDate = new Date(start);
+  const currentDate = new Date(start);
 
   const allowedDayIndices = (frequencyArray || [])
     .map((name) => DAY_NAME_TO_INDEX[name.trim().toLowerCase()])
@@ -799,14 +793,12 @@ export function getStandardSeedOrder(size: number): number[] {
   if (size === 4) return [1, 4, 2, 3];
   if (size === 8) return [1, 8, 4, 5, 2, 7, 3, 6];
   if (size === 16) {
-    return [
-      1, 16, 8, 9, 4, 13, 5, 12, 2, 15, 7, 10, 3, 14, 6, 11,
-    ];
+    return [1, 16, 8, 9, 4, 13, 5, 12, 2, 15, 7, 10, 3, 14, 6, 11];
   }
   if (size === 32) {
     return [
-      1, 32, 16, 17, 8, 25, 9, 24, 4, 29, 13, 20, 5, 28, 12, 21,
-      2, 31, 15, 18, 7, 26, 10, 23, 3, 30, 14, 19, 6, 27, 11, 22,
+      1, 32, 16, 17, 8, 25, 9, 24, 4, 29, 13, 20, 5, 28, 12, 21, 2, 31, 15, 18,
+      7, 26, 10, 23, 3, 30, 14, 19, 6, 27, 11, 22,
     ];
   }
 
@@ -838,10 +830,7 @@ export function generateGroups(
   groupsCount = 4,
 ): TournamentGroupEntity[] {
   const groups: TournamentGroupEntity[] = [];
-  const numGroups = Math.min(
-    groupsCount,
-    Math.max(1, Math.floor(teams / 2)),
-  );
+  const numGroups = Math.min(groupsCount, Math.max(1, Math.floor(teams / 2)));
   const baseSize = Math.floor(teams / numGroups);
   const remainder = teams % numGroups;
 
@@ -983,7 +972,7 @@ export function normalizeMatchSemantics(
     const resolved = visit(source);
     if (!resolved.isAutoAdvance) return ref;
     return ref.type === 'MATCH_WINNER'
-      ? resolved.winnerRef ?? { type: 'BYE', value: 'BYE' }
+      ? (resolved.winnerRef ?? { type: 'BYE', value: 'BYE' })
       : { type: 'BYE', value: 'BYE' };
   };
 
@@ -1004,8 +993,7 @@ export function normalizeMatchSemantics(
 
     if (auto) {
       result.status = 'COMPLETED';
-      result.winnerRef =
-        p1.type === 'BYE' ? p2 : p1;
+      result.winnerRef = p1.type === 'BYE' ? p2 : p1;
       result.loserRef = { type: 'BYE', value: 'BYE' };
       delete result.venueId;
       delete result.screenId;
@@ -1024,12 +1012,8 @@ export function normalizeMatchSemantics(
 export function summarizeTournamentMatches(
   matches: TournamentMatchEntity[],
 ): TournamentStructureSummary {
-  const guaranteed = matches.filter(
-    (m) => !m.isAutoAdvance && !m.conditional,
-  );
-  const conditional = matches.filter(
-    (m) => m.conditional && !m.isAutoAdvance,
-  );
+  const guaranteed = matches.filter((m) => !m.isAutoAdvance && !m.conditional);
+  const conditional = matches.filter((m) => m.conditional && !m.isAutoAdvance);
 
   return {
     structuralNodes: matches.length,
@@ -1043,8 +1027,7 @@ export function summarizeTournamentMatches(
     losersBracketMatches: guaranteed.filter(
       (m) => m.bracketSection === 'LOSERS',
     ).length,
-    finalMatches: guaranteed.filter((m) => m.bracketSection === 'FINAL')
-      .length,
+    finalMatches: guaranteed.filter((m) => m.bracketSection === 'FINAL').length,
     schedulableMatches: guaranteed.filter((m) => m.isSchedulable !== false)
       .length,
     conditionalMatches: conditional.length,
@@ -1178,14 +1161,12 @@ export function generateCanonicalStructure(
 
     if (format === TournamentFormat.SINGLE_ELIMINATION || isHybrid) {
       const qualifiers = groups.flatMap((g) =>
-        [1, 2].map((pos) =>
-          sourceRef('GROUP_POSITION', `${g.name} #${pos}`),
-        ),
+        [1, 2].map((pos) => sourceRef('GROUP_POSITION', `${g.name} #${pos}`)),
       );
       const entrants = isHybrid ? qualifiers.length : teams;
       const seedOrder = getStandardSeedOrder(nextPowerOfTwo(entrants));
       let currentRefs = seedOrder.map((s) =>
-        isHybrid ? qualifiers[s - 1] ?? byeRef() : seeded(s),
+        isHybrid ? (qualifiers[s - 1] ?? byeRef()) : seeded(s),
       );
 
       let level = 1;
@@ -1288,9 +1269,7 @@ export function generateCanonicalStructure(
           );
         }
         winnersRounds.push(roundMatches);
-        entrants = roundMatches.map((m) =>
-          sourceRef('MATCH_WINNER', m.id),
-        );
+        entrants = roundMatches.map((m) => sourceRef('MATCH_WINNER', m.id));
         wbRound++;
       }
 
@@ -1417,9 +1396,7 @@ export function assignMatchesToSchedule(
   participants: Participant[],
   mode: SchedulingMode,
 ): VenueSchedule[] {
-  const updatedCalendar: VenueSchedule[] = JSON.parse(
-    JSON.stringify(calendar),
-  );
+  const updatedCalendar: VenueSchedule[] = JSON.parse(JSON.stringify(calendar));
 
   const participantMap = new Map<string, Participant>();
   participants.forEach((p) => participantMap.set(p.playerId, p));
@@ -1587,16 +1564,8 @@ export function assignMatchesToSchedule(
 
           for (const slot of day.timeslots) {
             if (slot.game === null) {
-              const p1Busy = isPlayerBusy(
-                match.player1Id,
-                day.date,
-                slot.time,
-              );
-              const p2Busy = isPlayerBusy(
-                match.player2Id,
-                day.date,
-                slot.time,
-              );
+              const p1Busy = isPlayerBusy(match.player1Id, day.date, slot.time);
+              const p2Busy = isPlayerBusy(match.player2Id, day.date, slot.time);
 
               if (!p1Busy && !p2Busy) {
                 slot.canonicalMatchId = match.id;
@@ -1703,10 +1672,7 @@ export function allocateMatch(
     );
   }
 
-  if (
-    targetSlot.canonicalMatchId &&
-    targetSlot.canonicalMatchId !== matchId
-  ) {
+  if (targetSlot.canonicalMatchId && targetSlot.canonicalMatchId !== matchId) {
     throw new BadRequestException(
       `Screen "${screen.screenName}" timeslot ${time} on ${date} is already occupied by match ${targetSlot.canonicalMatchId}.`,
     );

@@ -20,7 +20,8 @@ export class CreateAnnouncementTemplateDto {
 
   @ApiProperty({
     description: 'Description of when this template is sent',
-    example: 'Sent to players selected from the registration pool, asking them to pay the entry fee.',
+    example:
+      'Sent to players selected from the registration pool, asking them to pay the entry fee.',
   })
   @IsString()
   @IsNotEmpty()
@@ -28,7 +29,13 @@ export class CreateAnnouncementTemplateDto {
 
   @ApiPropertyOptional({
     description: 'Dynamic variables available for this template',
-    example: ['{{playerName}}', '{{tournamentName}}', '{{entryFee}}', '{{paymentDeadline}}', '{{paymentLink}}'],
+    example: [
+      '{{playerName}}',
+      '{{tournamentName}}',
+      '{{entryFee}}',
+      '{{paymentDeadline}}',
+      '{{paymentLink}}',
+    ],
     type: [String],
   })
   @IsArray()
@@ -38,7 +45,8 @@ export class CreateAnnouncementTemplateDto {
 
   @ApiProperty({
     description: 'Message body text containing dynamic variables',
-    example: 'Congratulations {{playerName}}! You have been selected to compete in {{tournamentName}}. Please pay the entry fee of {{entryFee}} by {{paymentDeadline}} to confirm your spot. Pay here: {{paymentLink}}',
+    example:
+      'Congratulations {{playerName}}! You have been selected to compete in {{tournamentName}}. Please pay the entry fee of {{entryFee}} by {{paymentDeadline}} to confirm your spot. Pay here: {{paymentLink}}',
   })
   @IsString()
   @IsNotEmpty()

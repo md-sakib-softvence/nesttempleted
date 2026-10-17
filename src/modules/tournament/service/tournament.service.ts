@@ -29,7 +29,7 @@ export class TournamentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tournamentScheduleService: TournamentScheduleService,
-  ) { }
+  ) {}
 
   private async presignTournamentMedia<T extends Record<string, any>>(
     tournament: T,
@@ -274,7 +274,7 @@ export class TournamentService {
         take: 5,
       });
       if (existingVenues.length > 0) {
-        tournamentVenues = existingVenues as any;
+        tournamentVenues = existingVenues;
       }
     }
 
@@ -469,7 +469,11 @@ export class TournamentService {
       for (const item of updateManageEventCosts) {
         if (typeof item === 'string') {
           resolvedCostIds.push(item);
-        } else if (typeof item === 'object' && item !== null && item.costCategory) {
+        } else if (
+          typeof item === 'object' &&
+          item !== null &&
+          item.costCategory
+        ) {
           const createdCost = await this.prisma.manageEventCost.create({
             data: {
               costCategory: item.costCategory,
@@ -494,7 +498,11 @@ export class TournamentService {
       for (const item of updateManageEventPrizes) {
         if (typeof item === 'string') {
           resolvedPrizeIds.push(item);
-        } else if (typeof item === 'object' && item !== null && item.prizeCategory) {
+        } else if (
+          typeof item === 'object' &&
+          item !== null &&
+          item.prizeCategory
+        ) {
           const createdPrize = await this.prisma.manageEventPrize.create({
             data: {
               prizeCategory: item.prizeCategory,
@@ -549,11 +557,16 @@ export class TournamentService {
       for (const item of updateVenues) {
         if (typeof item === 'string') {
           resolvedUpdateVenueIds.push(item);
-        } else if (typeof item === 'object' && item !== null && (item.name || item.address)) {
+        } else if (
+          typeof item === 'object' &&
+          item !== null &&
+          (item.name || item.address)
+        ) {
           const screens =
             item.screens && Array.isArray(item.screens)
               ? item.screens.map((s: any) => ({
-                  screenName: typeof s === 'string' ? s : s.screenName || 'Screen',
+                  screenName:
+                    typeof s === 'string' ? s : s.screenName || 'Screen',
                 }))
               : [];
 
@@ -642,7 +655,7 @@ export class TournamentService {
         take: 5,
       });
       if (existingVenues.length > 0) {
-        tournamentVenues = existingVenues as any;
+        tournamentVenues = existingVenues;
       }
     }
 
@@ -739,7 +752,9 @@ export class TournamentService {
     for (const match of existingMatches) {
       if (match.venueId && match.screenId && match.date && match.time) {
         const venue = calendar.find((v) => v.venueId === match.venueId);
-        const screen = venue?.screens.find((s) => s.screenId === match.screenId);
+        const screen = venue?.screens.find(
+          (s) => s.screenId === match.screenId,
+        );
         const day = screen?.days.find((d) => d.date === match.date);
         const slot = day?.timeslots.find((t) => t.time === match.time);
 
@@ -813,7 +828,8 @@ export class TournamentService {
       throw new NotFoundException('Tournament not found or has been deleted');
     }
 
-    const currentSchedule = tournament.schedule as any as TournamentSchedulePayload;
+    const currentSchedule =
+      tournament.schedule as any as TournamentSchedulePayload;
     if (!currentSchedule || !currentSchedule.structure) {
       throw new BadRequestException(
         'Tournament schedule and canonical structure have not been generated yet.',
@@ -853,7 +869,8 @@ export class TournamentService {
       throw new NotFoundException('Tournament not found or has been deleted');
     }
 
-    const currentSchedule = tournament.schedule as any as TournamentSchedulePayload;
+    const currentSchedule =
+      tournament.schedule as any as TournamentSchedulePayload;
     if (!currentSchedule || !currentSchedule.structure) {
       throw new BadRequestException(
         'Tournament schedule has not been generated yet.',
@@ -895,14 +912,16 @@ export class TournamentService {
       throw new NotFoundException('Tournament not found or has been deleted');
     }
 
-    const currentSchedule = tournament.schedule as any as TournamentSchedulePayload;
+    const currentSchedule =
+      tournament.schedule as any as TournamentSchedulePayload;
     if (!currentSchedule || !currentSchedule.structure) {
       throw new BadRequestException(
         'Tournament schedule has not been generated yet.',
       );
     }
 
-    const mode = dto?.mode || tournament.schedulingMode || SchedulingMode.AUTO_HOME_VENUE;
+    const mode =
+      dto?.mode || tournament.schedulingMode || SchedulingMode.AUTO_HOME_VENUE;
 
     // Gather participants from slots or DB
     const participants: Participant[] = (currentSchedule.structure.slots || [])
@@ -1038,7 +1057,7 @@ export class TournamentService {
         take: 5,
       });
       if (existingVenues.length > 0) {
-        tournamentVenues = existingVenues as any;
+        tournamentVenues = existingVenues;
       }
     }
 

@@ -133,7 +133,11 @@ export function normalizeStringArray(val: any): string[] {
           .map((x) => (typeof x === 'string' ? x.trim() : String(x)))
           .filter((x) => x.length > 0 && x !== 'string');
       }
-      if (typeof parsed === 'string' && parsed.trim() && parsed.trim() !== 'string') {
+      if (
+        typeof parsed === 'string' &&
+        parsed.trim() &&
+        parsed.trim() !== 'string'
+      ) {
         return [parsed.trim()];
       }
     } catch {

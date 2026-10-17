@@ -106,7 +106,8 @@ export class TournamentController {
     try {
       const data = await this.tournamentService.createTournament(createDto);
       return sendResponse({
-        message: 'Tournament created successfully with canonical structure and schedule',
+        message:
+          'Tournament created successfully with canonical structure and schedule',
         data,
       });
     } catch (error) {

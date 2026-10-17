@@ -24,7 +24,7 @@ export class FanService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private mailService: MailService,
-  ) { }
+  ) {}
 
   async createFan(createFanDto: CreateFanDto) {
     const existingFan = await this.prisma.fan.findUnique({
@@ -203,7 +203,9 @@ export class FanService {
         skip,
         take,
         orderBy,
-        ...(Object.keys(includeOptions).length > 0 && { include: includeOptions }),
+        ...(Object.keys(includeOptions).length > 0 && {
+          include: includeOptions,
+        }),
       }),
       this.prisma.fan.count({ where }),
     ]);

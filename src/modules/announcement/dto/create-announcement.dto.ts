@@ -19,14 +19,16 @@ export class CreateAnnouncementDto {
 
   @ApiProperty({
     description: 'Message body / content of the announcement',
-    example: 'Due to severe weather conditions, matches scheduled for 2:00 PM will now commence at 4:00 PM.',
+    example:
+      'Due to severe weather conditions, matches scheduled for 2:00 PM will now commence at 4:00 PM.',
   })
   @IsString()
   @IsNotEmpty()
   content: string;
 
   @ApiPropertyOptional({
-    description: 'Target Audience (e.g. GLOBAL, STAFF, PLAYERS_ALL, or a specific tournament ID)',
+    description:
+      'Target Audience (e.g. GLOBAL, STAFF, PLAYERS_ALL, or a specific tournament ID)',
     example: 'GLOBAL',
     default: 'GLOBAL',
   })

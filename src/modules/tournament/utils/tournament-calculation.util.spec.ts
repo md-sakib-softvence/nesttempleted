@@ -174,7 +174,11 @@ describe('Tournament Calculations (tape eSports Calculation.docx specifications)
       const exp16 = calculateTournamentExpectedMatches(
         TournamentFormat.LEAGUE_AND_KNOCKOUT,
         16,
-        { groupsCount: 4, qualifiersPerGroup: 2, thirdPlacePlayoffEnabled: true },
+        {
+          groupsCount: 4,
+          qualifiersPerGroup: 2,
+          thirdPlacePlayoffEnabled: true,
+        },
       );
       expect(exp16.guaranteedMatchCount).toBe(32);
       expect(exp16.maximumPossibleMatchCount).toBe(32);

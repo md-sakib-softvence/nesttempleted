@@ -4,7 +4,11 @@ import {
   ScheduleVenueInput,
   Participant,
 } from './tournament-schedule.service';
-import { TournamentFormat, SchedulingMode, FrequencyStatus } from '@prisma/client';
+import {
+  TournamentFormat,
+  SchedulingMode,
+  FrequencyStatus,
+} from '@prisma/client';
 
 describe('TournamentScheduleService', () => {
   let service: TournamentScheduleService;
@@ -248,104 +252,164 @@ describe('TournamentScheduleService', () => {
   describe('Part 4: tape eSports Calculation Formulas on Service Layer', () => {
     it('verifies 8-team table figures from tape eSports Calculation.docx', () => {
       // League Single 8 = 28
-      const lSingle = service.calculateExpectedMatches(TournamentFormat.LEAGUE, 8);
+      const lSingle = service.calculateExpectedMatches(
+        TournamentFormat.LEAGUE,
+        8,
+      );
       expect(lSingle.guaranteedMatchCount).toBe(28);
 
       // League Double 8 = 56
-      const lDouble = service.calculateExpectedMatches(TournamentFormat.LEAGUE_DOUBLE, 8);
+      const lDouble = service.calculateExpectedMatches(
+        TournamentFormat.LEAGUE_DOUBLE,
+        8,
+      );
       expect(lDouble.guaranteedMatchCount).toBe(56);
 
       // Single Elimination 8 = 7 (8 with 3rd place)
-      const sElimNo3rd = service.calculateExpectedMatches(TournamentFormat.SINGLE_ELIMINATION, 8, {
-        thirdPlacePlayoffEnabled: false,
-      });
+      const sElimNo3rd = service.calculateExpectedMatches(
+        TournamentFormat.SINGLE_ELIMINATION,
+        8,
+        {
+          thirdPlacePlayoffEnabled: false,
+        },
+      );
       expect(sElimNo3rd.guaranteedMatchCount).toBe(7);
 
-      const sElimWith3rd = service.calculateExpectedMatches(TournamentFormat.SINGLE_ELIMINATION, 8, {
-        thirdPlacePlayoffEnabled: true,
-      });
+      const sElimWith3rd = service.calculateExpectedMatches(
+        TournamentFormat.SINGLE_ELIMINATION,
+        8,
+        {
+          thirdPlacePlayoffEnabled: true,
+        },
+      );
       expect(sElimWith3rd.guaranteedMatchCount).toBe(8);
 
       // Double Elimination 8 = 14 guaranteed, 15 maximum
-      const dElim = service.calculateExpectedMatches(TournamentFormat.DOUBLE_ELIMINATION, 8, {
-        hasGrandFinalReset: true,
-      });
+      const dElim = service.calculateExpectedMatches(
+        TournamentFormat.DOUBLE_ELIMINATION,
+        8,
+        {
+          hasGrandFinalReset: true,
+        },
+      );
       expect(dElim.guaranteedMatchCount).toBe(14);
       expect(dElim.conditionalMatchCount).toBe(1);
       expect(dElim.maximumPossibleMatchCount).toBe(15);
 
       // Hybrid 8 (2x4 top2) = 15 (16 with 3rd place)
-      const hSingleNo3rd = service.calculateExpectedMatches(TournamentFormat.LEAGUE_AND_KNOCKOUT, 8, {
-        groupsCount: 2,
-        qualifiersPerGroup: 2,
-        thirdPlacePlayoffEnabled: false,
-      });
+      const hSingleNo3rd = service.calculateExpectedMatches(
+        TournamentFormat.LEAGUE_AND_KNOCKOUT,
+        8,
+        {
+          groupsCount: 2,
+          qualifiersPerGroup: 2,
+          thirdPlacePlayoffEnabled: false,
+        },
+      );
       expect(hSingleNo3rd.guaranteedMatchCount).toBe(15);
 
-      const hSingleWith3rd = service.calculateExpectedMatches(TournamentFormat.LEAGUE_AND_KNOCKOUT, 8, {
-        groupsCount: 2,
-        qualifiersPerGroup: 2,
-        thirdPlacePlayoffEnabled: true,
-      });
+      const hSingleWith3rd = service.calculateExpectedMatches(
+        TournamentFormat.LEAGUE_AND_KNOCKOUT,
+        8,
+        {
+          groupsCount: 2,
+          qualifiersPerGroup: 2,
+          thirdPlacePlayoffEnabled: true,
+        },
+      );
       expect(hSingleWith3rd.guaranteedMatchCount).toBe(16);
 
       // Hybrid Double 8 = 29 (30 with 3rd place)
-      const hDoubleNo3rd = service.calculateExpectedMatches(TournamentFormat.LEAGUE_AND_KNOCKOUT_DOUBLE, 8, {
-        groupsCount: 2,
-        qualifiersPerGroup: 2,
-        thirdPlacePlayoffEnabled: false,
-      });
+      const hDoubleNo3rd = service.calculateExpectedMatches(
+        TournamentFormat.LEAGUE_AND_KNOCKOUT_DOUBLE,
+        8,
+        {
+          groupsCount: 2,
+          qualifiersPerGroup: 2,
+          thirdPlacePlayoffEnabled: false,
+        },
+      );
       expect(hDoubleNo3rd.guaranteedMatchCount).toBe(29);
 
-      const hDoubleWith3rd = service.calculateExpectedMatches(TournamentFormat.LEAGUE_AND_KNOCKOUT_DOUBLE, 8, {
-        groupsCount: 2,
-        qualifiersPerGroup: 2,
-        thirdPlacePlayoffEnabled: true,
-      });
+      const hDoubleWith3rd = service.calculateExpectedMatches(
+        TournamentFormat.LEAGUE_AND_KNOCKOUT_DOUBLE,
+        8,
+        {
+          groupsCount: 2,
+          qualifiersPerGroup: 2,
+          thirdPlacePlayoffEnabled: true,
+        },
+      );
       expect(hDoubleWith3rd.guaranteedMatchCount).toBe(30);
     });
 
     it('verifies 16-team and 128-team figures from tape eSports Calculation.docx', () => {
       // League 16 = 120
-      expect(service.calculateExpectedMatches(TournamentFormat.LEAGUE, 16).guaranteedMatchCount).toBe(120);
+      expect(
+        service.calculateExpectedMatches(TournamentFormat.LEAGUE, 16)
+          .guaranteedMatchCount,
+      ).toBe(120);
 
       // Double League 16 = 240
-      expect(service.calculateExpectedMatches(TournamentFormat.LEAGUE_DOUBLE, 16).guaranteedMatchCount).toBe(240);
+      expect(
+        service.calculateExpectedMatches(TournamentFormat.LEAGUE_DOUBLE, 16)
+          .guaranteedMatchCount,
+      ).toBe(240);
 
       // Hybrid 16 / 4 groups / top 2 = 31 without 3rd place, 32 with it
-      const h16 = service.calculateExpectedMatches(TournamentFormat.LEAGUE_AND_KNOCKOUT, 16, {
-        groupsCount: 4,
-        qualifiersPerGroup: 2,
-        thirdPlacePlayoffEnabled: false,
-      });
+      const h16 = service.calculateExpectedMatches(
+        TournamentFormat.LEAGUE_AND_KNOCKOUT,
+        16,
+        {
+          groupsCount: 4,
+          qualifiersPerGroup: 2,
+          thirdPlacePlayoffEnabled: false,
+        },
+      );
       expect(h16.guaranteedMatchCount).toBe(31);
 
-      const h16With3rd = service.calculateExpectedMatches(TournamentFormat.LEAGUE_AND_KNOCKOUT, 16, {
-        groupsCount: 4,
-        qualifiersPerGroup: 2,
-        thirdPlacePlayoffEnabled: true,
-      });
+      const h16With3rd = service.calculateExpectedMatches(
+        TournamentFormat.LEAGUE_AND_KNOCKOUT,
+        16,
+        {
+          groupsCount: 4,
+          qualifiersPerGroup: 2,
+          thirdPlacePlayoffEnabled: true,
+        },
+      );
       expect(h16With3rd.guaranteedMatchCount).toBe(32);
 
       // Double Hybrid 16 = 48 group + 8 QF + 4 SF + 1 final = 61 (62 with 3rd)
-      const dh16 = service.calculateExpectedMatches(TournamentFormat.LEAGUE_AND_KNOCKOUT_DOUBLE, 16, {
-        groupsCount: 4,
-        qualifiersPerGroup: 2,
-        thirdPlacePlayoffEnabled: false,
-      });
+      const dh16 = service.calculateExpectedMatches(
+        TournamentFormat.LEAGUE_AND_KNOCKOUT_DOUBLE,
+        16,
+        {
+          groupsCount: 4,
+          qualifiersPerGroup: 2,
+          thirdPlacePlayoffEnabled: false,
+        },
+      );
       expect(dh16.guaranteedMatchCount).toBe(61);
 
-      const dh16With3rd = service.calculateExpectedMatches(TournamentFormat.LEAGUE_AND_KNOCKOUT_DOUBLE, 16, {
-        groupsCount: 4,
-        qualifiersPerGroup: 2,
-        thirdPlacePlayoffEnabled: true,
-      });
+      const dh16With3rd = service.calculateExpectedMatches(
+        TournamentFormat.LEAGUE_AND_KNOCKOUT_DOUBLE,
+        16,
+        {
+          groupsCount: 4,
+          qualifiersPerGroup: 2,
+          thirdPlacePlayoffEnabled: true,
+        },
+      );
       expect(dh16With3rd.guaranteedMatchCount).toBe(62);
 
       // Double Elimination 128 = 254 guaranteed, 1 conditional reset, 255 maximum
-      const de128 = service.calculateExpectedMatches(TournamentFormat.DOUBLE_ELIMINATION, 128, {
-        hasGrandFinalReset: true,
-      });
+      const de128 = service.calculateExpectedMatches(
+        TournamentFormat.DOUBLE_ELIMINATION,
+        128,
+        {
+          hasGrandFinalReset: true,
+        },
+      );
       expect(de128.guaranteedMatchCount).toBe(254);
       expect(de128.conditionalMatchCount).toBe(1);
       expect(de128.maximumPossibleMatchCount).toBe(255);

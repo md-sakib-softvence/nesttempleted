@@ -26,7 +26,9 @@ export class MarketingDataService {
 
   async createMarketingData(dto: CreateMarketingDataDto) {
     // 1. Check if email already exists in Fan or Player
-    const existingFan = await this.prisma.fan.findUnique({ where: { email: dto.email } });
+    const existingFan = await this.prisma.fan.findUnique({
+      where: { email: dto.email },
+    });
 
     if (existingFan) {
       if (existingFan.isDeleted) {
@@ -68,13 +70,8 @@ export class MarketingDataService {
     );
 
     // Prepare marketing data omitting user-specific auth fields
-    const {
-      firstName,
-      surname,
-      email,
-      phoneNumber,
-      ...marketingDataFields
-    } = dto;
+    const { firstName, surname, email, phoneNumber, ...marketingDataFields } =
+      dto;
 
     const result = await this.prisma.$transaction(async (tx) => {
       // Create Fan
@@ -117,12 +114,7 @@ export class MarketingDataService {
   async getAllMarketingData(query: QueryOptions = {}) {
     const { where, skip, take, orderBy, page, limit } = buildPrismaQuery(
       query,
-      [
-        'favoriteGameConsole',
-        'favoriteFootballGame',
-        'profession',
-        'area',
-      ],
+      ['favoriteGameConsole', 'favoriteFootballGame', 'profession', 'area'],
     );
 
     where.isDeleted = false;

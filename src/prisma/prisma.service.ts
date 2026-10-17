@@ -48,7 +48,9 @@ export class PrismaService
         });
         this.logger.log('✅ Created default system configuration');
       } else {
-        this.logger.log('✅ System configuration already exists, skipping seed.');
+        this.logger.log(
+          '✅ System configuration already exists, skipping seed.',
+        );
       }
     } catch (error) {
       this.logger.error('Failed to seed system configuration', error);

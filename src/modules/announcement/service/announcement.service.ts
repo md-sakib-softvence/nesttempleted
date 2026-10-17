@@ -227,7 +227,15 @@ export class AnnouncementService {
     return template;
   }
 
-  async updateTemplate(idOrKey: string, updateDto: { message?: string; title?: string; description?: string; variables?: string[] }) {
+  async updateTemplate(
+    idOrKey: string,
+    updateDto: {
+      message?: string;
+      title?: string;
+      description?: string;
+      variables?: string[];
+    },
+  ) {
     const template = await this.getTemplateById(idOrKey);
 
     return this.prisma.announcementTemplate.update({
@@ -263,4 +271,3 @@ export class AnnouncementService {
     });
   }
 }
-

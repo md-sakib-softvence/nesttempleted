@@ -46,7 +46,9 @@ export class AnnouncementController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all Announcements with pagination, search, and filters' })
+  @ApiOperation({
+    summary: 'Get all Announcements with pagination, search, and filters',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
   @ApiQuery({ name: 'searchTerm', required: false, type: String })
@@ -66,7 +68,9 @@ export class AnnouncementController {
   // --- Automated Notification Templates ---
 
   @Get('template')
-  @ApiOperation({ summary: 'Get all automated announcement/notification templates' })
+  @ApiOperation({
+    summary: 'Get all automated announcement/notification templates',
+  })
   async getAllTemplates() {
     const data = await this.announcementService.getAllTemplates();
     return sendResponse({
@@ -109,7 +113,9 @@ export class AnnouncementController {
   }
 
   @Post('template/:id/reset')
-  @ApiOperation({ summary: 'Reset an announcement template to its default message' })
+  @ApiOperation({
+    summary: 'Reset an announcement template to its default message',
+  })
   async resetTemplate(@Param('id') id: string) {
     const data = await this.announcementService.resetTemplate(id);
     return sendResponse({
@@ -134,7 +140,10 @@ export class AnnouncementController {
     @Param('id') id: string,
     @Body() updateAnnouncementDto: UpdateAnnouncementDto,
   ) {
-    const data = await this.announcementService.update(id, updateAnnouncementDto);
+    const data = await this.announcementService.update(
+      id,
+      updateAnnouncementDto,
+    );
     return sendResponse({
       message: 'Announcement updated successfully',
       data,

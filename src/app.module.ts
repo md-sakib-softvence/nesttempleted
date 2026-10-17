@@ -6,6 +6,7 @@ import { APP_GUARD } from '@nestjs/core';
 import appConfig from './config/app.config';
 import databaseConfig from './config/database.config';
 import jwtConfig from './config/jwt.config';
+import paystackConfig from './config/paystack.config';
 import { PrismaModule } from './prisma/prisma.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { MailModule } from './modules/mail/mail.module';
@@ -20,12 +21,13 @@ import { MarketingDataModule } from './modules/marketing-data/marketing-data.mod
 import { SystemModule } from './modules/system/system.module';
 import { TournamentModule } from './modules/tournament/tournament.module';
 import { AnnouncementModule } from './modules/announcement/announcement.module';
+import { PaymentModule } from './modules/payment/payment.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, databaseConfig, jwtConfig],
+      load: [appConfig, databaseConfig, jwtConfig, paystackConfig],
       envFilePath: ['.env.local', '.env'],
     }),
     MailModule,
@@ -40,6 +42,7 @@ import { AnnouncementModule } from './modules/announcement/announcement.module';
     SystemModule,
     TournamentModule,
     AnnouncementModule,
+    PaymentModule,
   ],
   controllers: [AppController],
   providers: [

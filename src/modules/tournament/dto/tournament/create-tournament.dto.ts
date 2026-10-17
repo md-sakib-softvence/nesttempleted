@@ -407,9 +407,9 @@ export class CreateTournamentDto {
   @IsOptional()
   manageEventPrizes?: CreateManageEventPrizeDto[] | any;
 
-
   @ApiPropertyOptional({
-    description: 'List of participating player IDs or participants (JSON string or array)',
+    description:
+      'List of participating player IDs or participants (JSON string or array)',
     example: ['player-uuid-1', 'player-uuid-2'],
   })
   @Transform(({ value }) => {
@@ -444,5 +444,3 @@ export class CreateTournamentDto {
   @IsOptional()
   thirdPlacePlayoffEnabled?: boolean;
 }
-
-

@@ -8,7 +8,7 @@ export const createActivities = async (
   roleString: string,
 ) => {
   const role = roleString.toUpperCase() as Role;
-  
+
   return await prisma.activityLog.create({
     data: {
       title,

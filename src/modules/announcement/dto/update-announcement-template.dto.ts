@@ -7,7 +7,8 @@ export class UpdateAnnouncementTemplateDto extends PartialType(
 ) {
   @ApiPropertyOptional({
     description: 'Updated message body text',
-    example: 'Congratulations {{playerName}}! You have been selected for {{tournamentName}}. Please pay the entry fee of {{entryFee}}.',
+    example:
+      'Congratulations {{playerName}}! You have been selected for {{tournamentName}}. Please pay the entry fee of {{entryFee}}.',
   })
   @IsString()
   @IsOptional()

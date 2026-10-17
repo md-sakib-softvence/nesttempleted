@@ -8,7 +8,6 @@ import {
   ValidateIf,
 } from 'class-validator';
 
-
 export class CreateMarketingDataDto {
   // --- Common Fields for User (Fan/Player) ---
   @ApiProperty({ description: 'First Name' })
@@ -16,12 +15,10 @@ export class CreateMarketingDataDto {
   @IsNotEmpty()
   firstName: string;
 
-
   @ApiProperty({ description: 'Email' })
   @IsEmail()
   @IsNotEmpty()
   email: string;
-
 
   @ApiProperty({ description: 'Phone Number' })
   @IsString()
