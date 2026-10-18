@@ -21,8 +21,15 @@ import {
   ScheduleVenueInput,
   TournamentSchedulePayload,
 } from './tournament-schedule.service';
-import { SchedulingMode, SponsorStatus } from '@prisma/client';
+import { SchedulingMode, SponsorStatus, TournamentRegistrationStatus, RaffleStatus } from '@prisma/client';
 import { normalizeStringArray } from '../utils/file-upload.util';
+import { UpdateMatchScoreDto } from '../dto/tournament/update-match-score.dto';
+import { MatchNoShowDto } from '../dto/tournament/match-no-show.dto';
+import { CreateTournamentRegistrationDto } from '../dto/tournament/create-registration.dto';
+import { UpdateRegistrationStatusDto } from '../dto/tournament/update-registration-status.dto';
+import { OpenRegistrationDto } from '../dto/tournament/open-registration.dto';
+import { CreateRaffleDto } from '../dto/tournament/create-raffle.dto';
+import { UpdateTournamentTemplatesDto } from '../dto/tournament/update-templates.dto';
 
 @Injectable()
 export class TournamentService {
@@ -1145,5 +1152,623 @@ export class TournamentService {
     });
 
     return this.presignTournamentMedia(updated);
+  }
+
+  /**
+   * Updates score and status for a canonical match, advancing winners in brackets if applicable.
+   */
+  async updateMatchScore(
+    tournamentId: string,
+    matchId: string,
+    dto: UpdateMatchScoreDto,
+  ) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+    });
+
+    if (!tournament) {
+      throw new NotFoundException(`Tournament #${tournamentId} not found`);
+    }
+
+    const schedule = (tournament.schedule as any) || {};
+    const matches: any[] = schedule.structure?.matches || schedule.matches || [];
+
+    const matchIndex = matches.findIndex(
+      (m: any) => m.id === matchId || m.canonicalMatchId === matchId,
+    );
+
+    if (matchIndex === -1) {
+      throw new NotFoundException(`Match #${matchId} not found in tournament schedule`);
+    }
+
+    const match = matches[matchIndex];
+    match.score1 = dto.score1;
+    match.score2 = dto.score2;
+    match.status = dto.status || 'COMPLETED';
+
+    // Bracket Progression logic
+    if (match.score1 !== null && match.score2 !== null) {
+      const winner =
+        match.score1 > match.score2
+          ? match.participant1Ref
+          : match.score2 > match.score1
+            ? match.participant2Ref
+            : null;
+
+      const loser =
+        match.score1 > match.score2
+          ? match.participant2Ref
+          : match.score2 > match.score1
+            ? match.participant1Ref
+            : null;
+
+      if (winner && match.nextMatchWinnerTargetId) {
+        const nextWinnerMatch = matches.find(
+          (m: any) => m.id === match.nextMatchWinnerTargetId,
+        );
+        if (nextWinnerMatch) {
+          if (!nextWinnerMatch.participant1Ref || nextWinnerMatch.participant1Ref.sourceMatchId === match.id) {
+            nextWinnerMatch.participant1Ref = winner;
+          } else if (!nextWinnerMatch.participant2Ref || nextWinnerMatch.participant2Ref.sourceMatchId === match.id) {
+            nextWinnerMatch.participant2Ref = winner;
+          }
+        }
+      }
+
+      if (loser && match.nextMatchLoserTargetId) {
+        const nextLoserMatch = matches.find(
+          (m: any) => m.id === match.nextMatchLoserTargetId,
+        );
+        if (nextLoserMatch) {
+          if (!nextLoserMatch.participant1Ref || nextLoserMatch.participant1Ref.sourceMatchId === match.id) {
+            nextLoserMatch.participant1Ref = loser;
+          } else if (!nextLoserMatch.participant2Ref || nextLoserMatch.participant2Ref.sourceMatchId === match.id) {
+            nextLoserMatch.participant2Ref = loser;
+          }
+        }
+      }
+
+      // Check Grand Final Reset condition
+      for (const m of matches) {
+        if (m.conditionType === 'GRAND_FINAL_RESET' && m.conditionMatchId === match.id) {
+          const activated = match.status === 'COMPLETED' && match.score2 > match.score1;
+          m.isSchedulable = activated;
+        }
+      }
+    }
+
+    // Update physical timeslot games in calendar / venueSchedules if exists
+    const venueList = schedule.calendar?.venues || schedule.venueSchedules || [];
+    if (Array.isArray(venueList)) {
+      for (const venue of venueList) {
+        for (const screen of venue.screens || []) {
+          for (const day of screen.days || []) {
+            for (const slot of day.timeslots || []) {
+              if (slot.game && (slot.game.id === matchId || slot.game.canonicalMatchId === matchId)) {
+                slot.game.score1 = match.score1;
+                slot.game.score2 = match.score2;
+                slot.game.status = match.status;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    matches[matchIndex] = match;
+    if (schedule.structure) {
+      schedule.structure.matches = matches;
+    } else {
+      schedule.matches = matches;
+    }
+
+    await this.prisma.tournament.update({
+      where: { tournamentId },
+      data: { schedule: schedule as any },
+    });
+
+    return match;
+  }
+
+  /**
+   * Records a No-Show for an offending player, assigning a 3-0 victory to the opponent.
+   */
+  async recordNoShow(
+    tournamentId: string,
+    matchId: string,
+    dto: MatchNoShowDto,
+  ) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+    });
+    if (!tournament) {
+      throw new NotFoundException(`Tournament #${tournamentId} not found`);
+    }
+
+    const schedule = (tournament.schedule as any) || {};
+    const matches: any[] = schedule.structure?.matches || schedule.matches || [];
+    const match = matches.find(
+      (m: any) => m.id === matchId || m.canonicalMatchId === matchId,
+    );
+
+    if (!match) {
+      throw new NotFoundException(`Match #${matchId} not found`);
+    }
+
+    const isP1 =
+      match.participant1Ref?.id === dto.offendingPlayerId ||
+      match.player1Id === dto.offendingPlayerId;
+
+    const score1 = isP1 ? 0 : 3;
+    const score2 = isP1 ? 3 : 0;
+
+    return this.updateMatchScore(tournamentId, matchId, {
+      score1,
+      score2,
+      status: 'COMPLETED',
+      offendingPlayerId: dto.offendingPlayerId,
+    });
+  }
+
+  /**
+   * Returns all completed and scored matches of a tournament.
+   */
+  async getTournamentResults(tournamentId: string) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+    });
+    if (!tournament) {
+      throw new NotFoundException(`Tournament #${tournamentId} not found`);
+    }
+
+    const schedule = (tournament.schedule as any) || {};
+    const matches: any[] = schedule.structure?.matches || schedule.matches || [];
+
+    return matches.filter(
+      (m: any) =>
+        m.status === 'COMPLETED' || (m.score1 !== null && m.score2 !== null),
+    );
+  }
+
+  /**
+   * Computes standings / leaderboard table from completed tournament matches.
+   */
+  async getTournamentLeaderboard(tournamentId: string) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+    });
+    if (!tournament) {
+      throw new NotFoundException(`Tournament #${tournamentId} not found`);
+    }
+
+    const schedule = (tournament.schedule as any) || {};
+    const matches: any[] = schedule.structure?.matches || schedule.matches || [];
+    const participants: any[] = schedule.participants || schedule.structure?.participants || [];
+
+    const statsMap = new Map<string, {
+      playerId: string;
+      name: string;
+      played: number;
+      won: number;
+      drawn: number;
+      lost: number;
+      goalsFor: number;
+      goalsAgainst: number;
+      goalDifference: number;
+      points: number;
+    }>();
+
+    const getOrInitStats = (id: string, defaultName: string) => {
+      if (!statsMap.has(id)) {
+        statsMap.set(id, {
+          playerId: id,
+          name: defaultName,
+          played: 0,
+          won: 0,
+          drawn: 0,
+          lost: 0,
+          goalsFor: 0,
+          goalsAgainst: 0,
+          goalDifference: 0,
+          points: 0,
+        });
+      }
+      return statsMap.get(id)!;
+    };
+
+    // Initialize all participants
+    for (const p of participants) {
+      getOrInitStats(p.id, p.name || p.displayName || p.id);
+    }
+
+    // Process completed matches
+    for (const match of matches) {
+      if (
+        (match.status === 'COMPLETED' || (match.score1 !== null && match.score2 !== null))
+      ) {
+        const p1Id = match.player1Id || match.participant1Ref?.id || match.participant1Ref?.value;
+        const p2Id = match.player2Id || match.participant2Ref?.id || match.participant2Ref?.value;
+
+        if (!p1Id || !p2Id) continue;
+
+        const p1Name = match.player1Name || match.participant1Ref?.name || `Player ${p1Id}`;
+        const p2Name = match.player2Name || match.participant2Ref?.name || `Player ${p2Id}`;
+
+        const s1 = Number(match.score1) || 0;
+        const s2 = Number(match.score2) || 0;
+
+        const p1Stats = getOrInitStats(p1Id, p1Name);
+        const p2Stats = getOrInitStats(p2Id, p2Name);
+
+        p1Stats.played += 1;
+        p2Stats.played += 1;
+        p1Stats.goalsFor += s1;
+        p1Stats.goalsAgainst += s2;
+        p2Stats.goalsFor += s2;
+        p2Stats.goalsAgainst += s1;
+
+        if (s1 > s2) {
+          p1Stats.won += 1;
+          p1Stats.points += 3;
+          p2Stats.lost += 1;
+        } else if (s2 > s1) {
+          p2Stats.won += 1;
+          p2Stats.points += 3;
+          p1Stats.lost += 1;
+        } else {
+          p1Stats.drawn += 1;
+          p1Stats.points += 1;
+          p2Stats.drawn += 1;
+          p2Stats.points += 1;
+        }
+
+        p1Stats.goalDifference = p1Stats.goalsFor - p1Stats.goalsAgainst;
+        p2Stats.goalDifference = p2Stats.goalsFor - p2Stats.goalsAgainst;
+      }
+    }
+
+    const standings = Array.from(statsMap.values()).sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference;
+      return b.goalsFor - a.goalsFor;
+    });
+
+    return standings;
+  }
+
+  /**
+   * Registers a player for a tournament.
+   */
+  async createRegistration(
+    tournamentId: string,
+    dto: CreateTournamentRegistrationDto,
+  ) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+      include: { registrations: true },
+    });
+
+    if (!tournament) {
+      throw new NotFoundException(`Tournament #${tournamentId} not found`);
+    }
+
+    const existing = await this.prisma.tournamentRegistration.findUnique({
+      where: {
+        tournamentId_playerId: {
+          tournamentId,
+          playerId: dto.playerId,
+        },
+      },
+    });
+
+    if (existing) {
+      throw new BadRequestException('Player is already registered for this tournament');
+    }
+
+    // Determine initial status based on capacity
+    const currentConfirmedOrRegistered = tournament.registrations.filter(
+      (r) =>
+        r.status === TournamentRegistrationStatus.CONFIRMED ||
+        r.status === TournamentRegistrationStatus.REGISTERED,
+    ).length;
+
+    const initialStatus =
+      currentConfirmedOrRegistered >= tournament.capacity
+        ? TournamentRegistrationStatus.WAITLISTED
+        : TournamentRegistrationStatus.REGISTERED;
+
+    return this.prisma.tournamentRegistration.create({
+      data: {
+        tournamentId,
+        playerId: dto.playerId,
+        homeVenueId: dto.homeVenueId,
+        primaryTeamId: dto.primaryTeamId,
+        secondaryTeamId: dto.secondaryTeamId,
+        jerseySize: dto.jerseySize,
+        playerPhotoUrl: dto.playerPhotoUrl,
+        status: initialStatus,
+        paymentStatus: 'PENDING',
+      },
+      include: {
+        player: {
+          select: {
+            playerId: true,
+            firstName: true,
+            lastName: true,
+            gamerTag: true,
+            email: true,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Gets all tournament registrations grouped by tabs (Registered, Selected Unpaid, Confirmed, Waitlist).
+   */
+  async getTournamentRegistrations(tournamentId: string) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+    });
+
+    if (!tournament) {
+      throw new NotFoundException(`Tournament #${tournamentId} not found`);
+    }
+
+    const registrations = await this.prisma.tournamentRegistration.findMany({
+      where: { tournamentId },
+      include: {
+        player: {
+          select: {
+            playerId: true,
+            firstName: true,
+            lastName: true,
+            gamerTag: true,
+            email: true,
+            phoneNumber: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return {
+      registered: registrations.filter(
+        (r) => r.status === TournamentRegistrationStatus.REGISTERED,
+      ),
+      selectedUnpaid: registrations.filter(
+        (r) => r.status === TournamentRegistrationStatus.SELECTED_UNPAID,
+      ),
+      confirmed: registrations.filter(
+        (r) => r.status === TournamentRegistrationStatus.CONFIRMED,
+      ),
+      waitlist: registrations.filter(
+        (r) => r.status === TournamentRegistrationStatus.WAITLISTED,
+      ),
+      totalCount: registrations.length,
+    };
+  }
+
+  /**
+   * Updates registration status (e.g. promoting from Registered to Confirmed).
+   */
+  async updateRegistrationStatus(
+    tournamentId: string,
+    registrationId: string,
+    dto: UpdateRegistrationStatusDto,
+  ) {
+    const registration = await this.prisma.tournamentRegistration.findFirst({
+      where: {
+        registrationId,
+        tournamentId,
+      },
+    });
+
+    if (!registration) {
+      throw new NotFoundException(`Registration #${registrationId} not found`);
+    }
+
+    return this.prisma.tournamentRegistration.update({
+      where: { registrationId },
+      data: {
+        status: dto.status,
+        ...(dto.paymentStatus ? { paymentStatus: dto.paymentStatus } : {}),
+      },
+      include: {
+        player: true,
+      },
+    });
+  }
+
+  /**
+   * Open tournament registration with mode, capacity, and deadline.
+   */
+  async openRegistration(tournamentId: string, dto: OpenRegistrationDto) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+    });
+    if (!tournament) {
+      throw new NotFoundException(`Tournament #${tournamentId} not found`);
+    }
+
+    return this.prisma.tournament.update({
+      where: { tournamentId },
+      data: {
+        registrationOpen: true,
+        registrationCutOffMode: dto.mode,
+        ...(dto.capacity !== undefined ? { capacity: dto.capacity } : {}),
+        ...(dto.deadline ? { deadline: new Date(dto.deadline) } : {}),
+        ...(dto.requireJerseySize !== undefined ? { requireJerseySize: dto.requireJerseySize } : {}),
+      },
+    });
+  }
+
+  /**
+   * Close tournament registration.
+   */
+  async closeRegistration(tournamentId: string) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+    });
+    if (!tournament) {
+      throw new NotFoundException(`Tournament #${tournamentId} not found`);
+    }
+
+    return this.prisma.tournament.update({
+      where: { tournamentId },
+      data: { registrationOpen: false },
+    });
+  }
+
+  /**
+   * Pause tournament scheduling.
+   */
+  async pauseScheduling(tournamentId: string) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+    });
+    if (!tournament) {
+      throw new NotFoundException(`Tournament #${tournamentId} not found`);
+    }
+
+    return this.prisma.tournament.update({
+      where: { tournamentId },
+      data: { schedulingPaused: true },
+    });
+  }
+
+  /**
+   * Resume tournament scheduling.
+   */
+  async resumeScheduling(tournamentId: string) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+    });
+    if (!tournament) {
+      throw new NotFoundException(`Tournament #${tournamentId} not found`);
+    }
+
+    return this.prisma.tournament.update({
+      where: { tournamentId },
+      data: { schedulingPaused: false },
+    });
+  }
+
+  /**
+   * Get all raffles for tournament.
+   */
+  async getRaffles(tournamentId: string) {
+    return this.prisma.raffle.findMany({
+      where: { tournamentId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /**
+   * Create a new raffle.
+   */
+  async createRaffle(tournamentId: string, dto: CreateRaffleDto) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+    });
+    if (!tournament) {
+      throw new NotFoundException(`Tournament #${tournamentId} not found`);
+    }
+
+    return this.prisma.raffle.create({
+      data: {
+        tournamentId,
+        name: dto.name,
+        prizeDescription: dto.prizeDescription,
+        numberOfWinners: dto.numberOfWinners || 1,
+        drawDate: dto.drawDate ? new Date(dto.drawDate) : null,
+        registrationCloseDate: dto.registrationCloseDate
+          ? new Date(dto.registrationCloseDate)
+          : null,
+        entries: [],
+        winners: [],
+      },
+    });
+  }
+
+  /**
+   * Draws random winners for a raffle from its entries.
+   */
+  async drawRaffle(tournamentId: string, raffleId: string) {
+    const raffle = await this.prisma.raffle.findFirst({
+      where: { raffleId, tournamentId },
+    });
+    if (!raffle) {
+      throw new NotFoundException(`Raffle #${raffleId} not found`);
+    }
+
+    const entries = Array.isArray(raffle.entries) ? (raffle.entries as any[]) : [];
+    if (entries.length === 0) {
+      throw new BadRequestException('Cannot draw raffle: No entries found');
+    }
+
+    // Shuffle entries
+    const shuffled = [...entries].sort(() => 0.5 - Math.random());
+    const count = Math.min(raffle.numberOfWinners, shuffled.length);
+    const winners = shuffled.slice(0, count).map((entry, index) => ({
+      position: index + 1,
+      userId: entry.userId,
+      name: entry.name,
+      ticketNumber: entry.ticketNumber,
+      drawnAt: new Date().toISOString(),
+    }));
+
+    return this.prisma.raffle.update({
+      where: { raffleId },
+      data: {
+        status: RaffleStatus.DRAWN,
+        winners: winners as any,
+      },
+    });
+  }
+
+  /**
+   * Update Player Card and Fan Pass Templates.
+   */
+  async updateTemplates(
+    tournamentId: string,
+    dto: UpdateTournamentTemplatesDto,
+  ) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+    });
+    if (!tournament) {
+      throw new NotFoundException(`Tournament #${tournamentId} not found`);
+    }
+
+    return this.prisma.tournament.update({
+      where: { tournamentId },
+      data: {
+        ...(dto.playerCardTemplate !== undefined
+          ? { playerCardTemplate: dto.playerCardTemplate as any }
+          : {}),
+        ...(dto.fanPassTemplate !== undefined
+          ? { fanPassTemplate: dto.fanPassTemplate as any }
+          : {}),
+      },
+    });
+  }
+
+  /**
+   * Get Player Card and Fan Pass Templates.
+   */
+  async getTemplates(tournamentId: string) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+      select: {
+        playerCardTemplate: true,
+        fanPassTemplate: true,
+      },
+    });
+    if (!tournament) {
+      throw new NotFoundException(`Tournament #${tournamentId} not found`);
+    }
+
+    return tournament;
   }
 }

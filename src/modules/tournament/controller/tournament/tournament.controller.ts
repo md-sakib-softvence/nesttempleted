@@ -25,6 +25,13 @@ import { UpdateTournamentDto } from '../../dto/tournament/update-tournament.dto'
 import { AllocateMatchDto } from '../../dto/tournament/allocate-match.dto';
 import { GenerateCalendarDto } from '../../dto/tournament/generate-calendar.dto';
 import { AutoAllocationDto } from '../../dto/tournament/auto-allocation.dto';
+import { UpdateMatchScoreDto } from '../../dto/tournament/update-match-score.dto';
+import { MatchNoShowDto } from '../../dto/tournament/match-no-show.dto';
+import { CreateTournamentRegistrationDto } from '../../dto/tournament/create-registration.dto';
+import { UpdateRegistrationStatusDto } from '../../dto/tournament/update-registration-status.dto';
+import { OpenRegistrationDto } from '../../dto/tournament/open-registration.dto';
+import { CreateRaffleDto } from '../../dto/tournament/create-raffle.dto';
+import { UpdateTournamentTemplatesDto } from '../../dto/tournament/update-templates.dto';
 import { sendResponse } from '../../../utils/response.util';
 import { QueryOptions } from '../../../utils/query.util';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard';
@@ -361,6 +368,193 @@ export class TournamentController {
     );
     return sendResponse({
       message: 'Matches auto-allocated successfully',
+      data,
+    });
+  }
+
+  @Post(':id/matches/:matchId/score')
+  @ApiOperation({ summary: 'Update/Enter score for a match (and advance brackets)' })
+  async updateMatchScore(
+    @Param('id') id: string,
+    @Param('matchId') matchId: string,
+    @Body() body: UpdateMatchScoreDto,
+  ) {
+    const data = await this.tournamentService.updateMatchScore(id, matchId, body);
+    return sendResponse({
+      message: 'Match score updated successfully',
+      data,
+    });
+  }
+
+  @Post(':id/matches/:matchId/no-show')
+  @ApiOperation({ summary: 'Record No-Show for a player in a match (3-0 loss)' })
+  async recordNoShow(
+    @Param('id') id: string,
+    @Param('matchId') matchId: string,
+    @Body() body: MatchNoShowDto,
+  ) {
+    const data = await this.tournamentService.recordNoShow(id, matchId, body);
+    return sendResponse({
+      message: 'Match marked as No-Show successfully',
+      data,
+    });
+  }
+
+  @Get(':id/results')
+  @ApiOperation({ summary: 'Get completed and scored match results' })
+  async getResults(@Param('id') id: string) {
+    const data = await this.tournamentService.getTournamentResults(id);
+    return sendResponse({
+      message: 'Tournament results retrieved successfully',
+      data,
+    });
+  }
+
+  @Get(':id/leaderboard')
+  @ApiOperation({ summary: 'Get tournament standings/leaderboard' })
+  async getLeaderboard(@Param('id') id: string) {
+    const data = await this.tournamentService.getTournamentLeaderboard(id);
+    return sendResponse({
+      message: 'Tournament leaderboard retrieved successfully',
+      data,
+    });
+  }
+
+  @Post(':id/registrations')
+  @ApiOperation({ summary: 'Register a player for this tournament' })
+  async registerPlayer(
+    @Param('id') id: string,
+    @Body() body: CreateTournamentRegistrationDto,
+  ) {
+    const data = await this.tournamentService.createRegistration(id, body);
+    return sendResponse({
+      message: 'Player registered successfully',
+      data,
+    });
+  }
+
+  @Get(':id/registrations')
+  @ApiOperation({ summary: 'Get all tournament registrations by status categories' })
+  async getRegistrations(@Param('id') id: string) {
+    const data = await this.tournamentService.getTournamentRegistrations(id);
+    return sendResponse({
+      message: 'Tournament registrations retrieved successfully',
+      data,
+    });
+  }
+
+  @Patch(':id/registrations/:registrationId/status')
+  @ApiOperation({ summary: 'Update player registration status (Confirmed, Selected, Waitlist)' })
+  async updateRegistrationStatus(
+    @Param('id') id: string,
+    @Param('registrationId') registrationId: string,
+    @Body() body: UpdateRegistrationStatusDto,
+  ) {
+    const data = await this.tournamentService.updateRegistrationStatus(id, registrationId, body);
+    return sendResponse({
+      message: 'Registration status updated successfully',
+      data,
+    });
+  }
+
+  @Post(':id/registration/open')
+  @ApiOperation({ summary: 'Open tournament registration with mode, capacity, and deadline' })
+  async openRegistration(
+    @Param('id') id: string,
+    @Body() body: OpenRegistrationDto,
+  ) {
+    const data = await this.tournamentService.openRegistration(id, body);
+    return sendResponse({
+      message: 'Tournament registration opened successfully',
+      data,
+    });
+  }
+
+  @Post(':id/registration/close')
+  @ApiOperation({ summary: 'Close tournament registration' })
+  async closeRegistration(@Param('id') id: string) {
+    const data = await this.tournamentService.closeRegistration(id);
+    return sendResponse({
+      message: 'Tournament registration closed successfully',
+      data,
+    });
+  }
+
+  @Post(':id/pause')
+  @ApiOperation({ summary: 'Pause tournament scheduling' })
+  async pauseScheduling(@Param('id') id: string) {
+    const data = await this.tournamentService.pauseScheduling(id);
+    return sendResponse({
+      message: 'Tournament scheduling paused successfully',
+      data,
+    });
+  }
+
+  @Post(':id/resume')
+  @ApiOperation({ summary: 'Resume tournament scheduling' })
+  async resumeScheduling(@Param('id') id: string) {
+    const data = await this.tournamentService.resumeScheduling(id);
+    return sendResponse({
+      message: 'Tournament scheduling resumed successfully',
+      data,
+    });
+  }
+
+  @Get(':id/raffles')
+  @ApiOperation({ summary: 'Get all raffles for tournament' })
+  async getRaffles(@Param('id') id: string) {
+    const data = await this.tournamentService.getRaffles(id);
+    return sendResponse({
+      message: 'Tournament raffles retrieved successfully',
+      data,
+    });
+  }
+
+  @Post(':id/raffles')
+  @ApiOperation({ summary: 'Create a raffle for tournament' })
+  async createRaffle(
+    @Param('id') id: string,
+    @Body() body: CreateRaffleDto,
+  ) {
+    const data = await this.tournamentService.createRaffle(id, body);
+    return sendResponse({
+      message: 'Raffle created successfully',
+      data,
+    });
+  }
+
+  @Post(':id/raffles/:raffleId/draw')
+  @ApiOperation({ summary: 'Draw winners for a raffle' })
+  async drawRaffle(
+    @Param('id') id: string,
+    @Param('raffleId') raffleId: string,
+  ) {
+    const data = await this.tournamentService.drawRaffle(id, raffleId);
+    return sendResponse({
+      message: 'Raffle drawn successfully',
+      data,
+    });
+  }
+
+  @Patch(':id/templates')
+  @ApiOperation({ summary: 'Update Player Card and Fan Pass templates' })
+  async updateTemplates(
+    @Param('id') id: string,
+    @Body() body: UpdateTournamentTemplatesDto,
+  ) {
+    const data = await this.tournamentService.updateTemplates(id, body);
+    return sendResponse({
+      message: 'Templates updated successfully',
+      data,
+    });
+  }
+
+  @Get(':id/templates')
+  @ApiOperation({ summary: 'Get Player Card and Fan Pass templates' })
+  async getTemplates(@Param('id') id: string) {
+    const data = await this.tournamentService.getTemplates(id);
+    return sendResponse({
+      message: 'Templates retrieved successfully',
       data,
     });
   }
