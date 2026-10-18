@@ -33,6 +33,11 @@ model Tournament {
   schedulingMode         SchedulingMode          @default(MANUAL)
   schedule               Json?
   status                 TournamentStatus        @default(UPCOMING)
+  registrationOpen       Boolean                 @default(false)
+  requireJerseySize      Boolean                 @default(false)
+  schedulingPaused       Boolean                 @default(false)
+  playerCardTemplate     Json?
+  fanPassTemplate        Json?
   isDeleted              Boolean                 @default(false)
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
@@ -41,6 +46,8 @@ model Tournament {
   manageEventPrizes ManageEventPrize[]
   venues            Venue[]
   sponsors          Sponsor[]
+  registrations     TournamentRegistration[]
+  raffles           Raffle[]
 }
 
 model ManageEventCost {
@@ -161,4 +168,56 @@ enum SchedulingMode {
   AUTO_HOME_VENUE
   PLAYER_SELF
   AUTO_RANDOM
+}
+
+model TournamentRegistration {
+  registrationId  String                       @id @default(uuid())
+  tournamentId    String
+  tournament      Tournament                   @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+  playerId        String
+  player          Player                       @relation(fields: [playerId], references: [playerId], onDelete: Cascade)
+  homeVenueId     String?
+  primaryTeamId   String?
+  secondaryTeamId String?
+  status          TournamentRegistrationStatus @default(REGISTERED)
+  paymentStatus   String                       @default("PENDING")
+  jerseySize      String?
+  playerPhotoUrl  String?
+  qrCodeString    String?
+  checkedInVenue  Boolean                      @default(false)
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+
+  @@unique([tournamentId, playerId])
+}
+
+enum TournamentRegistrationStatus {
+  REGISTERED
+  SELECTED_UNPAID
+  CONFIRMED
+  WAITLISTED
+  CANCELLED
+}
+
+model Raffle {
+  raffleId              String        @id @default(uuid())
+  tournamentId          String
+  tournament            Tournament    @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+  name                  String
+  prizeDescription      String
+  numberOfWinners       Int           @default(1)
+  status                RaffleStatus  @default(OPEN)
+  drawDate              DateTime?
+  registrationCloseDate DateTime?
+  entries               Json?         @default("[]")
+  winners               Json?         @default("[]")
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+}
+
+enum RaffleStatus {
+  OPEN
+  CLOSED
+  DRAWN
+  CANCELLED
 }
