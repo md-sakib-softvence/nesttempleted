@@ -22,6 +22,7 @@ import { SystemModule } from './modules/system/system.module';
 import { TournamentModule } from './modules/tournament/tournament.module';
 import { AnnouncementModule } from './modules/announcement/announcement.module';
 import { PaymentModule } from './modules/payment/payment.module';
+import { SeriesModule } from './modules/series/series.module';
 
 @Module({
   imports: [
@@ -33,6 +34,8 @@ import { PaymentModule } from './modules/payment/payment.module';
     MailModule,
     NotificationModule,
     PrismaModule,
+    TournamentModule,
+    SeriesModule,
     AdminModule,
     AuthModule,
     EmployeeModule,
@@ -40,7 +43,6 @@ import { PaymentModule } from './modules/payment/payment.module';
     PlayerModule,
     MarketingDataModule,
     SystemModule,
-    TournamentModule,
     AnnouncementModule,
     PaymentModule,
   ],

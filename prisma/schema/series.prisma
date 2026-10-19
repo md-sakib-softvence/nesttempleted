@@ -1,0 +1,141 @@
+model Series {
+  id                    String                   @id @default(uuid())
+  name                  String
+  code                  String                   @unique
+  description           String?
+  logoUrl               String?
+  imageUrl              String?
+  status                SeriesStatus             @default(DRAFT)
+  startDate             DateTime
+  endDate               DateTime?
+  participantType       SeriesParticipantType    @default(PLAYER)
+  participationMode     SeriesParticipationMode  @default(OPEN_SERIES)
+  minimumEventsRequired Int                      @default(1)
+  scoringMethod         SeriesScoringMethod      @default(CUMULATIVE)
+  bestNResults          Int                      @default(0)
+  scoringConfig         Json
+  published             Boolean                  @default(false)
+  version               Int                      @default(1)
+  isDeleted             Boolean                  @default(false)
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+
+  tournaments           SeriesTournament[]
+  participants          SeriesParticipant[]
+  pointAdjustments      SeriesPointAdjustment[]
+  publication           SeriesPublication?
+}
+
+model SeriesTournament {
+  seriesId         String
+  series           Series      @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  tournamentId     String
+  tournament       Tournament  @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+  sequenceOrder    Int
+  weightMultiplier Float       @default(1.0)
+  createdAt        DateTime    @default(now())
+
+  @@id([seriesId, tournamentId])
+}
+
+model SeriesParticipant {
+  id                     String                     @id @default(uuid())
+  seriesId               String
+  series                 Series                     @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  playerId               String
+  player                 Player                     @relation(fields: [playerId], references: [playerId], onDelete: Cascade)
+  status                 SeriesParticipantStatus    @default(ACTIVE)
+  qualificationStatus    SeriesQualificationStatus  @default(PROVISIONAL)
+  approved               Boolean                    @default(true)
+  tournamentsEntered     Int                        @default(0)
+  tournamentsCompleted   Int                        @default(0)
+  eventsMissed           Int                        @default(0)
+  wins                   Int                        @default(0)
+  podiums                Int                        @default(0)
+  goalsFor               Int                        @default(0)
+  goalsAgainst           Int                        @default(0)
+  goalDifference         Int                        @default(0)
+  totalPoints            Int                        @default(0)
+  currentRank            Int?
+  previousRank           Int?
+  movement               SeriesRankMovement         @default(same)
+  disqualificationReason String?
+  lastTournamentPoints   Int                        @default(0)
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
+
+  adjustments            SeriesPointAdjustment[]
+
+  @@unique([seriesId, playerId])
+}
+
+model SeriesPointAdjustment {
+  id            String            @id @default(uuid())
+  seriesId      String
+  series        Series            @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  participantId String
+  participant   SeriesParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  points        Int
+  reason        String
+  createdBy     String?
+  createdAt     DateTime          @default(now())
+}
+
+model SeriesPublication {
+  seriesId     String                  @id
+  series       Series                  @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  enabled      Boolean                 @default(false)
+  publicSlug   String                  @unique
+  settings     Json
+  status       SeriesPublicationStatus @default(NOT_PUBLISHED)
+  publishedAt  DateTime?
+  updatedAt    DateTime                @updatedAt
+}
+
+enum SeriesStatus {
+  DRAFT
+  UPCOMING
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum SeriesParticipantType {
+  PLAYER
+  TEAM
+}
+
+enum SeriesParticipationMode {
+  OPEN_SERIES
+  CLOSED_SERIES
+}
+
+enum SeriesScoringMethod {
+  CUMULATIVE
+  BEST_N_RESULTS
+}
+
+enum SeriesParticipantStatus {
+  ACTIVE
+  INACTIVE
+  WITHDRAWN
+  DISQUALIFIED
+}
+
+enum SeriesQualificationStatus {
+  QUALIFIED
+  PROVISIONAL
+  NOT_QUALIFIED
+}
+
+enum SeriesRankMovement {
+  up
+  down
+  same
+}
+
+enum SeriesPublicationStatus {
+  NOT_PUBLISHED
+  PUBLISHED
+  DRAFT
+}
