@@ -1,14 +1,22 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsInt, IsNotEmpty, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateSeriesAdjustmentDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'Series participant ID',
     example: 'sp-01',
   })
   @IsString()
-  @IsNotEmpty()
-  participantId: string;
+  @IsOptional()
+  participantId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Player ID (alias for participant resolution)',
+    example: 'player-uuid',
+  })
+  @IsString()
+  @IsOptional()
+  playerId?: string;
 
   @ApiProperty({
     description: 'Points to add or deduct (+ or -)',

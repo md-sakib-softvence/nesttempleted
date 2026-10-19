@@ -1089,23 +1089,45 @@ export class SeriesService {
       throw new NotFoundException(`Series with ID '${seriesId}' not found`);
     }
 
-    const participant = await this.prisma.seriesParticipant.findFirst({
+    const targetId = dto.participantId || dto.playerId;
+    if (!targetId) {
+      throw new BadRequestException('Either participantId or playerId is required');
+    }
+
+    let participant = await this.prisma.seriesParticipant.findFirst({
       where: {
-        id: dto.participantId,
         seriesId,
+        OR: [{ id: targetId }, { playerId: targetId }],
       },
     });
 
     if (!participant) {
+      const playerExists = await this.prisma.player.findUnique({
+        where: { playerId: targetId },
+      });
+      if (playerExists) {
+        participant = await this.prisma.seriesParticipant.create({
+          data: {
+            seriesId,
+            playerId: targetId,
+            status: 'ACTIVE',
+            approved: true,
+            totalPoints: 0,
+          },
+        });
+      }
+    }
+
+    if (!participant) {
       throw new NotFoundException(
-        `Participant '${dto.participantId}' not found in Series '${seriesId}'`,
+        `Participant '${targetId}' not found in Series '${seriesId}'`,
       );
     }
 
     const adjustment = await this.prisma.seriesPointAdjustment.create({
       data: {
         seriesId,
-        participantId: dto.participantId,
+        participantId: participant.id,
         points: dto.points,
         reason: dto.reason,
         createdBy,
@@ -1114,7 +1136,7 @@ export class SeriesService {
 
     // Update participant total points
     const updated = await this.prisma.seriesParticipant.update({
-      where: { id: dto.participantId },
+      where: { id: participant.id },
       data: {
         totalPoints: { increment: dto.points },
       },

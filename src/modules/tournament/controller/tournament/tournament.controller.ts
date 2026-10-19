@@ -257,7 +257,7 @@ export class TournamentController {
     });
   }
 
-  @Post(':id/calendar')
+  @Post([':id/calendar', ':id/generate-calendar'])
   @ApiOperation({
     summary:
       'Calendar Generation (POST /tournaments/{id}/calendar): Generate grid of dates, screens, and empty timeslots based on venue screens and hours',
