@@ -9,12 +9,20 @@ import { SponsorController } from './controller/sponsor/sponsor.controller';
 import { SponsorService } from './service/sponsor.service';
 
 import { TournamentController } from './controller/tournament/tournament.controller';
+import {
+  AdminMatchController,
+  AdminDisputeController,
+} from './controller/match/match.controller';
+import { AdminRegistrationController } from './controller/registration/registration.controller';
 import { TournamentService } from './service/tournament.service';
 import { TournamentScheduleService } from './service/tournament-schedule.service';
 
 @Module({
   controllers: [
     TournamentController,
+    AdminMatchController,
+    AdminDisputeController,
+    AdminRegistrationController,
     ManageEventCostController,
     ManageEventPrizeController,
     VenueController,

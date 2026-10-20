@@ -17,6 +17,7 @@ model Player {
   marketingData       MarketingDataCollection?
   registrationHistory PlayerRegistrationHistory[]
   tournamentRegistrations TournamentRegistration[]
+  seriesParticipants  SeriesParticipant[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

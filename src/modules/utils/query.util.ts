@@ -14,10 +14,13 @@ export const buildPrismaQuery = (
   const page = Number(query.page) || 1;
   const limit = Number(query.limit) || 10;
   const skip = (page - 1) * limit;
-  const { searchTerm, sortBy, sortOrder, ...filters } = query;
+  const searchTerm = (query.searchTerm || query.search) as string | undefined;
+  const { sortBy, sortOrder, ...filters } = query;
 
   delete filters.page;
   delete filters.limit;
+  delete filters.searchTerm;
+  delete filters.search;
 
   const where: Record<string, unknown> = {};
 

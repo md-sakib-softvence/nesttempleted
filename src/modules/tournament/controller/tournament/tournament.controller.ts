@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Patch,
+  Put,
   Delete,
   Body,
   Param,
@@ -37,6 +38,11 @@ import { QueryOptions } from '../../../utils/query.util';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../../common/guards/roles.guard';
 import { Roles } from '../../../../common/decorators/roles.decorator';
+import { UpdateTournamentStatusDto } from '../../dto/tournament/update-tournament-status.dto';
+import { RegistrationSelectionDto } from '../../dto/tournament/registration-selection.dto';
+import { QueryTournamentRegistrationDto } from '../../dto/tournament/query-registration.dto';
+import { UpdateTournamentFinancialsDto } from '../../dto/tournament/update-financials.dto';
+import { CreateVenueDto } from '../../dto/venue/create-venue.dto';
 import { Role, SchedulingMode } from '@prisma/client';
 import {
   uploadTournamentFiles,
@@ -46,7 +52,7 @@ import {
 
 @ApiTags('tournament')
 @ApiBearerAuth()
-@Controller(['tournament', 'tournaments'])
+@Controller(['admin/tournaments', 'tournaments', 'tournament'])
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN, Role.SUPER_ADMIN)
 export class TournamentController {
@@ -251,7 +257,7 @@ export class TournamentController {
     });
   }
 
-  @Post(':id/calendar')
+  @Post([':id/calendar', ':id/generate-calendar'])
   @ApiOperation({
     summary:
       'Calendar Generation (POST /tournaments/{id}/calendar): Generate grid of dates, screens, and empty timeslots based on venue screens and hours',
@@ -292,15 +298,24 @@ export class TournamentController {
 
   @Get(':id/matches')
   @ApiOperation({ summary: 'Get all canonical matches of a Tournament' })
-  async getMatches(@Param('id') id: string) {
-    const data = await this.tournamentService.getTournamentMatches(id);
+  async getMatches(
+    @Param('id') id: string,
+    @Query('round') round?: string,
+    @Query('status') status?: string,
+    @Query('isAllocated') isAllocated?: string,
+  ) {
+    const data = await this.tournamentService.getTournamentMatches(id, {
+      round,
+      status,
+      isAllocated,
+    });
     return sendResponse({
       message: 'Tournament matches retrieved successfully',
       data,
     });
   }
 
-  @Get(':id/capacity')
+  @Get([':id/schedule/capacity', ':id/capacity'])
   @ApiOperation({
     summary:
       'Get Tournament capacity calculations (daily slots, capacity, playing days needed)',
@@ -434,12 +449,23 @@ export class TournamentController {
   }
 
   @Get(':id/registrations')
-  @ApiOperation({ summary: 'Get all tournament registrations by status categories' })
-  async getRegistrations(@Param('id') id: string) {
-    const data = await this.tournamentService.getTournamentRegistrations(id);
+  @ApiOperation({ summary: 'Get all tournament registrations with counts and tab filtering' })
+  async getRegistrations(
+    @Param('id') id: string,
+    @Query() query: QueryTournamentRegistrationDto,
+  ) {
+    const data =
+      await this.tournamentService.getTournamentRegistrationsWithCounts(
+        id,
+        query,
+      );
     return sendResponse({
       message: 'Tournament registrations retrieved successfully',
-      data,
+      data: {
+        items: data.items,
+        counts: data.counts,
+        pagination: data.pagination,
+      },
     });
   }
 
@@ -555,6 +581,127 @@ export class TournamentController {
     const data = await this.tournamentService.getTemplates(id);
     return sendResponse({
       message: 'Templates retrieved successfully',
+      data,
+    });
+  }
+
+  @Post(':id/status')
+  @ApiOperation({ summary: 'Transitions tournament lifecycle with state machine checks' })
+  async updateStatus(
+    @Param('id') id: string,
+    @Body() body: UpdateTournamentStatusDto,
+  ) {
+    const data = await this.tournamentService.updateTournamentStatus(id, body);
+    return sendResponse({
+      message: `Tournament status updated to ${data.status} successfully`,
+      data,
+    });
+  }
+
+  @Post(':id/venues')
+  @ApiOperation({ summary: 'Adds a new venue with screens to the tournament' })
+  async addVenue(@Param('id') id: string, @Body() body: CreateVenueDto) {
+    const data = await this.tournamentService.addTournamentVenue(id, body);
+    return sendResponse({
+      message: 'Venue added to tournament successfully',
+      data,
+    });
+  }
+
+  @Delete(':id/venues/:venueId')
+  @ApiOperation({ summary: 'Deletes a venue from tournament if no matches are allocated' })
+  async deleteVenue(
+    @Param('id') id: string,
+    @Param('venueId') venueId: string,
+  ) {
+    const data = await this.tournamentService.deleteTournamentVenue(
+      id,
+      venueId,
+    );
+    return sendResponse({
+      message: 'Venue deleted from tournament successfully',
+      data,
+    });
+  }
+
+  @Post(':id/registration-selection')
+  @ApiOperation({
+    summary:
+      'Selects registered players and gives them a payment window (Selected (Unpaid))',
+  })
+  async selectRegistrations(
+    @Param('id') id: string,
+    @Body() body: RegistrationSelectionDto,
+  ) {
+    const data = await this.tournamentService.selectRegistrations(id, body);
+    return sendResponse({
+      message: 'Registrations selected and payment window granted successfully',
+      data,
+    });
+  }
+
+  @Post(':id/payment-expiry')
+  @ApiOperation({
+    summary:
+      'Scans and processes expired Selected (Unpaid) registrations, freeing capacity',
+  })
+  async processPaymentExpiry(@Param('id') id: string) {
+    const data = await this.tournamentService.processPaymentExpiry(id);
+    return sendResponse({
+      message: 'Expired unpaid registrations processed successfully',
+      data,
+    });
+  }
+
+  @Post([':id/schedule/reconcile-capacity', ':id/reconcile-capacity'])
+  @ApiOperation({ summary: 'Extends capacity windows when deficits are detected' })
+  async reconcileCapacity(
+    @Param('id') id: string,
+    @Body() body?: { expectedVersion?: number },
+  ) {
+    const data = await this.tournamentService.reconcileScheduleCapacity(
+      id,
+      body?.expectedVersion,
+    );
+    return sendResponse({
+      message: 'Tournament schedule capacity reconciled successfully',
+      data,
+    });
+  }
+
+  @Get(':id/standings')
+  @ApiOperation({ summary: 'Returns calculated table standings (League & Group formats)' })
+  async getStandings(@Param('id') id: string) {
+    const data = await this.tournamentService.getTournamentLeaderboard(id);
+    return sendResponse({
+      message: 'Tournament standings retrieved successfully',
+      data,
+    });
+  }
+
+  @Get(':id/financials')
+  @ApiOperation({ summary: 'Returns complete financial ledger and cost/prize breakdown' })
+  async getFinancials(@Param('id') id: string) {
+    const data = await this.tournamentService.getTournamentFinancials(id);
+    return sendResponse({
+      message: 'Tournament financials retrieved successfully',
+      data,
+    });
+  }
+
+  @Patch(':id/financials')
+  @Put(':id/financials')
+  @ApiOperation({ summary: 'Updates cost items, prize payouts, and rake percentage' })
+  async updateFinancials(
+    @Param('id') id: string,
+    @Body() body: UpdateTournamentFinancialsDto,
+  ) {
+    const data = await this.tournamentService.updateTournamentFinancials(
+      id,
+      body,
+    );
+    return sendResponse({
+      message: 'Tournament financials updated successfully',
       data,
     });
   }

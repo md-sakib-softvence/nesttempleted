@@ -39,6 +39,7 @@ model Tournament {
   playerCardTemplate     Json?
   fanPassTemplate        Json?
   isDeleted              Boolean                 @default(false)
+  version                Int                     @default(1)
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
 
@@ -48,6 +49,7 @@ model Tournament {
   sponsors          Sponsor[]
   registrations     TournamentRegistration[]
   raffles           Raffle[]
+  seriesTournaments SeriesTournament[]
 }
 
 model ManageEventCost {
@@ -161,6 +163,10 @@ enum TournamentStatus {
   ONGOING
   COMPLETED
   CANCELLED
+  REGISTRATION_OPEN
+  IN_PROGRESS
+  PAUSED
+  ARCHIVED
 }
 
 enum SchedulingMode {
@@ -181,10 +187,13 @@ model TournamentRegistration {
   secondaryTeamId String?
   status          TournamentRegistrationStatus @default(REGISTERED)
   paymentStatus   String                       @default("PENDING")
+  paymentDeadline DateTime?
+  assignedSlot    Int?
   jerseySize      String?
   playerPhotoUrl  String?
   qrCodeString    String?
   checkedInVenue  Boolean                      @default(false)
+  version         Int                          @default(1)
   createdAt       DateTime                     @default(now())
   updatedAt       DateTime                     @updatedAt
 
@@ -220,4 +229,25 @@ enum RaffleStatus {
   CLOSED
   DRAWN
   CANCELLED
+}
+
+model MatchDispute {
+  disputeId    String        @id @default(uuid())
+  matchId      String
+  tournamentId String?
+  reason       String
+  status       DisputeStatus @default(OPEN)
+  resolution   String?
+  resolvedAt   DateTime?
+  resolvedBy   String?
+  version      Int           @default(1)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  REJECTED
 }

@@ -5,8 +5,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'crypto';
+const uuidv4 = crypto.randomUUID;
 import { CreatePaymentDto } from '../dto/create-payment.dto';
 
 export interface PaystackInitResponse {
