@@ -35,7 +35,7 @@ model MarketingDataCollection {
   parentName        String?
   parentPhoneNumber String?
   occupation        String?
-  area              String?
+  area              String[] @default([])
 
   isDeleted Boolean @default(false)
 

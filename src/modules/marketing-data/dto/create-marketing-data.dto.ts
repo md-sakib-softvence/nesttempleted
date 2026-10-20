@@ -5,6 +5,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsArray,
   ValidateIf,
 } from 'class-validator';
 
@@ -132,10 +133,11 @@ export class CreateMarketingDataDto {
   @IsString()
   occupation?: string;
 
-  @ApiPropertyOptional({ description: 'Area' })
+  @ApiPropertyOptional({ description: 'Area', type: [String] })
   @IsOptional()
-  @IsString()
-  area?: string;
+  @IsArray()
+  @IsString({ each: true })
+  area?: string[];
 
   @ApiPropertyOptional({ description: 'Employee ID responsible for this data' })
   @IsOptional()
