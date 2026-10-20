@@ -69,9 +69,12 @@ export class PaymentService {
     const payload: Record<string, any> = {
       email: dto.email,
       amount: amountInSubunits,
-      currency: dto.currency || 'NGN',
       reference,
     };
+
+    if (dto.currency) {
+      payload.currency = dto.currency;
+    }
 
     if (dto.callbackUrl) {
       payload.callback_url = dto.callbackUrl;

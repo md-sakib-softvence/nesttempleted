@@ -29,13 +29,12 @@ export class CreatePaymentDto {
   amount: number;
 
   @ApiPropertyOptional({
-    example: 'NGN',
-    description: 'Currency code (e.g. NGN, USD, GHS, ZAR)',
-    default: 'NGN',
+    example: 'XOF',
+    description: 'Currency code (e.g. XOF, NGN, USD, GHS, ZAR). Defaults to merchant currency if omitted.',
   })
   @IsString()
   @IsOptional()
-  currency?: string = 'NGN';
+  currency?: string;
 
   @ApiPropertyOptional({
     example: 'ref_1234567890',
