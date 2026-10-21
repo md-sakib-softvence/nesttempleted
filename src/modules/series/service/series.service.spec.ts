@@ -299,4 +299,55 @@ describe('SeriesService (Unit & Domain Logic Tests)', () => {
       expect(result.newTotalPoints).toBe(90);
     });
   });
+
+  describe('CreateSeriesDto payload transformation & validation', () => {
+    it('should properly transform UI fields (dates, participantType, tournaments)', async () => {
+      const { plainToInstance } = await import('class-transformer');
+      const { validate } = await import('class-validator');
+      const { CreateSeriesDto } = await import('../dto/create-series.dto');
+
+      const rawPayload = {
+        name: ' TAPE Lagos Championship Series 2027 ',
+        code: 'tlcs2027',
+        participantType: 'Individual Players',
+        startDate: '10/21/2026',
+        endDate: '',
+        description: 'Describe the series format...',
+        tournamentIds: ['tourn-1', 'tourn-2'],
+      };
+
+      const dto = plainToInstance(CreateSeriesDto, rawPayload);
+      const errors = await validate(dto);
+
+      expect(errors.length).toBe(0);
+      expect(dto.name).toBe('TAPE Lagos Championship Series 2027');
+      expect(dto.code).toBe('TLCS2027');
+      expect(dto.participantType).toBe(SeriesParticipantType.PLAYER);
+      expect(dto.startDate).toBe('2026-10-21');
+      expect(dto.endDate).toBeUndefined();
+      expect(dto.description).toBe('Describe the series format...');
+      expect(dto.tournamentIds).toEqual(['tourn-1', 'tourn-2']);
+    });
+
+    it('should support createSeries when tournaments alias is provided', async () => {
+      prisma.series.findUnique.mockResolvedValue(null);
+      prisma.series.create.mockResolvedValue(mockSeries);
+      prisma.seriesTournament.createMany.mockResolvedValue({ count: 2 });
+
+      await service.createSeries({
+        name: 'TLCS 2027',
+        code: 'TLCS27',
+        startDate: '2026-10-21',
+        tournaments: ['tourn-1', 'tourn-2'],
+      } as any);
+
+      expect(prisma.seriesTournament.createMany).toHaveBeenCalledWith({
+        data: [
+          { seriesId: mockSeries.id, tournamentId: 'tourn-1', sequenceOrder: 1, weightMultiplier: 1 },
+          { seriesId: mockSeries.id, tournamentId: 'tourn-2', sequenceOrder: 2, weightMultiplier: 1 },
+        ],
+        skipDuplicates: true,
+      });
+    });
+  });
 });

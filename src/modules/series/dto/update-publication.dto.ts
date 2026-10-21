@@ -11,14 +11,15 @@ import {
 import { SeriesPublicationStatus } from '@prisma/client';
 
 export class UpdateSeriesPublicationDto {
-  @ApiProperty({ example: true })
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
   @IsBoolean()
-  enabled: boolean;
+  enabled?: boolean;
 
-  @ApiProperty({ example: 'tape-national-circuit-2026' })
+  @ApiPropertyOptional({ example: 'tape-national-circuit-2026' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  publicSlug: string;
+  publicSlug?: string;
 
   @ApiPropertyOptional({ example: true })
   @IsOptional()

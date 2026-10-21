@@ -28,7 +28,7 @@ import { Role } from '@prisma/client';
 
 @ApiTags('Admin Matches & Fixtures')
 @ApiBearerAuth()
-@Controller(['admin/matches', 'matches'])
+@Controller('matches')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN, Role.SUPER_ADMIN)
 export class AdminMatchController {
@@ -125,7 +125,7 @@ export class AdminMatchController {
 
 @ApiTags('Admin Match Disputes')
 @ApiBearerAuth()
-@Controller(['admin/disputes', 'disputes'])
+@Controller('disputes')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN, Role.SUPER_ADMIN)
 export class AdminDisputeController {

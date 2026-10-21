@@ -583,18 +583,30 @@ export class CreateTournamentDto {
   @IsOptional()
   termsAndConditionsUrl?: string;
 
-  // Frontend aliases for media
-  @ApiPropertyOptional({ description: 'Tournament logo direct URL' })
+  // Media / Logo File Upload Fields
+  @ApiPropertyOptional({
+    type: 'string',
+    format: 'binary',
+    description: 'Tournament logo image file (choose file)',
+  })
   @IsOptional()
-  logo?: string;
+  logo?: any;
 
-  @ApiPropertyOptional({ description: 'Organizer logo direct URL' })
+  @ApiPropertyOptional({
+    type: 'string',
+    format: 'binary',
+    description: 'Organizer logo image file (choose file)',
+  })
   @IsOptional()
-  organizerLogo?: string;
+  organizerLogo?: any;
 
-  @ApiPropertyOptional({ description: 'Secondary organizer logo direct URL' })
+  @ApiPropertyOptional({
+    type: 'string',
+    format: 'binary',
+    description: 'Secondary organizer logo image file (choose file)',
+  })
   @IsOptional()
-  secondaryOrganizerLogo?: string;
+  secondaryOrganizerLogo?: any;
 
   @ApiPropertyOptional({ description: 'Fan pass art URL' })
   @IsOptional()

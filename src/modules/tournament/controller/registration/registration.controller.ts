@@ -31,7 +31,7 @@ export class RefundBodyDto {
 
 @ApiTags('Admin Registrations & Roster')
 @ApiBearerAuth()
-@Controller(['admin/registrations', 'registrations'])
+@Controller('registrations')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN, Role.SUPER_ADMIN)
 export class AdminRegistrationController {

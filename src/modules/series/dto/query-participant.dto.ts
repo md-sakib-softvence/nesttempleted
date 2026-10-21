@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
 import {
   SeriesParticipantStatus,
@@ -9,11 +9,13 @@ import {
 export class QuerySeriesParticipantDto {
   @ApiPropertyOptional({ enum: SeriesParticipantStatus })
   @IsOptional()
+  @Transform(({ value }) => (!value || value === 'ALL' || value === 'all' ? undefined : value))
   @IsEnum(SeriesParticipantStatus)
   status?: SeriesParticipantStatus;
 
   @ApiPropertyOptional({ enum: SeriesQualificationStatus })
   @IsOptional()
+  @Transform(({ value }) => (!value || value === 'ALL' || value === 'all' ? undefined : value))
   @IsEnum(SeriesQualificationStatus)
   qualificationStatus?: SeriesQualificationStatus;
 
@@ -25,6 +27,7 @@ export class QuerySeriesParticipantDto {
 
   @ApiPropertyOptional({ description: 'Search gamerTag or name' })
   @IsOptional()
+  @Transform(({ value, obj }) => value || obj?.searchTerm)
   @IsString()
   search?: string;
 
