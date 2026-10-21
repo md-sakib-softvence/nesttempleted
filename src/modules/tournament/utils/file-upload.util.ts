@@ -4,9 +4,12 @@ import { uploadImageToS3, deleteImageFromS3 } from '../../utils/s3.util';
 export async function uploadTournamentFiles(files: {
   canvasImage?: Express.Multer.File[];
   playerOrgUrl?: Express.Multer.File[];
+  organizerLogo?: Express.Multer.File[];
   prOrgUrl?: Express.Multer.File[];
+  secondaryOrganizerLogo?: Express.Multer.File[];
   tournamentLogoUrl?: Express.Multer.File[];
   tournamentLogo?: Express.Multer.File[];
+  logo?: Express.Multer.File[];
   rules?: Express.Multer.File[];
   tsAndTc?: Express.Multer.File[];
 }): Promise<{
@@ -29,16 +32,20 @@ export async function uploadTournamentFiles(files: {
       s3CanvasImage = await uploadImageToS3(files.canvasImage[0]);
     }
 
-    if (files?.playerOrgUrl?.[0]) {
-      s3PlayerOrgUrl = await uploadImageToS3(files.playerOrgUrl[0]);
+    const playerOrgFile = files?.playerOrgUrl?.[0] || files?.organizerLogo?.[0];
+    if (playerOrgFile) {
+      s3PlayerOrgUrl = await uploadImageToS3(playerOrgFile);
     }
 
-    if (files?.prOrgUrl?.[0]) {
-      s3PrOrgUrl = await uploadImageToS3(files.prOrgUrl[0]);
+    const prOrgFile = files?.prOrgUrl?.[0] || files?.secondaryOrganizerLogo?.[0];
+    if (prOrgFile) {
+      s3PrOrgUrl = await uploadImageToS3(prOrgFile);
     }
 
     const logoFile =
-      files?.tournamentLogoUrl?.[0] || files?.tournamentLogo?.[0];
+      files?.tournamentLogoUrl?.[0] ||
+      files?.tournamentLogo?.[0] ||
+      files?.logo?.[0];
     if (logoFile) {
       s3TournamentLogoUrl = await uploadImageToS3(logoFile);
     }

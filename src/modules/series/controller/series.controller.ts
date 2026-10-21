@@ -45,7 +45,7 @@ import { Role } from '@prisma/client';
 
 @ApiTags('Admin Series Management')
 @ApiBearerAuth()
-@Controller(['admin/series', 'series'])
+@Controller('series')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN, Role.SUPER_ADMIN)
 export class SeriesController {
@@ -78,8 +78,8 @@ export class SeriesController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create a new Series' })
-  @ApiConsumes('multipart/form-data', 'application/json')
+  @ApiOperation({ summary: 'Create a new Series with image uploads' })
+  @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'logo', maxCount: 1 },
@@ -128,8 +128,8 @@ export class SeriesController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update editable properties of the Series' })
-  @ApiConsumes('multipart/form-data', 'application/json')
+  @ApiOperation({ summary: 'Update editable properties of the Series with optional file uploads' })
+  @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'logo', maxCount: 1 },
@@ -207,7 +207,6 @@ export class SeriesController {
   }
 
   @Post(':id/tournaments')
-  @Put(':id/tournaments')
   @ApiOperation({ summary: 'Links tournaments to the series' })
   @ApiParam({ name: 'id', description: 'Series ID' })
   @ApiResponse({ status: 200, description: 'Tournaments linked to series successfully' })
@@ -400,39 +399,6 @@ export class SeriesController {
     const data = await this.seriesService.updatePublicationSettings(id, dto);
     return sendResponse({
       message: 'Series publication settings updated successfully',
-      data,
-    });
-  }
-
-  @Post(':id/publish')
-  @ApiOperation({ summary: 'Publishes series standings to the public portal' })
-  @ApiParam({ name: 'id', description: 'Series ID' })
-  @ApiResponse({ status: 200, description: 'Series published successfully' })
-  async publishSeries(
-    @Param('id') id: string,
-    @Body() body?: { published?: boolean; status?: string },
-  ) {
-    const isPublished = body?.published !== undefined ? body.published : true;
-    const data = await this.seriesService.updateSeries(id, {
-      published: isPublished,
-      ...(isPublished ? { status: 'ACTIVE' as any } : {}),
-    });
-    return sendResponse({
-      message: isPublished ? 'Series published successfully' : 'Series unpublished successfully',
-      data,
-    });
-  }
-
-  @Post(':id/unpublish')
-  @ApiOperation({ summary: 'Unpublishes series standings from the public portal' })
-  @ApiParam({ name: 'id', description: 'Series ID' })
-  @ApiResponse({ status: 200, description: 'Series unpublished successfully' })
-  async unpublishSeries(@Param('id') id: string) {
-    const data = await this.seriesService.updateSeries(id, {
-      published: false,
-    });
-    return sendResponse({
-      message: 'Series unpublished successfully',
       data,
     });
   }

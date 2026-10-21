@@ -26,12 +26,12 @@ export class CreateSponsorDto {
   name: string;
 
   @ApiPropertyOptional({
-    description: 'Sponsor logo URL',
-    example: 'https://example.com/logo.png',
+    type: 'string',
+    format: 'binary',
+    description: 'Sponsor logo image file (choose file)',
   })
-  @IsString()
   @IsOptional()
-  logo?: string;
+  logo?: any;
 
   @ApiPropertyOptional({
     description: 'Sponsor website URL',

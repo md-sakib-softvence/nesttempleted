@@ -16,6 +16,10 @@ import {
 import { AdminRegistrationController } from './controller/registration/registration.controller';
 import { TournamentService } from './service/tournament.service';
 import { TournamentScheduleService } from './service/tournament-schedule.service';
+import { TournamentCoreService } from './service/tournament-core.service';
+import { TournamentRegistrationService } from './service/tournament-registration.service';
+import { TournamentMatchesService } from './service/tournament-matches.service';
+import { TournamentLeaderboardService } from './service/tournament-leaderboard.service';
 
 @Module({
   controllers: [
@@ -30,6 +34,10 @@ import { TournamentScheduleService } from './service/tournament-schedule.service
   ],
   providers: [
     TournamentService,
+    TournamentCoreService,
+    TournamentRegistrationService,
+    TournamentMatchesService,
+    TournamentLeaderboardService,
     TournamentScheduleService,
     ManageEventCostService,
     ManageEventPrizeService,
@@ -38,6 +46,10 @@ import { TournamentScheduleService } from './service/tournament-schedule.service
   ],
   exports: [
     TournamentService,
+    TournamentCoreService,
+    TournamentRegistrationService,
+    TournamentMatchesService,
+    TournamentLeaderboardService,
     TournamentScheduleService,
     ManageEventCostService,
     ManageEventPrizeService,
