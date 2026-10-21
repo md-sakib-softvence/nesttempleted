@@ -49,7 +49,7 @@ export class AdminController {
   @ApiOperation({ summary: 'Create Admin' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('profileImage'))
-  @Roles(AdminRole.SUPER_ADMIN)
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
   async createAdmin(
     @Body() createAdminDto: CreateAdminDto,
     @UploadedFile() profileImage?: Express.Multer.File,

@@ -58,7 +58,7 @@ export class EmployeeController {
       },
     ]),
   )
-  @Roles(AdminRole.SUPER_ADMIN)
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
   async createEmployee(
     @Body() createEmployeeDto: CreateEmployeeDto,
     @UploadedFiles()
