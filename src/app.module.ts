@@ -7,6 +7,7 @@ import appConfig from './config/app.config';
 import databaseConfig from './config/database.config';
 import jwtConfig from './config/jwt.config';
 import paystackConfig from './config/paystack.config';
+import flutterwaveConfig from './config/flutterwave.config';
 import { PrismaModule } from './prisma/prisma.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { MailModule } from './modules/mail/mail.module';
@@ -22,13 +23,14 @@ import { SystemModule } from './modules/system/system.module';
 import { TournamentModule } from './modules/tournament/tournament.module';
 import { AnnouncementModule } from './modules/announcement/announcement.module';
 import { PaymentModule } from './modules/payment/payment.module';
+import { FlutterwaveModule } from './modules/flutterwave/flutterwave.module';
 import { SeriesModule } from './modules/series/series.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, databaseConfig, jwtConfig, paystackConfig],
+      load: [appConfig, databaseConfig, jwtConfig, paystackConfig, flutterwaveConfig],
       envFilePath: ['.env.local', '.env'],
     }),
     MailModule,
@@ -45,6 +47,7 @@ import { SeriesModule } from './modules/series/series.module';
     SystemModule,
     AnnouncementModule,
     PaymentModule,
+    FlutterwaveModule,
   ],
   controllers: [AppController],
   providers: [
