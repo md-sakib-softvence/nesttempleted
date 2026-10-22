@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   Query,
+  Req,
   UseGuards,
   UseInterceptors,
   UploadedFiles,
@@ -26,12 +27,13 @@ import { GenerateCalendarDto } from '../../dto/tournament/generate-calendar.dto'
 import { AutoAllocationDto } from '../../dto/tournament/auto-allocation.dto';
 import { CreateTournamentRegistrationDto } from '../../dto/tournament/create-registration.dto';
 import { UpdateRegistrationStatusDto } from '../../dto/tournament/update-registration-status.dto';
-import { CreateRaffleDto } from '../../dto/tournament/create-raffle.dto';
+import { PredictMatchDto } from '../../dto/tournament/predict-match.dto';
 import { sendResponse } from '../../../utils/response.util';
 import { QueryOptions } from '../../../utils/query.util';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../../common/guards/roles.guard';
 import { Roles } from '../../../../common/decorators/roles.decorator';
+import { Public } from '../../../../common/decorators/public.decorator';
 import { UpdateTournamentStatusDto } from '../../dto/tournament/update-tournament-status.dto';
 import { RegistrationSelectionDto } from '../../dto/tournament/registration-selection.dto';
 import { QueryTournamentRegistrationDto } from '../../dto/tournament/query-registration.dto';
@@ -130,6 +132,7 @@ export class TournamentController {
   }
 
   @Get()
+  @Public()
   @ApiOperation({ summary: 'Get all Tournaments with pagination and search' })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
@@ -147,6 +150,7 @@ export class TournamentController {
   }
 
   @Get(':id')
+  @Public()
   @ApiOperation({ summary: 'Get a Tournament by ID' })
   async findOne(@Param('id') id: string) {
     const data = await this.tournamentService.getTournamentById(id);
@@ -293,6 +297,7 @@ export class TournamentController {
   }
 
   @Get(':id/matches')
+  @Public()
   @ApiOperation({ summary: 'Get all canonical matches of a Tournament' })
   async getMatches(
     @Param('id') id: string,
@@ -307,6 +312,40 @@ export class TournamentController {
     });
     return sendResponse({
       message: 'Tournament matches retrieved successfully',
+      data,
+    });
+  }
+
+  @Get(':id/prediction-fixtures')
+  @Public()
+  @ApiOperation({
+    summary: 'Get active prediction fixtures and odds for a live tournament',
+  })
+  async getPredictionFixtures(@Param('id') id: string) {
+    const data = await this.tournamentService.getLivePredictionFixtures(id);
+    return sendResponse({
+      message: 'Live tournament prediction fixtures retrieved successfully',
+      data,
+    });
+  }
+
+  @Post(':id/predict')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.FAN, 'fan' as any, Role.PLAYER, 'player' as any)
+  @ApiOperation({
+    summary: 'Lock in coin prediction for a live tournament match',
+  })
+  async lockPrediction(
+    @Param('id') id: string,
+    @Body() body: PredictMatchDto,
+    @Req() req: any,
+  ) {
+    const data = await this.tournamentService.lockPrediction(
+      id,
+      body,
+      req?.user,
+    );
+    return sendResponse({
+      message: 'Prediction locked in successfully',
       data,
     });
   }
@@ -344,6 +383,7 @@ export class TournamentController {
   }
 
   @Get(':id/standings')
+  @Public()
   @ApiOperation({ summary: 'Get tournament standings/leaderboard' })
   async getLeaderboard(@Param('id') id: string) {
     const data = await this.tournamentService.getTournamentLeaderboard(id);
@@ -400,46 +440,6 @@ export class TournamentController {
       data,
     });
   }
-
-
-
-  @Get(':id/raffles')
-  @ApiOperation({ summary: 'Get all raffles for tournament' })
-  async getRaffles(@Param('id') id: string) {
-    const data = await this.tournamentService.getRaffles(id);
-    return sendResponse({
-      message: 'Tournament raffles retrieved successfully',
-      data,
-    });
-  }
-
-  @Post(':id/raffles')
-  @ApiOperation({ summary: 'Create a raffle for tournament' })
-  async createRaffle(
-    @Param('id') id: string,
-    @Body() body: CreateRaffleDto,
-  ) {
-    const data = await this.tournamentService.createRaffle(id, body);
-    return sendResponse({
-      message: 'Raffle created successfully',
-      data,
-    });
-  }
-
-  @Post(':id/raffles/:raffleId/draw')
-  @ApiOperation({ summary: 'Draw winners for a raffle' })
-  async drawRaffle(
-    @Param('id') id: string,
-    @Param('raffleId') raffleId: string,
-  ) {
-    const data = await this.tournamentService.drawRaffle(id, raffleId);
-    return sendResponse({
-      message: 'Raffle drawn successfully',
-      data,
-    });
-  }
-
-
 
   @Post(':id/status')
   @ApiOperation({ summary: 'Transitions tournament lifecycle with state machine checks' })

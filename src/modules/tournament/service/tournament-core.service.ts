@@ -16,7 +16,6 @@ import {
 import { UpdateTournamentDto } from '../dto/tournament/update-tournament.dto';
 import { UpdateTournamentTemplatesDto } from '../dto/tournament/update-templates.dto';
 import { UpdateTournamentStatusDto } from '../dto/tournament/update-tournament-status.dto';
-import { CreateRaffleDto } from '../dto/tournament/create-raffle.dto';
 import { UpdateTournamentFinancialsDto } from '../dto/tournament/update-financials.dto';
 import {
   buildPrismaQuery,
@@ -33,7 +32,6 @@ import {
   SchedulingMode,
   SponsorStatus,
   TournamentRegistrationStatus,
-  RaffleStatus,
   TournamentFormat,
   Currency,
   PrizeRule,
@@ -1091,80 +1089,6 @@ export class TournamentCoreService {
     return tournament;
   }
 
-  /**
-   * Get all raffles for tournament
-   */
-  async getRaffles(tournamentId: string) {
-    return this.prisma.raffle.findMany({
-      where: { tournamentId },
-      orderBy: { createdAt: 'desc' },
-    });
-  }
-
-  /**
-   * Create a new raffle.
-   */
-  async createRaffle(tournamentId: string, dto: CreateRaffleDto) {
-    const tournament = await this.prisma.tournament.findUnique({
-      where: { tournamentId },
-    });
-    if (!tournament) {
-      throw new NotFoundException(`Tournament #${tournamentId} not found`);
-    }
-
-    return this.prisma.raffle.create({
-      data: {
-        tournamentId,
-        name: dto.name,
-        prizeDescription: dto.prizeDescription,
-        numberOfWinners: dto.numberOfWinners || 1,
-        drawDate: dto.drawDate ? new Date(dto.drawDate) : null,
-        registrationCloseDate: dto.registrationCloseDate
-          ? new Date(dto.registrationCloseDate)
-          : null,
-        entries: [],
-        winners: [],
-      },
-    });
-  }
-
-  /**
-   * Draws random winners for a raffle from its entries.
-   */
-  async drawRaffle(tournamentId: string, raffleId: string) {
-    const raffle = await this.prisma.raffle.findFirst({
-      where: { raffleId, tournamentId },
-    });
-    if (!raffle) {
-      throw new NotFoundException(`Raffle #${raffleId} not found`);
-    }
-
-    const entries = Array.isArray(raffle.entries)
-      ? (raffle.entries as any[])
-      : [];
-    if (entries.length === 0) {
-      throw new BadRequestException('Cannot draw raffle: No entries found');
-    }
-
-    // Shuffle entries
-    const shuffled = [...entries].sort(() => 0.5 - Math.random());
-    const count = Math.min(raffle.numberOfWinners, shuffled.length);
-    const winners = shuffled.slice(0, count).map((entry, index) => ({
-      position: index + 1,
-      userId: entry.userId,
-      name: entry.name,
-      ticketNumber: entry.ticketNumber,
-      drawnAt: new Date().toISOString(),
-    }));
-
-    return this.prisma.raffle.update({
-      where: { raffleId },
-      data: {
-        status: RaffleStatus.DRAWN,
-        winners: winners as any,
-      },
-    });
-  }
 
   async getTournamentFinancials(tournamentId: string) {
     const tournament = await this.prisma.tournament.findUnique({

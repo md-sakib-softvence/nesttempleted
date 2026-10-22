@@ -18,9 +18,14 @@ model Player {
   registrationHistory PlayerRegistrationHistory[]
   tournamentRegistrations TournamentRegistration[]
   seriesParticipants  SeriesParticipant[]
+  followers           Follower[] @relation("PlayerFollowing")
+  followedBy          Follower[] @relation("PlayerFollowed")
+  tickets             Ticket[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([gamerTag])
 }
 
 model PlayerRegistrationHistory {

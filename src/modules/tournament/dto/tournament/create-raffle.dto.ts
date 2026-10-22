@@ -13,6 +13,11 @@ export class CreateRaffleDto {
   @IsNotEmpty()
   prizeDescription: string;
 
+  @ApiPropertyOptional({ description: 'Tournament ID (required if not passed in URL path)', example: 'tournament-uuid' })
+  @IsString()
+  @IsOptional()
+  tournamentId?: string;
+
   @ApiPropertyOptional({ description: 'Number of winners to draw', example: 1, default: 1 })
   @Type(() => Number)
   @IsInt()

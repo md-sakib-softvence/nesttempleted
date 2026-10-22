@@ -24,7 +24,7 @@ export class FanService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private mailService: MailService,
-  ) {}
+  ) { }
 
   async createFan(createFanDto: CreateFanDto) {
     const existingFan = await this.prisma.fan.findUnique({
@@ -170,9 +170,16 @@ export class FanService {
       fan.profileImage = await getPreSignedUrl(fan.profileImage);
     }
 
+    const following = await this.prisma.follower.count({
+      where: { fanId: fan.fanId },
+    });
+
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password, ...fanWithoutPassword } = fan;
-    return fanWithoutPassword;
+    return {
+      ...fanWithoutPassword,
+      following,
+    };
   }
 
   async getAllFan(query: QueryOptions = {}) {

@@ -50,6 +50,8 @@ model Tournament {
   registrations     TournamentRegistration[]
   raffles           Raffle[]
   seriesTournaments SeriesTournament[]
+  tickets           Ticket[]
+  ticketTiers       TicketTier[]
 }
 
 model ManageEventCost {

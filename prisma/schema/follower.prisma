@@ -1,0 +1,29 @@
+model Follower {
+  followerId String @id @default(uuid())
+
+  // The follower (can be a Fan or a Player)
+  fanId String?
+  fan   Fan?    @relation("FanFollowing", fields: [fanId], references: [fanId], onDelete: Cascade)
+
+  playerId String?
+  player   Player? @relation("PlayerFollowing", fields: [playerId], references: [playerId], onDelete: Cascade)
+
+  // Tracked target gamerTag (searched by gamer tag)
+  gamerTag String
+
+  // Optional direct link to the followed entity if resolved
+  targetPlayerId String?
+  targetPlayer   Player? @relation("PlayerFollowed", fields: [targetPlayerId], references: [playerId], onDelete: Cascade)
+
+  targetFanId String?
+  targetFan   Fan?    @relation("FanFollowed", fields: [targetFanId], references: [fanId], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([gamerTag])
+  @@index([fanId])
+  @@index([playerId])
+  @@index([targetPlayerId])
+  @@index([targetFanId])
+}

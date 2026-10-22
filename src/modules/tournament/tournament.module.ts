@@ -7,6 +7,8 @@ import { VenueController } from './controller/venue/venue.controller';
 import { VenueService } from './service/venue.service';
 import { SponsorController } from './controller/sponsor/sponsor.controller';
 import { SponsorService } from './service/sponsor.service';
+import { RaffleController } from './controller/raffle/raffle.controller';
+import { RaffleService } from './service/raffle.service';
 
 import { TournamentController } from './controller/tournament/tournament.controller';
 import {
@@ -23,6 +25,7 @@ import { TournamentLeaderboardService } from './service/tournament-leaderboard.s
 
 @Module({
   controllers: [
+    RaffleController,
     TournamentController,
     AdminMatchController,
     AdminDisputeController,
@@ -39,6 +42,7 @@ import { TournamentLeaderboardService } from './service/tournament-leaderboard.s
     TournamentMatchesService,
     TournamentLeaderboardService,
     TournamentScheduleService,
+    RaffleService,
     ManageEventCostService,
     ManageEventPrizeService,
     VenueService,
@@ -51,6 +55,7 @@ import { TournamentLeaderboardService } from './service/tournament-leaderboard.s
     TournamentMatchesService,
     TournamentLeaderboardService,
     TournamentScheduleService,
+    RaffleService,
     ManageEventCostService,
     ManageEventPrizeService,
     VenueService,

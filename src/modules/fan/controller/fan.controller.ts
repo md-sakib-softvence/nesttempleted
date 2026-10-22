@@ -40,7 +40,7 @@ import { Role } from '@prisma/client';
 @ApiBearerAuth()
 @Controller('fan')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN, Role.SUPER_ADMIN, 'fan')
+@Roles(Role.ADMIN, Role.SUPER_ADMIN, 'fan', Role.FAN, Role.PLAYER, 'player')
 export class FanController {
   constructor(private readonly fanService: FanService) {}
 
@@ -125,7 +125,7 @@ export class FanController {
 
   @Get('profile')
   @ApiOperation({ summary: 'Get logged in Fan' })
-  @Roles('fan')
+  @Roles('fan', Role.FAN)
   async getLoginFan(@Req() req: Request & { user: { userId: string } }) {
     const fanId = req.user.userId;
     const data = await this.fanService.getFanById(fanId);

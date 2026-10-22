@@ -1,0 +1,1189 @@
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  UnauthorizedException,
+  Logger,
+} from '@nestjs/common';
+import { PrismaService } from '../../../prisma/prisma.service';
+import { FlutterwaveService } from '../../flutterwave/service/flutterwave.service';
+import { PurchaseTicketDto } from '../dto/purchase-ticket.dto';
+import { CheckInTicketDto } from '../dto/check-in-ticket.dto';
+import { CreateTierDto } from '../dto/create-tier.dto';
+import { UpdateTierDto } from '../dto/update-tier.dto';
+import { QueryTicketDto } from '../dto/query-ticket.dto';
+import { TransferTicketDto } from '../dto/transfer-ticket.dto';
+import { TicketStatus, TicketType } from '@prisma/client';
+import * as crypto from 'crypto';
+
+@Injectable()
+export class TicketService {
+  private readonly logger = new Logger(TicketService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly flutterwaveService: FlutterwaveService,
+  ) {}
+
+  /**
+   * Resolve user profile details (Fan or Player)
+   */
+  private async resolvePurchaser(userId: string, roleHint?: string) {
+    const roleStr = String(roleHint || '').toUpperCase();
+    const isPlayerRole = roleStr.includes('PLAYER');
+
+    if (isPlayerRole) {
+      const player = await this.prisma.player.findFirst({
+        where: { playerId: userId, isDeleted: false },
+        select: {
+          playerId: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phoneNumber: true,
+          gamerTag: true,
+        },
+      });
+      if (player) {
+        return {
+          userType: 'PLAYER' as const,
+          playerId: player.playerId,
+          fanId: null,
+          name: `${player.firstName} ${player.lastName}`.trim(),
+          email: player.email,
+          phone: player.phoneNumber,
+        };
+      }
+    }
+
+    // Try Fan table
+    const fan = await this.prisma.fan.findFirst({
+      where: { fanId: userId, isDeleted: false },
+      select: {
+        fanId: true,
+        firstName: true,
+        surname: true,
+        email: true,
+        phoneNumber: true,
+        gamerTag: true,
+      },
+    });
+
+    if (fan) {
+      return {
+        userType: 'FAN' as const,
+        playerId: null,
+        fanId: fan.fanId,
+        name: `${fan.firstName} ${fan.surname || ''}`.trim(),
+        email: fan.email,
+        phone: fan.phoneNumber,
+      };
+    }
+
+    // Fallback: check player table if role was not specified
+    const playerFallback = await this.prisma.player.findFirst({
+      where: { playerId: userId, isDeleted: false },
+      select: {
+        playerId: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phoneNumber: true,
+        gamerTag: true,
+      },
+    });
+
+    if (playerFallback) {
+      return {
+        userType: 'PLAYER' as const,
+        playerId: playerFallback.playerId,
+        fanId: null,
+        name: `${playerFallback.firstName} ${playerFallback.lastName}`.trim(),
+        email: playerFallback.email,
+        phone: playerFallback.phoneNumber,
+      };
+    }
+
+    // Admin / Guest fallback
+    return {
+      userType: 'FAN' as const,
+      playerId: null,
+      fanId: null,
+      name: 'Guest Spectator',
+      email: null,
+      phone: null,
+    };
+  }
+
+  /**
+   * 1. Calculate Tournament Capacity, Available Seats, and Financial Summary
+   */
+  async calculateTournamentCapacityAndSeats(tournamentId: string) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+      include: {
+        ticketTiers: true,
+        tickets: {
+          where: {
+            status: { in: [TicketStatus.ACTIVE, TicketStatus.USED] },
+          },
+          select: {
+            ticketId: true,
+            pricePaid: true,
+            checkedIn: true,
+            seatNumber: true,
+            type: true,
+          },
+        },
+      },
+    });
+
+    if (!tournament || tournament.isDeleted) {
+      throw new NotFoundException(`Tournament #${tournamentId} not found`);
+    }
+
+    const totalCapacity = tournament.capacity || 0;
+    const totalSold = tournament.tickets.length;
+    const availableSeats = Math.max(0, totalCapacity - totalSold);
+    const occupancyRate =
+      totalCapacity > 0
+        ? Number(((totalSold / totalCapacity) * 100).toFixed(2))
+        : 0;
+
+    const totalRevenue = tournament.tickets.reduce(
+      (sum, t) => sum + (t.pricePaid || 0),
+      0,
+    );
+    const totalCheckIns = tournament.tickets.filter((t) => t.checkedIn).length;
+    const checkInRate =
+      totalSold > 0
+        ? Number(((totalCheckIns / totalSold) * 100).toFixed(2))
+        : 0;
+
+    const tiers = tournament.ticketTiers.map((tier) => {
+      const tierRemaining = Math.max(0, tier.capacity - tier.sold);
+      return {
+        tierId: tier.tierId,
+        name: tier.name,
+        type: tier.type,
+        price: tier.price,
+        currency: tier.currency,
+        capacity: tier.capacity,
+        sold: tier.sold,
+        availableSeats: tierRemaining,
+        status: tier.status,
+      };
+    });
+
+    return {
+      tournamentId: tournament.tournamentId,
+      tournamentName: tournament.name,
+      currency: tournament.currency,
+      status: tournament.status,
+      totalCapacity,
+      soldTickets: totalSold,
+      availableSeats,
+      occupancyRate,
+      totalRevenue,
+      totalCheckIns,
+      checkInRate,
+      tiers,
+    };
+  }
+
+  /**
+   * 2. Initialize Ticket Purchase Flow with Flutterwave
+   */
+  async initializePurchase(
+    currentUser: { userId: string; role?: string },
+    dto: PurchaseTicketDto,
+  ) {
+    if (!currentUser?.userId) {
+      throw new UnauthorizedException('Authentication required to purchase tickets');
+    }
+
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId: dto.tournamentId },
+      include: {
+        ticketTiers: true,
+      },
+    });
+
+    if (!tournament || tournament.isDeleted) {
+      throw new NotFoundException(`Tournament #${dto.tournamentId} not found`);
+    }
+
+    const quantity = dto.quantity && dto.quantity > 0 ? dto.quantity : 1;
+
+    // Check overall tournament capacity
+    const currentTotalSold = await this.prisma.ticket.count({
+      where: {
+        tournamentId: dto.tournamentId,
+        status: { in: [TicketStatus.ACTIVE, TicketStatus.USED] },
+      },
+    });
+
+    if (tournament.capacity && currentTotalSold + quantity > tournament.capacity) {
+      const remaining = Math.max(0, tournament.capacity - currentTotalSold);
+      throw new BadRequestException(
+        `Not enough seats available. Tournament capacity reached. Remaining seats: ${remaining}`,
+      );
+    }
+
+    // Determine tier & pricing
+    let selectedTier: any = null;
+    let unitPrice = 0;
+    let ticketType: TicketType = dto.type || TicketType.DAY_PASS;
+
+    if (dto.tierId) {
+      selectedTier = tournament.ticketTiers.find((t) => t.tierId === dto.tierId);
+      if (!selectedTier) {
+        throw new NotFoundException(`Ticket Tier #${dto.tierId} not found for this tournament`);
+      }
+      if (selectedTier.status !== 'ACTIVE') {
+        throw new BadRequestException('This ticket tier is currently not active');
+      }
+      if (selectedTier.sold + quantity > selectedTier.capacity) {
+        const remainingTier = Math.max(0, selectedTier.capacity - selectedTier.sold);
+        throw new BadRequestException(
+          `Selected tier has only ${remainingTier} ticket(s) left`,
+        );
+      }
+      unitPrice = selectedTier.price;
+      ticketType = selectedTier.type;
+    } else {
+      // Default price from tournament entryFee or 1500 fallback
+      unitPrice = tournament.entryFee && tournament.entryFee > 0 ? tournament.entryFee : 1500;
+    }
+
+    const totalAmount = unitPrice * quantity;
+    const purchaser = await this.resolvePurchaser(currentUser.userId, currentUser.role);
+
+    const customerEmail = purchaser.email || 'customer@tapegaming.com';
+    const customerName = purchaser.name || 'Spectator';
+    const customerPhone = purchaser.phone || '+2348000000000';
+
+    // Calculate designated seat
+    const seatNumber =
+      dto.seatNumber || `Seat ${currentTotalSold + 1}`;
+
+    const txRef = `FLW-TCK-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+
+    const envRedirectUrl =
+      process.env.TICKET_REDIRECT_URL ||
+      `${process.env.FRONTEND_URL || 'https://tapegaming.com'}/tickets/verify`;
+    const finalRedirectUrl = envRedirectUrl.includes('?')
+      ? `${envRedirectUrl}&tx_ref=${txRef}`
+      : `${envRedirectUrl}?tx_ref=${txRef}`;
+
+    const flwPayload = {
+      txRef,
+      amount: totalAmount,
+      currency: tournament.currency || 'NGN',
+      email: customerEmail,
+      name: customerName,
+      phoneNumber: customerPhone,
+      redirectUrl: finalRedirectUrl,
+      title: `${tournament.name} - Ticket Purchase`,
+      description: `${ticketType} (${quantity}x) for ${tournament.name}`,
+      meta: {
+        tournamentId: tournament.tournamentId,
+        tierId: selectedTier?.tierId || null,
+        ticketType,
+        quantity,
+        seatNumber,
+        userId: currentUser.userId,
+        userRole: purchaser.userType,
+      },
+    };
+
+    const flwInit = await this.flutterwaveService.initializePayment(flwPayload);
+
+    const baseUrl = process.env.FRONTEND_URL || 'https://tapegaming.com';
+    const rolePath = purchaser.userType === 'PLAYER' ? 'player' : 'fan';
+    const digitalPassLink = `${baseUrl}/${rolePath}/tickets`;
+
+    return {
+      paymentLink: flwInit.link,
+      txRef: flwInit.txRef,
+      redirectUrl: finalRedirectUrl,
+      digitalPassLink,
+      amount: totalAmount,
+      currency: tournament.currency || 'NGN',
+      quantity,
+      ticketType,
+      seatNumber,
+      purchaserRole: purchaser.userType,
+      purchaserId: currentUser.userId,
+      purchaserName: customerName,
+      tournamentName: tournament.name,
+      oneTicketOneTimeOnly: true,
+      canBuyMultipleTimes: true,
+    };
+  }
+
+  /**
+   * 3. Verify Payment and Issue Ticket
+   */
+  async verifyPaymentAndIssueTicket(txRef: string, transactionId?: string | number) {
+    if (!txRef) {
+      throw new BadRequestException('Transaction reference (txRef) is required');
+    }
+
+    // 1. Check if tickets were already issued for this txRef
+    const existingTickets = await this.prisma.ticket.findMany({
+      where: { paymentReference: txRef },
+      include: {
+        tournament: {
+          select: {
+            tournamentId: true,
+            name: true,
+            startDate: true,
+            currency: true,
+          },
+        },
+      },
+    });
+
+    if (existingTickets.length > 0) {
+      return {
+        verified: true,
+        alreadyProcessed: true,
+        tickets: existingTickets,
+      };
+    }
+
+    // 2. Verify with Flutterwave API
+    let txData: any;
+    if (transactionId) {
+      txData = await this.flutterwaveService.verifyTransaction(transactionId);
+    } else {
+      txData = await this.flutterwaveService.verifyTransactionByRef(txRef);
+    }
+
+    if (txData.status !== 'successful') {
+      throw new BadRequestException(
+        `Payment was not successful. Flutterwave status: ${txData.status}`,
+      );
+    }
+
+    const meta = txData.meta || {};
+    const tournamentId = meta.tournamentId;
+
+    if (!tournamentId) {
+      throw new BadRequestException('Invalid transaction metadata: missing tournamentId');
+    }
+
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+      include: { ticketTiers: true },
+    });
+
+    if (!tournament) {
+      throw new NotFoundException(`Tournament #${tournamentId} not found`);
+    }
+
+    const quantity = Number(meta.quantity) || 1;
+    const ticketType: TicketType =
+      meta.ticketType && Object.values(TicketType).includes(meta.ticketType)
+        ? meta.ticketType
+        : TicketType.DAY_PASS;
+    const tierId = meta.tierId || null;
+    const userId = meta.userId || null;
+    const userRole = meta.userRole || 'FAN';
+
+    const baseSeatNumber = meta.seatNumber || 'General Admission';
+    const unitPrice =
+      quantity > 0 ? Number((txData.amount / quantity).toFixed(2)) : txData.amount;
+
+    const issuedTickets: any[] = [];
+
+    // Perform DB issuance
+    for (let i = 0; i < quantity; i++) {
+      const ticketId = crypto.randomUUID();
+      const currentCount = await this.prisma.ticket.count();
+      const showTicketId = `TCK-${String(currentCount + 1 + i).padStart(5, '0')}`;
+      const seat = quantity === 1 ? baseSeatNumber : `${baseSeatNumber}-${i + 1}`;
+
+      // Compatible with QRScannerModal format: FAN:tournamentId:userId:ticketId or PLAYER:tournamentId:userId:ticketId
+      const prefix = userRole === 'PLAYER' ? 'PLAYER' : 'FAN';
+      const qrToken = `${prefix}:${tournamentId}:${userId || ticketId}:${ticketId}`;
+
+      const ticket = await this.prisma.ticket.create({
+        data: {
+          ticketId,
+          showTicketId,
+          tournamentId,
+          purchasedBy: userId || 'GUEST',
+          purchaserRole: userRole,
+          fanId: userRole === 'FAN' && userId ? userId : null,
+          playerId: userRole === 'PLAYER' && userId ? userId : null,
+          type: ticketType,
+          pricePaid: unitPrice,
+          currency: txData.currency || tournament.currency || 'NGN',
+          status: TicketStatus.ACTIVE,
+          qrToken,
+          seatNumber: seat,
+          paymentReference: txRef,
+          flwTransactionId: String(txData.id),
+          paymentGateway: 'FLUTTERWAVE',
+          paymentStatus: 'SUCCESS',
+          metadata: {
+            tierId,
+            flwRef: txData.flwRef,
+            amountCharged: txData.chargedAmount || txData.amount,
+          },
+        },
+        include: {
+          tournament: {
+            select: {
+              tournamentId: true,
+              name: true,
+              startDate: true,
+              currency: true,
+            },
+          },
+          fan: {
+            select: {
+              fanId: true,
+              firstName: true,
+              surname: true,
+              email: true,
+              phoneNumber: true,
+              gamerTag: true,
+            },
+          },
+          player: {
+            select: {
+              playerId: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              phoneNumber: true,
+              gamerTag: true,
+            },
+          },
+        },
+      });
+
+      issuedTickets.push(ticket);
+    }
+
+    // Increment tier sold count if applicable
+    if (tierId) {
+      await this.prisma.ticketTier.update({
+        where: { tierId },
+        data: {
+          sold: { increment: quantity },
+        },
+      }).catch((err) => {
+        this.logger.warn(`Failed to update tier sold count: ${err.message}`);
+      });
+    }
+
+    const baseUrl = process.env.FRONTEND_URL || 'https://tapegaming.com';
+    const rolePath = userRole === 'PLAYER' ? 'player' : 'fan';
+
+    const formattedTickets = issuedTickets.map((t) => {
+      const name = t.fan
+        ? `${t.fan.firstName} ${t.fan.surname || ''}`.trim()
+        : (t.player
+            ? `${t.player.firstName} ${t.player.lastName}`.trim()
+            : 'Spectator');
+      const email = t.fan?.email || t.player?.email || null;
+      const phone = t.fan?.phoneNumber || t.player?.phoneNumber || null;
+
+      return {
+        ...t,
+        purchaserName: name,
+        purchaserEmail: email,
+        purchaserPhone: phone,
+        passUrl: `${baseUrl}/${rolePath}/tickets/${t.ticketId}`,
+        oneTimeUseOnly: true,
+        isUsable: t.status === TicketStatus.ACTIVE && !t.checkedIn,
+      };
+    });
+
+    return {
+      verified: true,
+      message: `${quantity} ticket(s) issued successfully`,
+      oneTicketOneTimeOnly: true,
+      canBuyMultipleTimes: true,
+      purchaserRole: userRole,
+      purchaserId: userId,
+      tickets: formattedTickets,
+    };
+  }
+
+  /**
+   * 4. Handle Flutterwave Webhook
+   */
+  async handleWebhook(body: any, signature?: string) {
+    const isVerified = this.flutterwaveService.verifyWebhookHash(signature);
+
+    if (!isVerified) {
+      throw new UnauthorizedException('Invalid Flutterwave webhook signature');
+    }
+
+    this.logger.log(`Flutterwave ticket webhook event: ${body?.event}`);
+
+    if (body?.event === 'charge.completed' && body?.data?.status === 'successful') {
+      const txRef = body.data.tx_ref;
+      const txId = body.data.id;
+      if (txRef && txRef.startsWith('FLW-TCK')) {
+        await this.verifyPaymentAndIssueTicket(txRef, txId);
+      }
+    }
+
+    return { received: true };
+  }
+
+  /**
+   * 5. QR Code Venue Check-In (Scanner Parity)
+   */
+  async checkInByQr(dto: CheckInTicketDto, staffUser?: any) {
+    if (!dto.qrToken) {
+      throw new BadRequestException('QR token is required');
+    }
+
+    // Look up ticket by exact qrToken or search token containing ticket ID
+    let ticket = await this.prisma.ticket.findUnique({
+      where: { qrToken: dto.qrToken },
+      include: {
+        tournament: true,
+        fan: true,
+        player: true,
+      },
+    });
+
+    if (!ticket) {
+      // Try parsing if format is e.g. FAN:tournamentId:userId:ticketId
+      const parts = dto.qrToken.split(':');
+      if (parts.length >= 4) {
+        const potentialTicketId = parts[3];
+        ticket = await this.prisma.ticket.findUnique({
+          where: { ticketId: potentialTicketId },
+          include: {
+            tournament: true,
+            fan: true,
+            player: true,
+          },
+        });
+      }
+    }
+
+    if (!ticket) {
+      throw new NotFoundException('Invalid Ticket QR code. Ticket not found.');
+    }
+
+    // Validate tournament matching
+    if (dto.tournamentId && ticket.tournamentId !== dto.tournamentId) {
+      throw new BadRequestException(
+        `Wrong Venue/Tournament: Ticket belongs to "${ticket.tournament.name}", not the current venue tournament.`,
+      );
+    }
+
+    if (ticket.status === TicketStatus.CANCELLED) {
+      throw new BadRequestException('Ticket has been cancelled');
+    }
+
+    if (ticket.checkedIn || ticket.status === TicketStatus.USED) {
+      throw new BadRequestException(
+        `Ticket has already been used! Checked in at ${ticket.checkedInAt?.toISOString() || 'earlier'}`,
+      );
+    }
+
+    // Perform check-in
+    const updatedTicket = await this.prisma.ticket.update({
+      where: { ticketId: ticket.ticketId },
+      data: {
+        checkedIn: true,
+        checkedInAt: new Date(),
+        checkedInBy: staffUser?.userId || 'STAFF',
+        checkedInVenue: dto.venueId || null,
+        screenId: dto.screenId || null,
+        status: TicketStatus.USED,
+      },
+      include: {
+        tournament: true,
+        fan: true,
+        player: true,
+      },
+    });
+
+    const attendeeName = updatedTicket.fan
+      ? `${updatedTicket.fan.firstName} ${updatedTicket.fan.surname || ''}`.trim()
+      : (updatedTicket.player
+          ? `${updatedTicket.player.firstName} ${updatedTicket.player.lastName}`.trim()
+          : 'Spectator');
+
+    return {
+      success: true,
+      message: 'Access Granted: General Admission',
+      ticket: {
+        ticketId: updatedTicket.ticketId,
+        showTicketId: updatedTicket.showTicketId,
+        purchaserName: attendeeName,
+        purchaserRole: updatedTicket.purchaserRole,
+        type: updatedTicket.type,
+        seatNumber: updatedTicket.seatNumber,
+        checkedInAt: updatedTicket.checkedInAt,
+        tournamentName: updatedTicket.tournament.name,
+      },
+    };
+  }
+
+  /**
+   * 6. Get Current User's Tickets
+   */
+  async getMyTickets(userId: string) {
+    if (!userId) {
+      throw new UnauthorizedException('Authentication required');
+    }
+
+    const tickets = await this.prisma.ticket.findMany({
+      where: {
+        OR: [
+          { purchasedBy: userId },
+          { fanId: userId },
+          { playerId: userId },
+        ],
+      },
+      include: {
+        tournament: {
+          select: {
+            tournamentId: true,
+            name: true,
+            gameTitle: true,
+            startDate: true,
+            deadline: true,
+            dailyStart: true,
+            dailyEnd: true,
+            tournamentLogoUrl: true,
+            canvasImage: true,
+            currency: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const baseUrl = process.env.FRONTEND_URL || 'https://tapegaming.com';
+    const totalPasses = tickets.length;
+    const activeCodes = tickets.filter(
+      (t) => t.status === TicketStatus.ACTIVE && !t.checkedIn,
+    ).length;
+    const usedCodes = tickets.filter(
+      (t) => t.checkedIn || t.status === TicketStatus.USED,
+    ).length;
+
+    const mappedTickets = tickets.map((t) => {
+      const rolePath = t.purchaserRole === 'PLAYER' ? 'player' : 'fan';
+      return {
+        id: t.ticketId,
+        showTicketId: t.showTicketId,
+        tournamentId: t.tournamentId,
+        tournamentName: t.tournament?.name,
+        tournamentLogo: t.tournament?.tournamentLogoUrl,
+        canvasImage: t.tournament?.canvasImage,
+        startDate: t.tournament?.startDate,
+        purchaserRole: t.purchaserRole,
+        type: t.type,
+        pricePaid: t.pricePaid,
+        currency: t.currency,
+        seatNumber: t.seatNumber,
+        status: t.status,
+        checkedIn: t.checkedIn,
+        qrToken: t.qrToken,
+        passUrl: `${baseUrl}/${rolePath}/tickets/${t.ticketId}`,
+        oneTimeUseOnly: true,
+        isUsable: t.status === TicketStatus.ACTIVE && !t.checkedIn,
+        purchaseDate: t.createdAt,
+      };
+    });
+
+    return {
+      totalPasses,
+      activeCodes,
+      usedCodes,
+      tickets: mappedTickets,
+    };
+  }
+
+  /**
+   * 7. Get Ticket by ID
+   */
+  async getTicketById(ticketId: string) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { ticketId },
+      include: {
+        tournament: true,
+        fan: true,
+        player: true,
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException(`Ticket #${ticketId} not found`);
+    }
+
+    const purchaserName = ticket.fan
+      ? `${ticket.fan.firstName} ${ticket.fan.surname || ''}`.trim()
+      : (ticket.player
+          ? `${ticket.player.firstName} ${ticket.player.lastName}`.trim()
+          : 'Spectator');
+    const purchaserEmail = ticket.fan?.email || ticket.player?.email || null;
+    const purchaserPhone = ticket.fan?.phoneNumber || ticket.player?.phoneNumber || null;
+
+    return {
+      id: ticket.ticketId,
+      showTicketId: ticket.showTicketId,
+      tournamentId: ticket.tournamentId,
+      tournamentName: ticket.tournament.name,
+      tournamentStartDate: ticket.tournament.startDate,
+      tournamentEndDate: ticket.tournament.deadline,
+      purchaserName,
+      purchaserEmail,
+      purchaserPhone,
+      purchaserRole: ticket.purchaserRole,
+      type: ticket.type,
+      seatNumber: ticket.seatNumber,
+      pricePaid: ticket.pricePaid,
+      currency: ticket.currency,
+      status: ticket.status,
+      checkedIn: ticket.checkedIn,
+      checkedInAt: ticket.checkedInAt,
+      qrToken: ticket.qrToken,
+      passUrl: `${process.env.FRONTEND_URL || 'https://tapegaming.com'}/${ticket.purchaserRole === 'PLAYER' ? 'player' : 'fan'}/tickets/${ticket.ticketId}`,
+      oneTimeUseOnly: true,
+      isUsable: ticket.status === TicketStatus.ACTIVE && !ticket.checkedIn,
+      paymentReference: ticket.paymentReference,
+      createdAt: ticket.createdAt,
+    };
+  }
+
+  /**
+   * 8. Global Ticket Sales & Analytics (TicketSalesAnalytics.tsx Parity)
+   */
+  async getGlobalAnalytics() {
+    const allTickets = await this.prisma.ticket.findMany({
+      where: {
+        status: { in: [TicketStatus.ACTIVE, TicketStatus.USED] },
+      },
+      include: {
+        tournament: {
+          select: {
+            tournamentId: true,
+            name: true,
+            currency: true,
+          },
+        },
+        fan: {
+          select: {
+            firstName: true,
+            surname: true,
+          },
+        },
+        player: {
+          select: {
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const totalTicketsSold = allTickets.length;
+    const totalRevenue = allTickets.reduce(
+      (sum, t) => sum + (t.pricePaid || 0),
+      0,
+    );
+    const totalCheckIns = allTickets.filter((t) => t.checkedIn).length;
+    const checkInRate =
+      totalTicketsSold > 0
+        ? Number(((totalCheckIns / totalTicketsSold) * 100).toFixed(1))
+        : 0;
+
+    // Aggregate sales by tournament
+    const tournamentMap = new Map<
+      string,
+      { name: string; revenue: number; tickets: number }
+    >();
+
+    for (const t of allTickets) {
+      const tourId = t.tournamentId;
+      const tourName = t.tournament?.name || 'Tournament';
+      const existing = tournamentMap.get(tourId) || {
+        name: tourName,
+        revenue: 0,
+        tickets: 0,
+      };
+      existing.revenue += t.pricePaid || 0;
+      existing.tickets += 1;
+      tournamentMap.set(tourId, existing);
+    }
+
+    const salesByTournament = Array.from(tournamentMap.values());
+
+    // Recent ticket purchases (up to 15)
+    const recentPurchases = allTickets.slice(0, 15).map((t) => {
+      const name = t.fan
+        ? `${t.fan.firstName} ${t.fan.surname || ''}`.trim()
+        : (t.player
+            ? `${t.player.firstName} ${t.player.lastName}`.trim()
+            : 'Anonymous Fan');
+      return {
+        id: t.ticketId,
+        showTicketId: t.showTicketId,
+        fanName: name,
+        type: t.type,
+        pricePaid: t.pricePaid,
+        currency: t.currency,
+        tournamentName: t.tournament?.name || 'Tournament',
+        createdAt: t.createdAt,
+      };
+    });
+
+    return {
+      totalRevenue,
+      totalTicketsSold,
+      totalCheckIns,
+      checkInRate,
+      salesByTournament,
+      recentPurchases,
+    };
+  }
+
+  /**
+   * 9. Filter / List all tickets with pagination
+   */
+  async getAllTickets(query: QueryTicketDto) {
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.max(1, Math.min(100, Number(query.limit) || 10));
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+
+    if (query.tournamentId) {
+      where.tournamentId = query.tournamentId;
+    }
+
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    if (query.type) {
+      where.type = query.type;
+    }
+
+    if (query.searchTerm) {
+      where.OR = [
+        { showTicketId: { contains: query.searchTerm, mode: 'insensitive' } },
+        { qrToken: { contains: query.searchTerm, mode: 'insensitive' } },
+        { seatNumber: { contains: query.searchTerm, mode: 'insensitive' } },
+        { fan: { firstName: { contains: query.searchTerm, mode: 'insensitive' } } },
+        { fan: { email: { contains: query.searchTerm, mode: 'insensitive' } } },
+        { player: { firstName: { contains: query.searchTerm, mode: 'insensitive' } } },
+        { player: { email: { contains: query.searchTerm, mode: 'insensitive' } } },
+      ];
+    }
+
+    const [tickets, total] = await Promise.all([
+      this.prisma.ticket.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          tournament: {
+            select: {
+              tournamentId: true,
+              name: true,
+              currency: true,
+            },
+          },
+          fan: {
+            select: {
+              fanId: true,
+              firstName: true,
+              surname: true,
+              email: true,
+              phoneNumber: true,
+              gamerTag: true,
+            },
+          },
+          player: {
+            select: {
+              playerId: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              phoneNumber: true,
+              gamerTag: true,
+            },
+          },
+        },
+      }),
+      this.prisma.ticket.count({ where }),
+    ]);
+
+    const mappedTickets = tickets.map((t) => {
+      const name = t.fan
+        ? `${t.fan.firstName} ${t.fan.surname || ''}`.trim()
+        : (t.player
+            ? `${t.player.firstName} ${t.player.lastName}`.trim()
+            : 'Spectator');
+      return {
+        ...t,
+        purchaserName: name,
+        purchaserEmail: t.fan?.email || t.player?.email || null,
+        purchaserPhone: t.fan?.phoneNumber || t.player?.phoneNumber || null,
+      };
+    });
+
+    return {
+      data: mappedTickets,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
+   * Transfer Ticket Pass to another Fan/Player by Phone or Email
+   * "License transfers are irrecoverable and immediately lock ticket access once completed."
+   */
+  async transferTicket(
+    currentUser: { userId: string; role?: string },
+    dto: TransferTicketDto,
+  ) {
+    if (!currentUser?.userId) {
+      throw new UnauthorizedException('Authentication required to transfer ticket');
+    }
+
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { ticketId: dto.ticketId },
+      include: {
+        tournament: true,
+        fan: true,
+        player: true,
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException(`Ticket #${dto.ticketId} not found`);
+    }
+
+    // Ownership check (or admin)
+    const isAdmin =
+      currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN';
+    const isOwner =
+      ticket.purchasedBy === currentUser.userId ||
+      ticket.fanId === currentUser.userId ||
+      ticket.playerId === currentUser.userId;
+
+    if (!isOwner && !isAdmin) {
+      throw new BadRequestException('You do not have permission to transfer this ticket.');
+    }
+
+    // Usability checks
+    if (ticket.checkedIn || ticket.status === TicketStatus.USED) {
+      throw new BadRequestException('Used tickets cannot be transferred.');
+    }
+    if (ticket.status === TicketStatus.TRANSFERRED) {
+      throw new BadRequestException('This ticket has already been transferred.');
+    }
+    if (ticket.status === TicketStatus.CANCELLED) {
+      throw new BadRequestException('Cancelled tickets cannot be transferred.');
+    }
+
+    // Clean recipient phone
+    const cleanPhone = dto.recipientPhone.replace(/[\s\-\(\)]/g, '');
+
+    // Search recipient Fan
+    const recipientFan = await this.prisma.fan.findFirst({
+      where: {
+        OR: [
+          { phoneNumber: { contains: cleanPhone } },
+          { phoneNumber: dto.recipientPhone },
+          ...(dto.recipientEmail ? [{ email: dto.recipientEmail }] : []),
+        ],
+        isDeleted: false,
+      },
+    });
+
+    let recipientPlayer: any = null;
+    if (!recipientFan) {
+      recipientPlayer = await this.prisma.player.findFirst({
+        where: {
+          OR: [
+            { phoneNumber: { contains: cleanPhone } },
+            { phoneNumber: dto.recipientPhone },
+            ...(dto.recipientEmail ? [{ email: dto.recipientEmail }] : []),
+          ],
+          isDeleted: false,
+        },
+      });
+    }
+
+    const recipientRole = recipientFan ? 'FAN' : recipientPlayer ? 'PLAYER' : 'GUEST';
+    const recipientId =
+      recipientFan?.fanId || recipientPlayer?.playerId || `guest-${Date.now()}`;
+    const recipientName = recipientFan
+      ? `${recipientFan.firstName} ${recipientFan.surname || ''}`.trim()
+      : recipientPlayer
+      ? `${recipientPlayer.firstName} ${recipientPlayer.lastName}`.trim()
+      : dto.recipientPhone;
+
+    const newShowTicketId = `TCK-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+    const newQrToken = `${recipientRole}:${ticket.tournamentId}:${recipientId}:${crypto.randomUUID()}`;
+
+    // Perform atomic transaction:
+    // 1. Mark current ticket as TRANSFERRED (locks ticket access for sender)
+    // 2. Create new ACTIVE ticket for recipient
+    const [transferredOldTicket, newIssuedTicket] = await this.prisma.$transaction([
+      this.prisma.ticket.update({
+        where: { ticketId: ticket.ticketId },
+        data: {
+          status: TicketStatus.TRANSFERRED,
+          metadata: {
+            ...(typeof ticket.metadata === 'object' && ticket.metadata ? (ticket.metadata as object) : {}),
+            transferredAt: new Date().toISOString(),
+            transferredToPhone: dto.recipientPhone,
+            transferredToName: recipientName,
+            transferredToUserId: recipientId,
+            transferredFromUserId: currentUser.userId,
+          },
+        },
+      }),
+      this.prisma.ticket.create({
+        data: {
+          showTicketId: newShowTicketId,
+          tournamentId: ticket.tournamentId,
+          type: ticket.type,
+          pricePaid: ticket.pricePaid,
+          currency: ticket.currency,
+          seatNumber: ticket.seatNumber,
+          status: TicketStatus.ACTIVE,
+          checkedIn: false,
+          qrToken: newQrToken,
+          purchasedBy: recipientId,
+          purchaserRole: recipientRole,
+          fanId: recipientFan?.fanId || null,
+          playerId: recipientPlayer?.playerId || null,
+          paymentReference: `TRANSFER-${ticket.ticketId.slice(0, 8)}-${Date.now()}`,
+          metadata: {
+            ...(typeof ticket.metadata === 'object' && ticket.metadata ? (ticket.metadata as object) : {}),
+            transferredFromTicketId: ticket.ticketId,
+            transferredFromShowTicketId: ticket.showTicketId,
+            transferredFromUserId: currentUser.userId,
+            originalPurchaseDate: ticket.createdAt,
+          },
+        },
+        include: {
+          tournament: {
+            select: {
+              tournamentId: true,
+              name: true,
+              tournamentLogoUrl: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    return {
+      message: `Ticket successfully transferred to recipient (${recipientName || dto.recipientPhone}). Your ticket access has been locked.`,
+      originalTicketId: transferredOldTicket.ticketId,
+      originalTicketStatus: transferredOldTicket.status,
+      recipientTicketId: newIssuedTicket.ticketId,
+      recipientShowTicketId: newIssuedTicket.showTicketId,
+      recipientName,
+      recipientPhone: dto.recipientPhone,
+      tournamentName: ticket.tournament?.name,
+      seatNumber: ticket.seatNumber,
+    };
+  }
+
+  /**
+   * 10. Ticket Tier CRUD
+   */
+  async createTier(dto: CreateTierDto) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId: dto.tournamentId },
+    });
+
+    if (!tournament) {
+      throw new NotFoundException(`Tournament #${dto.tournamentId} not found`);
+    }
+
+    return this.prisma.ticketTier.create({
+      data: {
+        tournamentId: dto.tournamentId,
+        name: dto.name,
+        type: dto.type || TicketType.DAY_PASS,
+        price: dto.price,
+        currency: dto.currency || tournament.currency || 'NGN',
+        capacity: dto.capacity || 100,
+        description: dto.description || null,
+        status: 'ACTIVE',
+      },
+    });
+  }
+
+  async getTiersByTournament(tournamentId: string) {
+    return this.prisma.ticketTier.findMany({
+      where: { tournamentId },
+      orderBy: { price: 'asc' },
+    });
+  }
+
+  async updateTier(tierId: string, dto: UpdateTierDto) {
+    const tier = await this.prisma.ticketTier.findUnique({
+      where: { tierId },
+    });
+
+    if (!tier) {
+      throw new NotFoundException(`Ticket Tier #${tierId} not found`);
+    }
+
+    return this.prisma.ticketTier.update({
+      where: { tierId },
+      data: {
+        ...(dto.name ? { name: dto.name } : {}),
+        ...(dto.type ? { type: dto.type } : {}),
+        ...(dto.price !== undefined ? { price: dto.price } : {}),
+        ...(dto.currency ? { currency: dto.currency } : {}),
+        ...(dto.capacity !== undefined ? { capacity: dto.capacity } : {}),
+        ...(dto.description !== undefined ? { description: dto.description } : {}),
+        ...(dto.status ? { status: dto.status } : {}),
+      },
+    });
+  }
+
+  async deleteTier(tierId: string) {
+    const tier = await this.prisma.ticketTier.findUnique({
+      where: { tierId },
+    });
+
+    if (!tier) {
+      throw new NotFoundException(`Ticket Tier #${tierId} not found`);
+    }
+
+    if (tier.sold > 0) {
+      throw new BadRequestException(
+        'Cannot delete ticket tier that has sold tickets. Deactivate or set status to HIDDEN instead.',
+      );
+    }
+
+    await this.prisma.ticketTier.delete({
+      where: { tierId },
+    });
+
+    return { message: 'Ticket tier deleted successfully' };
+  }
+}

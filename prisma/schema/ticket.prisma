@@ -1,0 +1,81 @@
+model Ticket {
+  ticketId         String       @id @default(uuid())
+  showTicketId     String?      // Formatted ID e.g. TCK-00001
+  tournamentId     String
+  tournament       Tournament   @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+
+  fanId            String?
+  fan              Fan?         @relation(fields: [fanId], references: [fanId], onDelete: SetNull)
+
+  playerId         String?
+  player           Player?      @relation(fields: [playerId], references: [playerId], onDelete: SetNull)
+
+  purchasedBy      String       // User ID of the purchaser (Fan or Player)
+  purchaserRole    String       @default("FAN") // FAN or PLAYER
+
+  type             TicketType   @default(DAY_PASS)
+  pricePaid        Float        @default(0)
+  currency         String       @default("NGN")
+  status           TicketStatus @default(ACTIVE)
+
+  qrToken          String       @unique // Scan token for venue check-in e.g. TICKET:tournamentId:ticketId:random
+  checkedIn        Boolean      @default(false)
+  checkedInAt      DateTime?
+  checkedInBy      String?      // Staff/Umpire ID
+  checkedInVenue   String?      // Venue ID
+
+  seatNumber       String?      // Optional seat designation
+  screenId         String?
+
+  // Payment integration (Flutterwave / Paystack)
+  paymentReference String?      @unique
+  flwTransactionId String?      // Flutterwave transaction ID
+  paymentGateway   String       @default("FLUTTERWAVE")
+  paymentStatus    String       @default("SUCCESS")
+
+  metadata         Json?
+
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([tournamentId])
+  @@index([fanId])
+  @@index([playerId])
+  @@index([purchasedBy])
+  @@index([status])
+  @@index([qrToken])
+  @@index([paymentReference])
+}
+
+model TicketTier {
+  tierId       String     @id @default(uuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+
+  name         String     // e.g. "Day Pass", "VIP Pass", "Season Pass"
+  type         TicketType @default(DAY_PASS)
+  price        Float
+  currency     String     @default("NGN")
+  capacity     Int        @default(100) // Total available seats/tickets
+  sold         Int        @default(0)   // Total sold so far
+  description  String?
+  status       String     @default("ACTIVE") // ACTIVE, HIDDEN
+
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([tournamentId])
+}
+
+enum TicketType {
+  DAY_PASS
+  SEASON_PASS
+  VIP
+}
+
+enum TicketStatus {
+  ACTIVE
+  USED
+  TRANSFERRED
+  CANCELLED
+}

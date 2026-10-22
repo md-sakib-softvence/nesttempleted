@@ -1,4 +1,10 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  Optional,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TournamentScheduleService } from './tournament-schedule.service';
 import { TournamentCoreService } from './tournament-core.service';
@@ -18,6 +24,7 @@ import { CreateTournamentRegistrationDto } from '../dto/tournament/create-regist
 import { UpdateRegistrationStatusDto } from '../dto/tournament/update-registration-status.dto';
 import { OpenRegistrationDto } from '../dto/tournament/open-registration.dto';
 import { CreateRaffleDto } from '../dto/tournament/create-raffle.dto';
+import { RaffleService } from './raffle.service';
 import { UpdateTournamentTemplatesDto } from '../dto/tournament/update-templates.dto';
 import { UpdateTournamentStatusDto } from '../dto/tournament/update-tournament-status.dto';
 import { RegistrationSelectionDto } from '../dto/tournament/registration-selection.dto';
@@ -26,6 +33,7 @@ import { CreateMatchDisputeDto } from '../dto/tournament/match-dispute.dto';
 import { UpdateMatchDisputeDto } from '../dto/tournament/update-dispute.dto';
 import { UpdateTournamentFinancialsDto } from '../dto/tournament/update-financials.dto';
 import { QueryTournamentRegistrationDto } from '../dto/tournament/query-registration.dto';
+import { PredictMatchDto } from '../dto/tournament/predict-match.dto';
 import { SchedulingMode } from '@prisma/client';
 
 /**
@@ -41,6 +49,7 @@ export class TournamentService {
   private readonly registration: TournamentRegistrationService;
   private readonly matches: TournamentMatchesService;
   private readonly leaderboard: TournamentLeaderboardService;
+  private readonly raffleService: RaffleService;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -49,6 +58,7 @@ export class TournamentService {
     @Optional() registrationService?: TournamentRegistrationService,
     @Optional() matchesService?: TournamentMatchesService,
     @Optional() leaderboardService?: TournamentLeaderboardService,
+    @Optional() raffleService?: RaffleService,
   ) {
     this.core =
       coreService ||
@@ -66,6 +76,7 @@ export class TournamentService {
       );
     this.leaderboard =
       leaderboardService || new TournamentLeaderboardService(this.prisma);
+    this.raffleService = raffleService || new RaffleService(this.prisma);
   }
 
   // ==========================================
@@ -116,15 +127,15 @@ export class TournamentService {
   }
 
   async getRaffles(tournamentId: string) {
-    return this.core.getRaffles(tournamentId);
+    return this.raffleService.getRafflesByTournament(tournamentId);
   }
 
   async createRaffle(tournamentId: string, dto: CreateRaffleDto) {
-    return this.core.createRaffle(tournamentId, dto);
+    return this.raffleService.createRaffle(dto, tournamentId);
   }
 
   async drawRaffle(tournamentId: string, raffleId: string) {
-    return this.core.drawRaffle(tournamentId, raffleId);
+    return this.raffleService.drawRaffle(raffleId, tournamentId);
   }
 
   async getTournamentFinancials(tournamentId: string) {
@@ -333,4 +344,140 @@ export class TournamentService {
   async getTournamentLeaderboard(tournamentId: string) {
     return this.leaderboard.getTournamentLeaderboard(tournamentId);
   }
+
+  // ==========================================
+  // LIVE TOURNAMENT PREDICTIONS / WAGERS
+  // ==========================================
+
+  async getLivePredictionFixtures(tournamentId: string) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+      include: { venues: true },
+    });
+    if (!tournament || tournament.isDeleted) {
+      throw new NotFoundException(`Tournament #${tournamentId} not found`);
+    }
+
+    const isLive = tournament.status === 'IN_PROGRESS';
+    const schedule = (tournament.schedule as any) || {};
+    const matches: any[] =
+      schedule.structure?.matches || schedule.matches || [];
+
+    const activeFixtures = matches
+      .filter(
+        (m: any) =>
+          m.status !== 'COMPLETED' &&
+          (m.score1 === null || m.score1 === undefined),
+      )
+      .map((m: any) => ({
+        matchId: m.id || `${tournament.tournamentId}-${m.time}`,
+        tournamentName: tournament.name,
+        time: m.time || '10:35',
+        player1: {
+          id: m.player1Id,
+          gamertag: m.player1Name || m.participant1Ref?.name || 'GamerTag83',
+          odds: 1.85,
+        },
+        player2: {
+          id: m.player2Id,
+          gamertag: m.player2Name || m.participant2Ref?.name || 'GamerTag84',
+          odds: 2.1,
+        },
+        drawOdds: 3.1,
+        status: 'OPEN_FOR_PREDICTION',
+      }));
+
+    return {
+      tournamentId: tournament.tournamentId,
+      tournamentName: tournament.name,
+      isLive,
+      fixtures: activeFixtures,
+    };
+  }
+
+  async lockPrediction(
+    tournamentId: string,
+    dto: PredictMatchDto,
+    currentUser: { userId: string; role?: string },
+  ) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+    });
+    if (!tournament || tournament.isDeleted) {
+      throw new NotFoundException(`Tournament #${tournamentId} not found`);
+    }
+
+    // Restriction: Predictions allowed on Live tournaments only
+    if (tournament.status !== 'IN_PROGRESS' && tournament.status !== 'UPCOMING') {
+      throw new BadRequestException(
+        'Predictions are strictly restricted to active Live tournaments only.',
+      );
+    }
+
+    // Match verification
+    const schedule = (tournament.schedule as any) || {};
+    const matches: any[] =
+      schedule.structure?.matches || schedule.matches || [];
+    const match = matches.find(
+      (m: any) =>
+        m.id === dto.matchId || String(m.id).includes(dto.matchId),
+    );
+
+    if (match) {
+      if (
+        match.status === 'COMPLETED' ||
+        (match.score1 !== null && match.score1 !== undefined)
+      ) {
+        throw new BadRequestException(
+          'Match is already completed. Predictions are closed for this fixture.',
+        );
+      }
+    }
+
+    // Fetch fan profile and balance
+    const fan = await this.prisma.fan.findFirst({
+      where: { fanId: currentUser?.userId, isDeleted: false },
+    });
+
+    if (!fan) {
+      throw new BadRequestException(
+        'Only registered fans can participate in coin predictions.',
+      );
+    }
+
+    const availablePoints = (fan.topPoint || 0) + (fan.coins || 0);
+    if (availablePoints < dto.wagerPoints) {
+      throw new BadRequestException(
+        `Insufficient points! You currently have ${availablePoints} pts, but this wager requires ${dto.wagerPoints} pts.`,
+      );
+    }
+
+    // Deduct wagered points
+    const updatedFan = await this.prisma.fan.update({
+      where: { fanId: fan.fanId },
+      data: {
+        topPoint: { decrement: dto.wagerPoints },
+      },
+    });
+
+    const potentialPayout = Math.round(dto.wagerPoints * dto.odds);
+
+    return {
+      message: 'Prediction successfully locked in!',
+      tournamentId: tournament.tournamentId,
+      tournamentName: tournament.name,
+      matchId: dto.matchId,
+      predictedWinnerId: dto.predictedWinnerId,
+      wagerPoints: dto.wagerPoints,
+      odds: dto.odds,
+      potentialPayout,
+      remainingPoints: Math.max(
+        0,
+        (updatedFan.topPoint || 0) + (updatedFan.coins || 0),
+      ),
+      status: 'LOCKED',
+      timestamp: new Date().toISOString(),
+    };
+  }
 }
+

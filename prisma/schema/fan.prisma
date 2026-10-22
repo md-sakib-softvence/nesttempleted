@@ -9,6 +9,7 @@ model Fan {
   ageRange     String
   status       FanStatus @default(ACTIVE)
   topPoint     Int       @default(0)
+  coins        Int       @default(0)
   favoriteGame String
   profileImage String?
   username     String?
@@ -20,6 +21,11 @@ model Fan {
 
   marketingData MarketingDataCollection?
   schedules     Schedule[]
+  followers     Follower[]               @relation("FanFollowing")
+  followedBy    Follower[]               @relation("FanFollowed")
+  tickets       Ticket[]
+
+  @@index([gamerTag])
 }
 
 enum FanStatus {

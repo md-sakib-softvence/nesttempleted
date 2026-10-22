@@ -152,6 +152,7 @@ export class PlayerController {
   }
 
   @Get(':id')
+  @Public()
   @ApiOperation({ summary: 'Get a specific Player by ID' })
   async getPlayerById(@Param('id') id: string) {
     const data = await this.playerService.getPlayerById(id);
@@ -162,6 +163,7 @@ export class PlayerController {
   }
 
   @Get()
+  @Public()
   @ApiOperation({ summary: 'Get all Players' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })

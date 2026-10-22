@@ -41,6 +41,7 @@ import { uploadImageToS3, deleteImageFromS3 } from '../../utils/s3.util';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
+import { Public } from '../../../common/decorators/public.decorator';
 import { Role } from '@prisma/client';
 
 @ApiTags('Admin Series Management')
@@ -52,6 +53,7 @@ export class SeriesController {
   constructor(private readonly seriesService: SeriesService) {}
 
   @Get()
+  @Public()
   @ApiOperation({ summary: 'List all series for Admin Series Management Dashboard' })
   @ApiResponse({ status: 200, description: 'Series list retrieved successfully' })
   async findAll(@Query() query: QuerySeriesDto) {
@@ -66,6 +68,7 @@ export class SeriesController {
   }
 
   @Get(':id')
+  @Public()
   @ApiOperation({ summary: 'Returns complete details of a series' })
   @ApiParam({ name: 'id', description: 'Series ID' })
   @ApiResponse({ status: 200, description: 'Series details retrieved successfully' })
@@ -293,6 +296,7 @@ export class SeriesController {
   }
 
   @Get(':id/leaderboard')
+  @Public()
   @ApiOperation({ summary: 'Authoritative series leaderboard from series points engine' })
   @ApiParam({ name: 'id', description: 'Series ID' })
   @ApiResponse({ status: 200, description: 'Series leaderboard retrieved successfully' })

@@ -25,6 +25,7 @@ import { AnnouncementModule } from './modules/announcement/announcement.module';
 import { PaymentModule } from './modules/payment/payment.module';
 import { FlutterwaveModule } from './modules/flutterwave/flutterwave.module';
 import { SeriesModule } from './modules/series/series.module';
+import { TicketModule } from './modules/ticket/ticket.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { SeriesModule } from './modules/series/series.module';
     PrismaModule,
     TournamentModule,
     SeriesModule,
+    TicketModule,
     AdminModule,
     AuthModule,
     EmployeeModule,
