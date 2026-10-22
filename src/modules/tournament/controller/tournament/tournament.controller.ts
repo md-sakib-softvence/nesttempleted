@@ -384,9 +384,25 @@ export class TournamentController {
 
   @Get(':id/standings')
   @Public()
-  @ApiOperation({ summary: 'Get tournament standings/leaderboard' })
-  async getLeaderboard(@Param('id') id: string) {
-    const data = await this.tournamentService.getTournamentLeaderboard(id);
+  @ApiOperation({
+    summary: 'Get tournament standings/leaderboard with filter (table, goals, metrics)',
+  })
+  @ApiQuery({
+    name: 'filter',
+    required: false,
+    enum: ['table', 'goals', 'metrics', 'all'],
+    description: 'Filter standings view by table, goals, or metrics',
+  })
+  async getLeaderboard(
+    @Param('id') id: string,
+    @Query('filter') filter?: string,
+    @Query('tab') tab?: string,
+  ) {
+    const activeFilter = filter || tab;
+    const data = await this.tournamentService.getTournamentLeaderboard(
+      id,
+      activeFilter,
+    );
     return sendResponse({
       message: 'Tournament leaderboard retrieved successfully',
       data,

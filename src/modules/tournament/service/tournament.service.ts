@@ -341,8 +341,8 @@ export class TournamentService {
     return this.leaderboard.getTournamentResults(tournamentId);
   }
 
-  async getTournamentLeaderboard(tournamentId: string) {
-    return this.leaderboard.getTournamentLeaderboard(tournamentId);
+  async getTournamentLeaderboard(tournamentId: string, filter?: string) {
+    return this.leaderboard.getTournamentLeaderboard(tournamentId, filter);
   }
 
   // ==========================================

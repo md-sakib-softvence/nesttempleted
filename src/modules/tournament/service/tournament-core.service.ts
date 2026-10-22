@@ -479,6 +479,7 @@ export class TournamentCoreService {
           },
         },
         sponsors: true,
+        ticketTiers: true,
         registrations: {
           include: {
             player: true,

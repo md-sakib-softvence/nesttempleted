@@ -29,8 +29,9 @@ export class TournamentLeaderboardService {
 
   /**
    * Computes standings / leaderboard table and performance analytics from tournament matches.
+   * Supports filtering by 'table', 'goals', or 'metrics'.
    */
-  async getTournamentLeaderboard(tournamentId: string) {
+  async getTournamentLeaderboard(tournamentId: string, filter?: string) {
     const tournament = await this.prisma.tournament.findUnique({
       where: { tournamentId },
     });
@@ -215,7 +216,24 @@ export class TournamentLeaderboardService {
       }
     });
 
-    // Compute Performance Panel Analytics
+    // Compute Top Scorers (Goals Table)
+    const topScorers = [...sortedStandings]
+      .filter((p) => p.goalsFor > 0 || p.played > 0)
+      .sort((a, b) => b.goalsFor - a.goalsFor || a.played - b.played)
+      .map((p, idx) => ({
+        rank: idx + 1,
+        playerId: p.playerId,
+        gamertag: p.gamertag,
+        name: p.name,
+        playerPhotoUrl: p.playerPhotoUrl,
+        matches: p.played,
+        played: p.played,
+        goals: p.goalsFor,
+        goalsFor: p.goalsFor,
+        gpm: p.played > 0 ? Number((p.goalsFor / p.played).toFixed(2)) : 0,
+      }));
+
+    // Compute Performance Panel Analytics (Metrics View)
     const analytics = sortedStandings.map((p) => {
       const gpm = p.played > 0 ? Number((p.goalsFor / p.played).toFixed(2)) : 0;
       const gapm =
@@ -239,34 +257,69 @@ export class TournamentLeaderboardService {
     )[0];
     const mostClinical = [...analytics].sort((a, b) => b.gdpm - a.gdpm)[0];
 
+    const awards = {
+      goldenBoot: goldenBoot
+        ? {
+            playerId: goldenBoot.playerId,
+            name: goldenBoot.gamertag,
+            goals: goldenBoot.goalsFor,
+            gpm: goldenBoot.gpm,
+          }
+        : null,
+      goldenGlove: goldenGlove
+        ? {
+            playerId: goldenGlove.playerId,
+            name: goldenGlove.gamertag,
+            cleanSheets: goldenGlove.cleanSheets,
+            gapm: goldenGlove.gapm,
+          }
+        : null,
+      mostClinical: mostClinical
+        ? {
+            playerId: mostClinical.playerId,
+            name: mostClinical.gamertag,
+            gdpm: mostClinical.gdpm,
+          }
+        : null,
+    };
+
+    const normalizedFilter = filter?.toLowerCase()?.trim();
+
+    if (normalizedFilter === 'table') {
+      return {
+        filter: 'table',
+        standings: sortedStandings,
+        table: sortedStandings,
+      };
+    }
+
+    if (normalizedFilter === 'goals') {
+      return {
+        filter: 'goals',
+        goals: topScorers,
+        topScorers,
+        goldenBoot: awards.goldenBoot,
+      };
+    }
+
+    if (normalizedFilter === 'metrics') {
+      return {
+        filter: 'metrics',
+        metrics: analytics,
+        analytics,
+        awards,
+      };
+    }
+
     return {
+      filter: 'all',
       standings: sortedStandings,
+      table: sortedStandings,
+      goals: topScorers,
+      topScorers,
+      metrics: analytics,
       analytics,
-      awards: {
-        goldenBoot: goldenBoot
-          ? {
-              playerId: goldenBoot.playerId,
-              name: goldenBoot.gamertag,
-              goals: goldenBoot.goalsFor,
-              gpm: goldenBoot.gpm,
-            }
-          : null,
-        goldenGlove: goldenGlove
-          ? {
-              playerId: goldenGlove.playerId,
-              name: goldenGlove.gamertag,
-              cleanSheets: goldenGlove.cleanSheets,
-              gapm: goldenGlove.gapm,
-            }
-          : null,
-        mostClinical: mostClinical
-          ? {
-              playerId: mostClinical.playerId,
-              name: mostClinical.gamertag,
-              gdpm: mostClinical.gdpm,
-            }
-          : null,
-      },
+      awards,
     };
   }
 }
