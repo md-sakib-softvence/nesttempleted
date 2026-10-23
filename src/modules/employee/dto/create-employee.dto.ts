@@ -51,4 +51,12 @@ export class CreateEmployeeDto {
   })
   @IsOptional()
   document?: any[];
+
+  @ApiPropertyOptional({
+    type: 'array',
+    items: { type: 'string', format: 'binary' },
+    description: 'QR Codes',
+  })
+  @IsOptional()
+  qrCode?: any;
 }

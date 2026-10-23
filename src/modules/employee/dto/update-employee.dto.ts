@@ -21,6 +21,14 @@ export class UpdateEmployeeDto extends PartialType(CreateEmployeeDto) {
   @IsOptional()
   document?: any[];
 
+  @ApiPropertyOptional({
+    type: 'array',
+    items: { type: 'string', format: 'binary' },
+    description: 'QR Codes',
+  })
+  @IsOptional()
+  qrCode?: any;
+
   @ApiPropertyOptional({ description: 'Is Cash Leader' })
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
@@ -39,6 +47,13 @@ export class UpdateEmployeeDto extends PartialType(CreateEmployeeDto) {
   })
   @IsOptional()
   deletedDocuments?: string[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Array of existing QR code URLs/keys to delete',
+  })
+  @IsOptional()
+  deletedQrCodes?: string[];
 
   @ApiPropertyOptional({
     enum: EmployeeState,

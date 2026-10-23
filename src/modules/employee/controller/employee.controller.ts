@@ -56,6 +56,10 @@ export class EmployeeController {
         name: 'document',
         maxCount: parseInt(process.env.MAX_DOCUMENTS || '10', 10),
       },
+      {
+        name: 'qrCode',
+        maxCount: parseInt(process.env.MAX_QR_CODES || '10', 10),
+      },
     ]),
   )
   @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
@@ -65,6 +69,7 @@ export class EmployeeController {
     files: {
       profileImage?: Express.Multer.File[];
       document?: Express.Multer.File[];
+      qrCode?: Express.Multer.File[];
     },
   ) {
     const uploadedFiles = await uploadEmployeeFiles(files);
@@ -81,6 +86,24 @@ export class EmployeeController {
       createEmployeeDto.document = [];
     }
 
+    let bodyQrCodes: string[] = [];
+    if (createEmployeeDto.qrCode) {
+      if (Array.isArray(createEmployeeDto.qrCode)) {
+        bodyQrCodes = createEmployeeDto.qrCode.filter(
+          (item) => typeof item === 'string' && item.trim() !== '',
+        );
+      } else if (
+        typeof createEmployeeDto.qrCode === 'string' &&
+        createEmployeeDto.qrCode.trim() !== ''
+      ) {
+        bodyQrCodes = [createEmployeeDto.qrCode.trim()];
+      }
+    }
+    createEmployeeDto.qrCode = [
+      ...bodyQrCodes,
+      ...(uploadedFiles.qrCode || []),
+    ];
+
     try {
       const data = await this.employeeService.createEmployee(createEmployeeDto);
 
@@ -91,6 +114,17 @@ export class EmployeeController {
       if (data.document && data.document.length > 0) {
         data.document = await Promise.all(
           data.document.map(async (doc) => getPreSignedUrl(doc)),
+        );
+      }
+
+      if (data.qrCode && data.qrCode.length > 0) {
+        data.qrCode = await Promise.all(
+          data.qrCode.map(async (qr: string) => {
+            if (qr.startsWith('http://') || qr.startsWith('https://')) {
+              return qr;
+            }
+            return getPreSignedUrl(qr);
+          }),
         );
       }
 
@@ -105,6 +139,7 @@ export class EmployeeController {
       await rollbackEmployeeFiles(
         uploadedFiles.profileImage,
         uploadedFiles.document,
+        uploadedFiles.qrCode,
       );
       throw error;
     }
@@ -131,6 +166,10 @@ export class EmployeeController {
         name: 'document',
         maxCount: parseInt(process.env.MAX_DOCUMENTS || '10', 10),
       },
+      {
+        name: 'qrCode',
+        maxCount: parseInt(process.env.MAX_QR_CODES || '10', 10),
+      },
     ]),
   )
   async updateEmployee(
@@ -140,6 +179,7 @@ export class EmployeeController {
     files: {
       profileImage?: Express.Multer.File[];
       document?: Express.Multer.File[];
+      qrCode?: Express.Multer.File[];
     },
   ) {
     if (
@@ -147,6 +187,13 @@ export class EmployeeController {
       typeof updateEmployeeDto.deletedDocuments === 'string'
     ) {
       updateEmployeeDto.deletedDocuments = [updateEmployeeDto.deletedDocuments];
+    }
+
+    if (
+      updateEmployeeDto.deletedQrCodes &&
+      typeof updateEmployeeDto.deletedQrCodes === 'string'
+    ) {
+      updateEmployeeDto.deletedQrCodes = [updateEmployeeDto.deletedQrCodes];
     }
 
     const uploadedFiles = await uploadEmployeeFiles(files);
@@ -161,6 +208,29 @@ export class EmployeeController {
       updateEmployeeDto.document = uploadedFiles.document;
     } else {
       delete updateEmployeeDto.document;
+    }
+
+    let bodyQrCodes: string[] = [];
+    if (updateEmployeeDto.qrCode) {
+      if (Array.isArray(updateEmployeeDto.qrCode)) {
+        bodyQrCodes = updateEmployeeDto.qrCode.filter(
+          (item) => typeof item === 'string' && item.trim() !== '',
+        );
+      } else if (
+        typeof updateEmployeeDto.qrCode === 'string' &&
+        updateEmployeeDto.qrCode.trim() !== ''
+      ) {
+        bodyQrCodes = [updateEmployeeDto.qrCode.trim()];
+      }
+    }
+
+    if (uploadedFiles.qrCode.length > 0 || bodyQrCodes.length > 0) {
+      updateEmployeeDto.qrCode = [
+        ...bodyQrCodes,
+        ...uploadedFiles.qrCode,
+      ];
+    } else {
+      delete updateEmployeeDto.qrCode;
     }
 
     try {
@@ -179,6 +249,17 @@ export class EmployeeController {
         );
       }
 
+      if (data.qrCode && data.qrCode.length > 0) {
+        data.qrCode = await Promise.all(
+          data.qrCode.map(async (qr: string) => {
+            if (qr.startsWith('http://') || qr.startsWith('https://')) {
+              return qr;
+            }
+            return getPreSignedUrl(qr);
+          }),
+        );
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { password, ...safeData } = data as any;
 
@@ -190,6 +271,7 @@ export class EmployeeController {
       await rollbackEmployeeFiles(
         uploadedFiles.profileImage,
         uploadedFiles.document,
+        uploadedFiles.qrCode,
       );
       throw error;
     }
