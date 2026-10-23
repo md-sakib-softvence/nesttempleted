@@ -2,9 +2,14 @@ import {
   Injectable,
   ConflictException,
   NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { CreatePlayerDto } from '../dto/create-player.dto';
 import { UpdatePlayerDto } from '../dto/update-player.dto';
+import { UpdateDocumentStatusDto } from '../dto/update-document-status.dto';
+import { RequestPayoutDto } from '../dto/request-payout.dto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import {
@@ -12,21 +17,38 @@ import {
   calculatePaginationMeta,
   QueryOptions,
 } from '../../utils/query.util';
-import { getPreSignedUrl, deleteImageFromS3 } from '../../utils/s3.util';
+import { deleteImageFromS3 } from '../../utils/s3.util';
 import { generatePlayerId } from '../utils/generate-id.util';
 import { createActivities } from '../../utils/activity.util';
 import { JwtService } from '@nestjs/jwt';
 import { MailService } from '../../mail/mail.service';
+import { formatPlayerResponse } from '../utils/player-response.util';
+import { DocumentStatus, Role } from '@prisma/client';
+import { PlayerDocumentService } from './player-document.service';
+import { PlayerPassService } from './player-pass.service';
+import { PlayerWalletService } from './player-wallet.service';
 
 @Injectable()
 export class PlayerService {
+  private readonly logger = new Logger(PlayerService.name);
+
   constructor(
-    private prisma: PrismaService,
-    private jwtService: JwtService,
-    private mailService: MailService,
+    private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
+    private readonly mailService: MailService,
+    private readonly documentService: PlayerDocumentService,
+    private readonly passService: PlayerPassService,
+    private readonly walletService: PlayerWalletService,
   ) {}
 
-  async createPlayer(createPlayerDto: CreatePlayerDto) {
+  /**
+   * Create a new player account with optional profile picture and compliance documents.
+   */
+  async createPlayer(
+    createPlayerDto: CreatePlayerDto,
+    profilePictureKey?: string,
+    documentKeys?: string[],
+  ) {
     const existingPlayer = await this.prisma.player.findUnique({
       where: { email: createPlayerDto.email },
     });
@@ -52,50 +74,148 @@ export class PlayerService {
       throw new ConflictException('Player with this email already exists');
     }
 
-    const { password, documents, ...rest } = createPlayerDto;
+    const {
+      password,
+      documents,
+      profilePicture,
+      dateOfBirth,
+      gamertag,
+      gamerTag,
+      ...rest
+    } = createPlayerDto;
+
+    const normalizedGamerTag = gamerTag || gamertag;
+    if (normalizedGamerTag) {
+      const tagExists = await this.prisma.player.findFirst({
+        where: { gamerTag: normalizedGamerTag },
+      });
+      if (tagExists) {
+        throw new ConflictException('This Gamer Tag is already in use');
+      }
+    }
+
+    let parsedDob: Date | undefined = undefined;
+    if (dateOfBirth) {
+      const parsed = new Date(dateOfBirth);
+      if (isNaN(parsed.getTime())) {
+        throw new BadRequestException(
+          'Invalid dateOfBirth format. Please use ISO format YYYY-MM-DD.',
+        );
+      }
+      parsedDob = parsed;
+    }
+
     const hashedPassword = await bcrypt.hash(
       password,
       Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
     );
     const showPlayerId = await generatePlayerId(this.prisma);
+    const initialDocs = documentKeys || [];
 
-    const newPlayer = await this.prisma.player.create({
-      data: {
-        ...rest,
-        password: hashedPassword,
-        document: documents || [],
-        showPlayerId,
-      },
+    const newPlayer = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.player.create({
+        data: {
+          ...rest,
+          password: hashedPassword,
+          showPlayerId,
+          gamerTag: normalizedGamerTag,
+          profilePicture: profilePictureKey || null,
+          dateOfBirth: parsedDob || null,
+          document: initialDocs,
+        },
+      });
+
+      if (initialDocs.length > 0) {
+        await tx.playerDocument.createMany({
+          data: initialDocs.map((url) => ({
+            playerId: created.playerId,
+            type: 'Government ID',
+            url,
+            status: DocumentStatus.PENDING,
+          })),
+        });
+      }
+
+      // Initialize compliant wallet ledger account atomically
+      await tx.wallet.create({
+        data: {
+          playerId: created.playerId,
+          userId: created.playerId,
+          userRole: 'PLAYER',
+          cashBalance: 0.0,
+          creditBalance: 0.0,
+          escrowBalance: 0.0,
+          currency: 'NGN',
+        },
+      });
+
+      return tx.player.findUnique({
+        where: { playerId: created.playerId },
+        include: { documents: true },
+      });
     });
 
     const title = 'Player Creation';
-    const description = `Player ${newPlayer.firstName} ${newPlayer.lastName} (${newPlayer.email}) was successfully created.`;
+    const description = `Player ${newPlayer?.firstName} ${newPlayer?.lastName} (${newPlayer?.email}) was successfully created.`;
     await createActivities(this.prisma, title, description, 'PLAYER');
 
-    return newPlayer;
+    return formatPlayerResponse(newPlayer);
   }
 
-  async updatePlayer(id: string, updatePlayerDto: UpdatePlayerDto) {
+  /**
+   * Update Player Profile / Settings.
+   * Performs authorization verification (IDOR protection), sanitization of sensitive fields,
+   * uniqueness checks, and delegates document synchronization to PlayerDocumentService.
+   */
+  async updatePlayer(
+    id: string,
+    updatePlayerDto: UpdatePlayerDto,
+    newProfilePictureKey?: string,
+    newDocumentKeys?: string[],
+    requestingUser?: { userId: string; role: string },
+  ) {
     const existingPlayer = await this.prisma.player.findUnique({
       where: { playerId: id },
+      include: { documents: true },
     });
 
-    if (!existingPlayer) {
-      throw new NotFoundException('Player not found');
+    if (!existingPlayer || existingPlayer.isDeleted) {
+      throw new NotFoundException('Player not found or account is deactivated');
     }
 
-    if (
-      updatePlayerDto.email &&
-      updatePlayerDto.email !== existingPlayer.email
-    ) {
-      const emailTaken = await this.prisma.player.findUnique({
-        where: { email: updatePlayerDto.email },
-      });
-      if (emailTaken) {
-        throw new ConflictException('Email is already in use');
+    // Authorization & Ownership Verification (Strict IDOR protection)
+    const isAdmin =
+      requestingUser?.role === Role.ADMIN ||
+      requestingUser?.role === Role.SUPER_ADMIN ||
+      requestingUser?.role === 'admin' ||
+      requestingUser?.role === 'super_admin';
+
+    if (requestingUser) {
+      const isSelf = requestingUser.userId === id;
+      if (!isSelf && !isAdmin) {
+        this.logger.warn(
+          `Security violation: User ${requestingUser.userId} attempted unauthorized profile update on Player ${id}`,
+        );
+        throw new ForbiddenException(
+          'You do not have permission to modify this player profile.',
+        );
       }
     }
 
+    // Email Uniqueness Check
+    if (
+      updatePlayerDto.email &&
+      updatePlayerDto.email.toLowerCase() !== existingPlayer.email.toLowerCase()
+    ) {
+      const emailTaken = await this.prisma.player.findUnique({
+        where: { email: updatePlayerDto.email.toLowerCase() },
+      });
+      if (emailTaken && emailTaken.playerId !== id) {
+        throw new ConflictException('Email is already in use by another account');
+      }
+    }
+
+    // Username Uniqueness Check
     if (
       updatePlayerDto.username &&
       updatePlayerDto.username !== existingPlayer.username
@@ -103,77 +223,131 @@ export class PlayerService {
       const usernameTaken = await this.prisma.player.findFirst({
         where: { username: updatePlayerDto.username },
       });
-      if (usernameTaken) {
-        throw new ConflictException('This username is already used');
+      if (usernameTaken && usernameTaken.playerId !== id) {
+        throw new ConflictException('This username is already taken');
       }
     }
 
-    if (
-      updatePlayerDto.gamerTag &&
-      updatePlayerDto.gamerTag !== existingPlayer.gamerTag
-    ) {
+    // GamerTag Uniqueness Check
+    const targetGamerTag = updatePlayerDto.gamerTag || updatePlayerDto.gamertag;
+    if (targetGamerTag && targetGamerTag !== existingPlayer.gamerTag) {
       const gamerTagTaken = await this.prisma.player.findFirst({
-        where: { gamerTag: updatePlayerDto.gamerTag },
+        where: { gamerTag: targetGamerTag },
       });
-      if (gamerTagTaken) {
-        throw new ConflictException('This Gamer Tag is already used');
+      if (gamerTagTaken && gamerTagTaken.playerId !== id) {
+        throw new ConflictException('This Gamer Tag is already taken');
       }
     }
 
-    const { password, documents, deletedDocuments, ...restData } =
-      updatePlayerDto;
-    let hashedPassword: string | undefined = undefined;
-    if (password) {
-      hashedPassword = await bcrypt.hash(
-        password,
-        Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
+    // Full Name Parsing
+    let resolvedFirstName = updatePlayerDto.firstName;
+    let resolvedLastName = updatePlayerDto.lastName;
+    if (updatePlayerDto.fullName) {
+      const parts = updatePlayerDto.fullName.trim().split(/\s+/);
+      if (parts.length > 0) {
+        resolvedFirstName = parts[0];
+        resolvedLastName =
+          parts.slice(1).join(' ') || existingPlayer.lastName || parts[0];
+      }
+    }
+
+    const resolvedPhoneNumber =
+      updatePlayerDto.phoneNumber || updatePlayerDto.phone;
+
+    let parsedDob: Date | undefined = undefined;
+    if (updatePlayerDto.dateOfBirth) {
+      const parsed = new Date(updatePlayerDto.dateOfBirth);
+      if (isNaN(parsed.getTime())) {
+        throw new BadRequestException(
+          'Invalid date of birth format. Please use YYYY-MM-DD.',
+        );
+      }
+      parsedDob = parsed;
+    }
+
+    // Profile Picture Management
+    let updatedProfilePicture = existingPlayer.profilePicture;
+    let oldPictureToDelete: string | null = null;
+
+    if (newProfilePictureKey) {
+      if (existingPlayer.profilePicture) {
+        oldPictureToDelete = existingPlayer.profilePicture;
+      }
+      updatedProfilePicture = newProfilePictureKey;
+    } else if (updatePlayerDto.deleteProfilePicture) {
+      if (existingPlayer.profilePicture) {
+        oldPictureToDelete = existingPlayer.profilePicture;
+      }
+      updatedProfilePicture = null;
+    }
+
+    // Delegate document reconciliation to PlayerDocumentService
+    let docsToDeleteFromS3: string[] = [];
+
+    const updatedPlayerRecord = await this.prisma.$transaction(async (tx) => {
+      const { updatedLegacyDocumentList, documentsToDeleteFromS3 } =
+        await this.documentService.reconcileDocumentsInTx(
+          tx,
+          existingPlayer,
+          updatePlayerDto,
+          newDocumentKeys,
+        );
+
+      docsToDeleteFromS3 = documentsToDeleteFromS3;
+
+      return tx.player.update({
+        where: { playerId: id },
+        data: {
+          ...(resolvedFirstName ? { firstName: resolvedFirstName } : {}),
+          ...(resolvedLastName ? { lastName: resolvedLastName } : {}),
+          ...(updatePlayerDto.email ? { email: updatePlayerDto.email } : {}),
+          ...(updatePlayerDto.username
+            ? { username: updatePlayerDto.username }
+            : {}),
+          ...(targetGamerTag ? { gamerTag: targetGamerTag } : {}),
+          ...(updatePlayerDto.surname
+            ? { surname: updatePlayerDto.surname }
+            : {}),
+          ...(resolvedPhoneNumber
+            ? { phoneNumber: resolvedPhoneNumber }
+            : {}),
+          ...(parsedDob ? { dateOfBirth: parsedDob } : {}),
+          profilePicture: updatedProfilePicture,
+          document: updatedLegacyDocumentList,
+        },
+        include: {
+          documents: true,
+          registrationHistory: true,
+          marketingData: true,
+        },
+      });
+    });
+
+    // Cleanup S3 storage asynchronously after successful DB commit
+    if (oldPictureToDelete) {
+      void deleteImageFromS3(this.documentService.extractKey(oldPictureToDelete));
+    }
+    if (docsToDeleteFromS3.length > 0) {
+      void Promise.all(
+        docsToDeleteFromS3.map((key) => deleteImageFromS3(key)),
       );
     }
 
-    let finalDocuments = existingPlayer.document || [];
-
-    const extractKey = (urlOrKey: string) => {
-      if (urlOrKey.startsWith('http')) {
-        try {
-          const url = new URL(urlOrKey);
-          return url.pathname.substring(1);
-        } catch {
-          return urlOrKey;
-        }
-      }
-      return urlOrKey;
-    };
-
-    if (deletedDocuments && deletedDocuments.length > 0) {
-      const deletedKeys = deletedDocuments.map(extractKey);
-      await Promise.all(deletedKeys.map((key) => deleteImageFromS3(key)));
-      finalDocuments = finalDocuments.filter((doc) => {
-        const docKey = extractKey(doc);
-        return !deletedKeys.includes(docKey);
-      });
-    }
-
-    const newDocs = (documents as string[]) || [];
-    finalDocuments = [...finalDocuments, ...newDocs];
-
-    return this.prisma.player.update({
-      where: { playerId: id },
-      data: {
-        ...restData,
-        document: finalDocuments,
-        ...(hashedPassword ? { password: hashedPassword } : {}),
-      },
-    });
+    return formatPlayerResponse(updatedPlayerRecord);
   }
 
+  /**
+   * Retrieve Player by ID with formatted response.
+   */
   async getPlayerById(id: string) {
     if (!id) {
-      throw new NotFoundException('Player ID is required');
+      throw new BadRequestException('Player ID is required');
     }
 
     const player = await this.prisma.player.findUnique({
       where: { playerId: id },
       include: {
+        documents: true,
         registrationHistory: true,
         marketingData: true,
       },
@@ -183,21 +357,16 @@ export class PlayerService {
       throw new NotFoundException('Player not found');
     }
 
-    if (player.document && player.document.length > 0) {
-      player.document = await Promise.all(
-        player.document.map(async (doc) => getPreSignedUrl(doc)),
-      );
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { password, ...playerWithoutPassword } = player;
-    return playerWithoutPassword;
+    return formatPlayerResponse(player);
   }
 
+  /**
+   * Paginated Player search and listing.
+   */
   async getAllPlayer(query: QueryOptions = {}) {
     const { where, skip, take, orderBy, page, limit } = buildPrismaQuery(
       query,
-      ['firstName', 'lastName', 'email', 'showPlayerId', 'phoneNumber'],
+      ['firstName', 'lastName', 'email', 'showPlayerId', 'phoneNumber', 'gamerTag'],
     );
 
     where.isDeleted = false;
@@ -208,28 +377,25 @@ export class PlayerService {
         skip,
         take,
         orderBy,
+        include: {
+          documents: true,
+        },
       }),
       this.prisma.player.count({ where }),
     ]);
 
-    const safeData = await Promise.all(
-      data.map(async (player) => {
-        if (player.document && player.document.length > 0) {
-          player.document = await Promise.all(
-            player.document.map(async (doc) => getPreSignedUrl(doc)),
-          );
-        }
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { password, ...playerWithoutPassword } = player;
-        return playerWithoutPassword;
-      }),
+    const formattedData = await Promise.all(
+      data.map((player) => formatPlayerResponse(player)),
     );
 
     const meta = calculatePaginationMeta(total, page, limit);
 
-    return { data: safeData, meta };
+    return { data: formattedData, meta };
   }
 
+  /**
+   * Recover deactivated player account.
+   */
   async recoverPlayer(token: string) {
     try {
       const payload = await this.jwtService.verifyAsync<{
@@ -247,12 +413,15 @@ export class PlayerService {
         throw new ConflictException('Player account is already active');
       }
 
-      return await this.prisma.player.update({
+      const updated = await this.prisma.player.update({
         where: { playerId: player.playerId },
         data: {
           isDeleted: false,
         },
+        include: { documents: true },
       });
+
+      return formatPlayerResponse(updated);
     } catch (error) {
       if (error.name === 'TokenExpiredError') {
         throw new ConflictException('Recovery link has expired');
@@ -261,6 +430,9 @@ export class PlayerService {
     }
   }
 
+  /**
+   * Soft-delete Player (Admin only).
+   */
   async deletePlayer(id: string) {
     const player = await this.prisma.player.findUnique({
       where: { playerId: id },
@@ -270,11 +442,45 @@ export class PlayerService {
       throw new NotFoundException('Player not found or already deleted');
     }
 
-    return this.prisma.player.update({
+    const updated = await this.prisma.player.update({
       where: { playerId: id },
       data: {
         isDeleted: true,
       },
     });
+
+    return { message: 'Player account successfully deactivated', id: updated.playerId };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Facade delegations for backwards-compatibility with existing tests and code
+  // ---------------------------------------------------------------------------
+
+  async updateDocumentStatus(playerId: string, documentId: string, dto: UpdateDocumentStatusDto) {
+    return this.documentService.updateDocumentStatus(playerId, documentId, dto);
+  }
+
+  async deleteDocument(playerId: string, documentId: string) {
+    return this.documentService.deleteDocument(playerId, documentId);
+  }
+
+  async getMyPasses(playerId: string) {
+    return this.passService.getMyPasses(playerId);
+  }
+
+  async getPassByTournament(playerId: string, tournamentId: string) {
+    return this.passService.getPassByTournament(playerId, tournamentId);
+  }
+
+  async getWalletBalance(playerId: string) {
+    return this.walletService.getWalletBalance(playerId);
+  }
+
+  async getLedgerHistory(playerId: string, limit?: number) {
+    return this.walletService.getLedgerHistory(playerId, limit);
+  }
+
+  async requestPayout(playerId: string, dto: RequestPayoutDto) {
+    return this.walletService.requestPayout(playerId, dto);
   }
 }

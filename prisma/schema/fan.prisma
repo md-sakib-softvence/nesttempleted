@@ -24,6 +24,7 @@ model Fan {
   followers     Follower[]               @relation("FanFollowing")
   followedBy    Follower[]               @relation("FanFollowed")
   tickets       Ticket[]
+  wallet        Wallet?
 
   @@index([gamerTag])
 }

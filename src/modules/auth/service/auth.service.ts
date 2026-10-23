@@ -9,9 +9,11 @@ import { fanLoginUtil } from '../utils/fan.util';
 import { playerLoginUtil } from '../utils/player.util';
 import { RefreshTokenDto } from '../dto/refresh-token.dto';
 import { ForgetPasswordDto } from '../dto/forget-password.dto';
+import { ChangePasswordDto } from '../dto/change-password.dto';
 import { formatAuthResponse } from '../utils/auth-response.util';
 import { refreshTokenUtil } from '../utils/refresh-token.util';
 import { forgetPasswordUtil } from '../utils/forget-password.util';
+import { changePasswordUtil } from '../utils/change-password.util';
 import { MailService } from '../../mail/mail.service';
 import { createActivities } from '../../utils/activity.util';
 
@@ -93,6 +95,18 @@ export class AuthService {
       this.prisma,
       this.jwtService,
       this.configService,
+      this.mailService,
+    );
+  }
+
+  async changePassword(
+    userSession: { userId: string; email: string; role: string },
+    dto: ChangePasswordDto,
+  ) {
+    return changePasswordUtil(
+      userSession,
+      dto,
+      this.prisma,
       this.mailService,
     );
   }
