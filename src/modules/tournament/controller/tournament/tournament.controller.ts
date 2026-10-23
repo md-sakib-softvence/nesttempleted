@@ -286,6 +286,7 @@ export class TournamentController {
     });
   }
 
+  @Public()
   @Get(':id/calendar')
   @ApiOperation({ summary: 'Get Tournament calendar grid' })
   async getCalendar(@Param('id') id: string) {
@@ -410,11 +411,23 @@ export class TournamentController {
   }
 
   @Post(':id/registrations')
+  @Roles(
+    Role.PLAYER,
+    'player' as any,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'admin' as any,
+    'super_admin' as any,
+  )
   @ApiOperation({ summary: 'Register a player for this tournament' })
   async registerPlayer(
     @Param('id') id: string,
     @Body() body: CreateTournamentRegistrationDto,
+    @Req() req: any,
   ) {
+    if (!body.playerId && req.user?.userId) {
+      body.playerId = req.user.userId;
+    }
     const data = await this.tournamentService.createRegistration(id, body);
     return sendResponse({
       message: 'Player registered successfully',
@@ -423,6 +436,14 @@ export class TournamentController {
   }
 
   @Get(':id/registrations')
+  @Roles(
+    Role.PLAYER,
+    'player' as any,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'admin' as any,
+    'super_admin' as any,
+  )
   @ApiOperation({ summary: 'Get all tournament registrations with counts and tab filtering' })
   async getRegistrations(
     @Param('id') id: string,
