@@ -15,6 +15,7 @@ import {
 } from '../dto/tournament/registration-selection.dto';
 import { QueryTournamentRegistrationDto } from '../dto/tournament/query-registration.dto';
 import { TournamentRegistrationStatus, Prisma } from '@prisma/client';
+import { uploadBase64ToS3 } from '../../utils/s3.util';
 
 @Injectable()
 export class TournamentRegistrationService {
@@ -23,7 +24,7 @@ export class TournamentRegistrationService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Registers a player for a tournament.
+   * Registers a player for a tournament with full domain validation and edge case guards.
    */
   async createRegistration(
     tournamentId: string,
@@ -34,16 +35,57 @@ export class TournamentRegistrationService {
       include: { registrations: true },
     });
 
-    if (!tournament) {
-      throw new NotFoundException(`Tournament #${tournamentId} not found`);
+    if (!tournament || tournament.isDeleted) {
+      throw new NotFoundException(`Tournament #${tournamentId} not found or has been deleted`);
     }
 
-    const existing = await this.prisma.tournamentRegistration.findUnique({
+    // 1. Guard against registration on closed or non-active tournaments
+    if (!tournament.registrationOpen) {
+      throw new BadRequestException('Registration is closed for this tournament.');
+    }
+
+    const nonRegistrableStatuses = ['COMPLETED', 'CANCELLED', 'ARCHIVED'];
+    if (nonRegistrableStatuses.includes(tournament.status)) {
+      throw new BadRequestException(
+        `Cannot register for tournament in ${tournament.status} state.`,
+      );
+    }
+
+    // 2. Validate mandatory Jersey Size if configured
+    if (tournament.requireJerseySize && !dto.jerseySize?.trim()) {
+      throw new BadRequestException(
+        'Jersey/Shirt size is mandatory for this tournament registration.',
+      );
+    }
+
+    // 3. Validate distinct primary and backup club selections
+    if (
+      dto.primaryTeamId &&
+      dto.secondaryTeamId &&
+      dto.primaryTeamId.trim() === dto.secondaryTeamId.trim()
+    ) {
+      throw new BadRequestException(
+        'Primary club and secondary backup choice must be distinct clubs.',
+      );
+    }
+
+    // 4. Validate Home Venue membership
+    if (dto.homeVenueId) {
+      const venueExists = await this.prisma.venue.findFirst({
+        where: { venueId: dto.homeVenueId, tournamentId },
+      });
+      if (!venueExists) {
+        throw new BadRequestException(
+          'Selected home venue is not valid or does not belong to this tournament.',
+        );
+      }
+    }
+
+    // 5. Prevent double registration
+    const existing = await this.prisma.tournamentRegistration.findFirst({
       where: {
-        tournamentId_playerId: {
-          tournamentId,
-          playerId: dto.playerId,
-        },
+        tournamentId,
+        playerId: dto.playerId,
       },
     });
 
@@ -51,10 +93,25 @@ export class TournamentRegistrationService {
       throw new BadRequestException('Player is already registered for this tournament');
     }
 
+    // 6. Handle potential base64 Data URL for player photo
+    let resolvedPhotoKey = dto.playerPhotoUrl;
+    if (dto.playerPhotoUrl && dto.playerPhotoUrl.startsWith('data:')) {
+      try {
+        resolvedPhotoKey = await uploadBase64ToS3(
+          dto.playerPhotoUrl,
+          `reg-photo-${dto.playerId}`,
+        );
+      } catch (err) {
+        this.logger.warn(`Failed to convert base64 photo to S3: ${err?.message}`);
+      }
+    }
+
+    // 7. Calculate status according to tournament capacity
     const currentConfirmedOrRegistered = tournament.registrations.filter(
       (r) =>
         r.status === TournamentRegistrationStatus.CONFIRMED ||
-        r.status === TournamentRegistrationStatus.REGISTERED,
+        r.status === TournamentRegistrationStatus.REGISTERED ||
+        r.status === TournamentRegistrationStatus.SELECTED_UNPAID,
     ).length;
 
     const initialStatus =
@@ -62,15 +119,18 @@ export class TournamentRegistrationService {
         ? TournamentRegistrationStatus.WAITLISTED
         : TournamentRegistrationStatus.REGISTERED;
 
-    return this.prisma.tournamentRegistration.create({
+    const qrCodeString = `PLAYER:${tournamentId}:${dto.playerId}`;
+
+    const created = await this.prisma.tournamentRegistration.create({
       data: {
         tournamentId,
         playerId: dto.playerId,
-        homeVenueId: dto.homeVenueId,
-        primaryTeamId: dto.primaryTeamId,
-        secondaryTeamId: dto.secondaryTeamId,
-        jerseySize: dto.jerseySize,
-        playerPhotoUrl: dto.playerPhotoUrl,
+        homeVenueId: dto.homeVenueId || null,
+        primaryTeamId: dto.primaryTeamId || null,
+        secondaryTeamId: dto.secondaryTeamId || null,
+        jerseySize: dto.jerseySize || null,
+        playerPhotoUrl: resolvedPhotoKey || null,
+        qrCodeString,
         status: initialStatus,
         paymentStatus: 'PENDING',
       },
@@ -86,6 +146,15 @@ export class TournamentRegistrationService {
         },
       },
     });
+
+    return {
+      ...created,
+      id: created.registrationId,
+      teamSelection: {
+        primaryTeamId: created.primaryTeamId,
+        secondaryTeamId: created.secondaryTeamId,
+      },
+    };
   }
 
   /**

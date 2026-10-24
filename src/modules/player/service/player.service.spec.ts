@@ -205,4 +205,72 @@ describe('PlayerService', () => {
       expect(result.notes).toBe('Approved by Admin');
     });
   });
+
+  describe('getPlayerDashboard', () => {
+    it('should aggregate profile, wallet, active cups, next match, and records', async () => {
+      prisma.player.findUnique.mockResolvedValue(mockPlayer);
+      prisma.wallet.findUnique.mockResolvedValue({
+        walletId: 'w-1',
+        cashBalance: 50000,
+        creditBalance: 2000,
+        escrowBalance: 0,
+        currency: 'NGN',
+        status: 'ACTIVE',
+      });
+      prisma.tournamentRegistration = {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            registrationId: 'reg-1',
+            tournamentId: 't-1',
+            playerId: 'player-123',
+            status: 'CONFIRMED',
+            paymentStatus: 'PAID',
+            assignedSlot: 1,
+            qrCodeString: 'PLAYER:t-1:player-123',
+            tournament: {
+              tournamentId: 't-1',
+              name: 'Winter Championship 2024',
+              gameTitle: 'EAFC 25',
+              tournamentFormat: 'KNOCKOUT',
+              schedulingMode: 'PLAYER_SELF',
+              schedulingPaused: false,
+              venues: [],
+              sponsors: [],
+              schedule: {
+                structure: {
+                  matches: [
+                    {
+                      id: 'm-1',
+                      round: 'Round 1',
+                      player1Id: 'player-123',
+                      player2Id: 'player-opp',
+                      date: '2026-11-01',
+                      time: '14:00',
+                      venueName: 'Main Arena',
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        ]),
+      };
+      prisma.raffle = {
+        findMany: jest.fn().mockResolvedValue([]),
+      };
+
+      const result = await service.getPlayerDashboard('player-123');
+
+      expect(result).toBeDefined();
+      expect(result.profile.gamertag).toBe('PRO_ALEX');
+      expect(result.wallet.cashBalance).toBe(50000);
+      expect(result.activeCups).toHaveLength(1);
+      expect(result.activeCups[0].isPassAvailable).toBe(true);
+      expect(result.activeCups[0].canRebook).toBe(true);
+      expect(result.nextMatch).toBeDefined();
+      expect(result.nextMatch.matchId).toBe('m-1');
+      expect(result.nextMatch.date).toBe('2026-11-01');
+      expect(result.nextMatch.time).toBe('14:00');
+    });
+  });
 });

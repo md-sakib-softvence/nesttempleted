@@ -452,6 +452,418 @@ export class PlayerService {
     return { message: 'Player account successfully deactivated', id: updated.playerId };
   }
 
+  /**
+   * Unified Competitor Dashboard Overview.
+   * Powers the Competitor Dashboard (Discover), compliance status, next scheduled showdown,
+   * registered cups, live performance records, and active cup raffles in a single high-performance query.
+   */
+  async getPlayerDashboard(playerId: string) {
+    if (!playerId) {
+      throw new BadRequestException('Player ID is required');
+    }
+
+    const [player, wallet, registrations] = await Promise.all([
+      this.prisma.player.findUnique({
+        where: { playerId },
+        include: { documents: true },
+      }),
+      this.walletService.getWalletBalance(playerId),
+      this.prisma.tournamentRegistration.findMany({
+        where: { playerId },
+        include: {
+          tournament: {
+            include: {
+              venues: {
+                include: { screens: true },
+              },
+              sponsors: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    if (!player || player.isDeleted) {
+      throw new NotFoundException('Player not found or account is deactivated');
+    }
+
+    const formattedProfile = await formatPlayerResponse(player);
+
+    const registeredTournamentIds = registrations
+      .map((r) => r.tournamentId)
+      .filter(Boolean);
+
+    // Fetch raffles across player's registered tournaments
+    let availableRaffles: any[] = [];
+    if (registeredTournamentIds.length > 0) {
+      const dbRaffles = await this.prisma.raffle.findMany({
+        where: {
+          tournamentId: { in: registeredTournamentIds },
+        },
+        include: {
+          tournament: {
+            select: { tournamentId: true, name: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      availableRaffles = dbRaffles.map((r) => {
+        const entries = Array.isArray(r.entries) ? (r.entries as any[]) : [];
+        const winners = Array.isArray(r.winners) ? (r.winners as any[]) : [];
+        const isJoined = entries.some((e: any) => e.userId === playerId);
+        const myWin = winners.find((w: any) => w.userId === playerId) || null;
+
+        return {
+          raffleId: r.raffleId,
+          name: r.name,
+          prizeDescription: r.prizeDescription,
+          status: r.status,
+          tournamentId: r.tournamentId,
+          tournamentName: r.tournament?.name || 'Tournament',
+          totalEntries: entries.length,
+          isJoined,
+          myWin: myWin
+            ? {
+                ticketNumber: myWin.ticketNumber,
+                qrCodeString: myWin.qrCodeString,
+                drawDate: myWin.drawDate,
+              }
+            : null,
+        };
+      });
+    }
+
+    // Process canonical matches across active tournaments for this player
+    const upcomingMatches: any[] = [];
+    const completedMatches: any[] = [];
+    let winsCount = 0;
+    let lossesCount = 0;
+
+    const opponentIds = new Set<string>();
+
+    for (const reg of registrations) {
+      const tourney = reg.tournament;
+      if (!tourney || tourney.isDeleted) continue;
+
+      const schedule = (tourney.schedule as any) || {};
+      const matches: any[] =
+        schedule.structure?.matches || schedule.matches || [];
+
+      for (const m of matches) {
+        if (m.player1Id === playerId || m.player2Id === playerId) {
+          const isPlayer1 = m.player1Id === playerId;
+          const opponentId = isPlayer1 ? m.player2Id : m.player1Id;
+          if (
+            opponentId &&
+            !opponentId.startsWith('TBD') &&
+            !opponentId.startsWith('BYE')
+          ) {
+            opponentIds.add(opponentId);
+          }
+
+          const isCompleted =
+            m.status === 'COMPLETED' ||
+            (m.score1 !== undefined &&
+              m.score2 !== undefined &&
+              m.score1 !== null &&
+              m.score2 !== null &&
+              (m.score1 > 0 || m.score2 > 0));
+
+          if (isCompleted) {
+            completedMatches.push({
+              matchId: m.id || m.canonicalMatchId,
+              tournamentId: tourney.tournamentId,
+              tournamentName: tourney.name,
+              round: m.round,
+              playerScore: isPlayer1 ? m.score1 : m.score2,
+              opponentScore: isPlayer1 ? m.score2 : m.score1,
+              opponentId,
+              winnerId: m.winnerId,
+              isWinner: m.winnerId === playerId,
+              date: m.date,
+              time: m.time,
+              venueName: m.venueName,
+            });
+
+            if (
+              m.winnerId === playerId ||
+              (isPlayer1 && m.score1 > m.score2) ||
+              (!isPlayer1 && m.score2 > m.score1)
+            ) {
+              winsCount++;
+            } else if (opponentId) {
+              lossesCount++;
+            }
+          } else {
+            const hasSchedule = Boolean(m.date && m.time);
+            upcomingMatches.push({
+              matchId: m.id || m.canonicalMatchId,
+              tournamentId: tourney.tournamentId,
+              tournamentName: tourney.name,
+              gameTitle: tourney.gameTitle,
+              round: m.round,
+              opponentId,
+              date: m.date || null,
+              time: m.time || null,
+              venueId: m.venueId || null,
+              venueName: m.venueName || 'Main Arena',
+              screenId: m.screenId || null,
+              screenName: m.screenName || 'Screen 1',
+              isScheduled: hasSchedule,
+              schedulingMode: tourney.schedulingMode,
+              canSelfSchedule:
+                tourney.schedulingMode === 'PLAYER_SELF' &&
+                !tourney.schedulingPaused &&
+                (tourney as any).schedulingWindowOpen !== false,
+            });
+          }
+        }
+      }
+    }
+
+    // Resolve opponent handles
+    const opponentMap: Record<string, { gamertag: string; fullName: string }> =
+      {};
+    if (opponentIds.size > 0) {
+      const opponents =
+        (await this.prisma.player.findMany({
+          where: { playerId: { in: Array.from(opponentIds) } },
+          select: {
+            playerId: true,
+            gamerTag: true,
+            firstName: true,
+            lastName: true,
+          },
+        })) || [];
+      if (Array.isArray(opponents)) {
+        for (const opp of opponents) {
+          opponentMap[opp.playerId] = {
+            gamertag: opp.gamerTag || 'Competitor',
+            fullName: `${opp.firstName || ''} ${opp.lastName || ''}`.trim(),
+          };
+        }
+      }
+    }
+
+    // Populate opponent details
+    for (const match of [...upcomingMatches, ...completedMatches]) {
+      if (match.opponentId && opponentMap[match.opponentId]) {
+        match.opponentGamertag = opponentMap[match.opponentId].gamertag;
+        match.opponentName = opponentMap[match.opponentId].fullName;
+      } else {
+        match.opponentGamertag = match.opponentId || 'Awaiting Competitor';
+        match.opponentName = match.opponentId || 'Awaiting Competitor';
+      }
+    }
+
+    // Next scheduled showdown
+    const scheduledUpcoming = upcomingMatches
+      .filter((m) => m.isScheduled)
+      .sort((a, b) => {
+        const da = new Date(`${a.date}T${a.time || '00:00'}`).getTime();
+        const db = new Date(`${b.date}T${b.time || '00:00'}`).getTime();
+        return da - db;
+      });
+
+    const nextMatch =
+      scheduledUpcoming.length > 0 ? scheduledUpcoming[0] : null;
+
+    // Active registered cups list
+    const activeCups = registrations.map((r) => {
+      const t = r.tournament;
+      return {
+        registrationId: r.registrationId,
+        tournamentId: r.tournamentId,
+        tournamentName: t?.name,
+        gameTitle: t?.gameTitle,
+        format: t?.tournamentFormat,
+        status: r.status,
+        paymentStatus: r.paymentStatus,
+        paymentDeadline: r.paymentDeadline,
+        assignedSlot: r.assignedSlot,
+        qrCodeString: r.qrCodeString,
+        isPassAvailable: r.status === 'CONFIRMED',
+        canRebook:
+          t?.schedulingMode === 'PLAYER_SELF' &&
+          !t?.schedulingPaused &&
+          (t as any)?.schedulingWindowOpen !== false,
+      };
+    });
+
+    const totalMatchesPlayed = winsCount + lossesCount;
+    const winRate =
+      totalMatchesPlayed > 0
+        ? Math.round((winsCount / totalMatchesPlayed) * 100)
+        : 0;
+
+    return {
+      profile: formattedProfile,
+      wallet,
+      nextMatch,
+      activeCups,
+      upcomingMatches: scheduledUpcoming,
+      raffles: availableRaffles,
+      performanceRecords: {
+        wins: winsCount,
+        losses: lossesCount,
+        matchesPlayed: totalMatchesPlayed,
+        winRatePercent: winRate,
+      },
+    };
+  }
+
+  /**
+   * Dedicated Player Matches Endpoint:
+   * Categorizes matches into upcoming, unscheduled, and completed.
+   */
+  async getPlayerMatches(
+    playerId: string,
+    filter?: { tournamentId?: string; status?: string },
+  ) {
+    if (!playerId) {
+      throw new BadRequestException('Player ID is required');
+    }
+
+    const whereClause: any = { playerId };
+    if (filter?.tournamentId) {
+      whereClause.tournamentId = filter.tournamentId;
+    }
+
+    const registrations = await this.prisma.tournamentRegistration.findMany({
+      where: whereClause,
+      include: {
+        tournament: {
+          include: {
+            venues: {
+              include: { screens: true },
+            },
+          },
+        },
+      },
+    });
+
+    const upcoming: any[] = [];
+    const unscheduled: any[] = [];
+    const completed: any[] = [];
+
+    const opponentIds = new Set<string>();
+
+    for (const reg of registrations) {
+      const tourney = reg.tournament;
+      if (!tourney || tourney.isDeleted) continue;
+
+      const schedule = (tourney.schedule as any) || {};
+      const matches: any[] =
+        schedule.structure?.matches || schedule.matches || [];
+
+      for (const m of matches) {
+        if (m.player1Id === playerId || m.player2Id === playerId) {
+          const isPlayer1 = m.player1Id === playerId;
+          const opponentId = isPlayer1 ? m.player2Id : m.player1Id;
+          if (
+            opponentId &&
+            !opponentId.startsWith('TBD') &&
+            !opponentId.startsWith('BYE')
+          ) {
+            opponentIds.add(opponentId);
+          }
+
+          const isCompleted =
+            m.status === 'COMPLETED' ||
+            (m.score1 !== undefined &&
+              m.score2 !== undefined &&
+              m.score1 !== null &&
+              m.score2 !== null &&
+              (m.score1 > 0 || m.score2 > 0));
+
+          if (isCompleted) {
+            completed.push({
+              matchId: m.id || m.canonicalMatchId,
+              tournamentId: tourney.tournamentId,
+              tournamentName: tourney.name,
+              gameTitle: tourney.gameTitle,
+              round: m.round,
+              playerScore: isPlayer1 ? m.score1 : m.score2,
+              opponentScore: isPlayer1 ? m.score2 : m.score1,
+              opponentId,
+              winnerId: m.winnerId,
+              isWinner: m.winnerId === playerId,
+              date: m.date,
+              time: m.time,
+              venueName: m.venueName,
+            });
+          } else if (m.date && m.time) {
+            upcoming.push({
+              matchId: m.id || m.canonicalMatchId,
+              tournamentId: tourney.tournamentId,
+              tournamentName: tourney.name,
+              gameTitle: tourney.gameTitle,
+              round: m.round,
+              opponentId,
+              date: m.date,
+              time: m.time,
+              venueId: m.venueId,
+              venueName: m.venueName,
+              screenId: m.screenId,
+              screenName: m.screenName,
+              schedulingMode: tourney.schedulingMode,
+            });
+          } else {
+            unscheduled.push({
+              matchId: m.id || m.canonicalMatchId,
+              tournamentId: tourney.tournamentId,
+              tournamentName: tourney.name,
+              gameTitle: tourney.gameTitle,
+              round: m.round,
+              opponentId,
+              schedulingMode: tourney.schedulingMode,
+              canSelfSchedule:
+                tourney.schedulingMode === 'PLAYER_SELF' &&
+                !tourney.schedulingPaused &&
+                (tourney as any).schedulingWindowOpen !== false,
+            });
+          }
+        }
+      }
+    }
+
+    // Resolve opponent info
+    if (opponentIds.size > 0) {
+      const opponents =
+        (await this.prisma.player.findMany({
+          where: { playerId: { in: Array.from(opponentIds) } },
+          select: {
+            playerId: true,
+            gamerTag: true,
+            firstName: true,
+            lastName: true,
+          },
+        })) || [];
+      const oppMap = new Map(
+        Array.isArray(opponents) ? opponents.map((o) => [o.playerId, o]) : [],
+      );
+
+      for (const m of [...upcoming, ...unscheduled, ...completed]) {
+        if (m.opponentId && oppMap.has(m.opponentId)) {
+          const opp = oppMap.get(m.opponentId)!;
+          m.opponentGamertag = opp.gamerTag || 'Competitor';
+          m.opponentName = `${opp.firstName || ''} ${opp.lastName || ''}`.trim();
+        } else {
+          m.opponentGamertag = m.opponentId || 'Competitor';
+          m.opponentName = m.opponentId || 'Competitor';
+        }
+      }
+    }
+
+    return {
+      upcoming,
+      unscheduled,
+      completed,
+    };
+  }
+
   // ---------------------------------------------------------------------------
   // Facade delegations for backwards-compatibility with existing tests and code
   // ---------------------------------------------------------------------------

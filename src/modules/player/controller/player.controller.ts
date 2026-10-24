@@ -137,6 +137,46 @@ export class PlayerController {
     });
   }
 
+  @Get('dashboard')
+  @ApiOperation({
+    summary: 'Get Unified Competitor Dashboard Hub Overview',
+    description:
+      'Returns complete portal data for Competitor Dashboard: profile, compliance status, next scheduled showdown, registered cups, performance records, and raffles.',
+  })
+  @Roles('player', Role.PLAYER)
+  async getPlayerDashboard(@Req() req: RequestWithUser) {
+    const playerId = req.user.userId;
+    const data = await this.playerService.getPlayerDashboard(playerId);
+    return sendResponse({
+      message: 'Competitor dashboard retrieved successfully',
+      data,
+    });
+  }
+
+  @Get('matches')
+  @ApiOperation({
+    summary:
+      'Get all Competitor Matches categorized into upcoming, unscheduled, and completed',
+  })
+  @ApiQuery({ name: 'tournamentId', required: false, type: String })
+  @ApiQuery({ name: 'status', required: false, type: String })
+  @Roles('player', Role.PLAYER)
+  async getPlayerMatches(
+    @Req() req: RequestWithUser,
+    @Query('tournamentId') tournamentId?: string,
+    @Query('status') status?: string,
+  ) {
+    const playerId = req.user.userId;
+    const data = await this.playerService.getPlayerMatches(playerId, {
+      tournamentId,
+      status,
+    });
+    return sendResponse({
+      message: 'Competitor matches retrieved successfully',
+      data,
+    });
+  }
+
   @Patch('profile')
   @ApiOperation({ summary: 'Update logged in Player Profile & Settings' })
   @ApiConsumes('multipart/form-data')

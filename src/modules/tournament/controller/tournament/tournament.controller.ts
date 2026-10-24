@@ -38,6 +38,7 @@ import { UpdateTournamentStatusDto } from '../../dto/tournament/update-tournamen
 import { RegistrationSelectionDto } from '../../dto/tournament/registration-selection.dto';
 import { QueryTournamentRegistrationDto } from '../../dto/tournament/query-registration.dto';
 import { UpdateTournamentFinancialsDto } from '../../dto/tournament/update-financials.dto';
+import { AllocateMatchDto } from '../../dto/tournament/allocate-match.dto';
 import { CreateVenueDto } from '../../dto/venue/create-venue.dto';
 import { Role, SchedulingMode } from '@prisma/client';
 import {
@@ -313,6 +314,38 @@ export class TournamentController {
     });
     return sendResponse({
       message: 'Tournament matches retrieved successfully',
+      data,
+    });
+  }
+
+  @Post(':id/matches/:matchId/self-book')
+  @Roles(
+    Role.PLAYER,
+    'player' as any,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'admin' as any,
+    'super_admin' as any,
+  )
+  @ApiOperation({
+    summary: 'Player self-booking match fixture for a tournament',
+    description:
+      'Allows a competitor to schedule their match fixture in PLAYER_SELF scheduling mode within an open window.',
+  })
+  async selfBookMatch(
+    @Param('id') tournamentId: string,
+    @Param('matchId') matchId: string,
+    @Body() body: AllocateMatchDto,
+    @Req() req: any,
+  ) {
+    const data = await this.tournamentService.selfBookMatch(
+      matchId,
+      body,
+      req.user,
+      tournamentId,
+    );
+    return sendResponse({
+      message: 'Match fixture scheduled successfully',
       data,
     });
   }

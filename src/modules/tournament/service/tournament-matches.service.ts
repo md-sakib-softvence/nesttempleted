@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -20,8 +21,9 @@ import { MatchNoShowDto } from '../dto/tournament/match-no-show.dto';
 import { ScoreCorrectionDto } from '../dto/tournament/score-correction.dto';
 import { CreateMatchDisputeDto } from '../dto/tournament/match-dispute.dto';
 import { UpdateMatchDisputeDto } from '../dto/tournament/update-dispute.dto';
-import { SchedulingMode, Prisma } from '@prisma/client';
+import { SchedulingMode, Prisma, Role } from '@prisma/client';
 import { presignTournamentMedia } from '../utils/tournament-media.util';
+import { createActivities } from '../../utils/activity.util';
 
 @Injectable()
 export class TournamentMatchesService {
@@ -210,6 +212,44 @@ export class TournamentMatchesService {
   }
 
   /**
+   * Helper to find a tournament by ID or by contained canonical matchId
+   */
+  async resolveTournamentForMatch(
+    tournamentId: string | undefined | null,
+    matchId: string,
+  ) {
+    if (tournamentId && tournamentId.trim()) {
+      const tournament = await this.prisma.tournament.findUnique({
+        where: { tournamentId },
+      });
+      if (tournament && !tournament.isDeleted) {
+        return tournament;
+      }
+    }
+
+    // Fallback: search all tournaments containing this matchId in their schedule
+    const tournaments = await this.prisma.tournament.findMany({
+      where: { isDeleted: false, schedule: { not: Prisma.JsonNull } },
+    });
+
+    for (const t of tournaments) {
+      const schedule = (t.schedule as any) || {};
+      const matches: any[] =
+        schedule.structure?.matches || schedule.matches || [];
+      const matchExists = matches.some(
+        (m: any) => m.id === matchId || m.canonicalMatchId === matchId,
+      );
+      if (matchExists) {
+        return t;
+      }
+    }
+
+    throw new NotFoundException(
+      `Match #${matchId} not found in any active tournament`,
+    );
+  }
+
+  /**
    * Link a canonical match ID to a physical slot (venueId, screenId, date, time)
    */
   async allocateTournamentMatch(
@@ -217,13 +257,10 @@ export class TournamentMatchesService {
     matchId: string,
     dto: AllocateMatchDto,
   ) {
-    const tournament = await this.prisma.tournament.findUnique({
-      where: { tournamentId },
-    });
-
-    if (!tournament || tournament.isDeleted) {
-      throw new NotFoundException('Tournament not found or has been deleted');
-    }
+    const tournament = await this.resolveTournamentForMatch(
+      tournamentId,
+      matchId,
+    );
 
     const currentSchedule =
       tournament.schedule as any as TournamentSchedulePayload;
@@ -244,7 +281,7 @@ export class TournamentMatchesService {
       );
 
     await this.prisma.tournament.update({
-      where: { tournamentId },
+      where: { tournamentId: tournament.tournamentId },
       data: { schedule: updatedSchedule as any },
     });
 
@@ -258,13 +295,10 @@ export class TournamentMatchesService {
    * Clears physical allocation for a canonical match, preserving scores
    */
   async unallocateTournamentMatch(tournamentId: string, matchId: string) {
-    const tournament = await this.prisma.tournament.findUnique({
-      where: { tournamentId },
-    });
-
-    if (!tournament || tournament.isDeleted) {
-      throw new NotFoundException('Tournament not found or has been deleted');
-    }
+    const tournament = await this.resolveTournamentForMatch(
+      tournamentId,
+      matchId,
+    );
 
     const currentSchedule =
       tournament.schedule as any as TournamentSchedulePayload;
@@ -278,12 +312,179 @@ export class TournamentMatchesService {
       this.tournamentScheduleService.unallocateMatch(currentSchedule, matchId);
 
     await this.prisma.tournament.update({
-      where: { tournamentId },
+      where: { tournamentId: tournament.tournamentId },
       data: { schedule: updatedSchedule as any },
     });
 
     return {
       match,
+    };
+  }
+
+  /**
+   * Player Self-Booking Fixture Endpoint:
+   * Validates competitor eligibility, tournament PLAYER_SELF scheduling window,
+   * no player schedule overlap or screen collision, and updates canonical schedule.
+   */
+  async selfBookMatch(
+    matchId: string,
+    dto: AllocateMatchDto,
+    currentUser: { userId: string; role?: string },
+    optionalTournamentId?: string,
+  ) {
+    const tournament = await this.resolveTournamentForMatch(
+      optionalTournamentId,
+      matchId,
+    );
+
+    const isPlayer =
+      currentUser.role === Role.PLAYER ||
+      currentUser.role === 'PLAYER' ||
+      currentUser.role === 'player';
+
+    // 1. If requester is a player, enforce PLAYER_SELF scheduling rules
+    if (isPlayer) {
+      if (tournament.schedulingMode !== SchedulingMode.PLAYER_SELF) {
+        throw new BadRequestException(
+          'Player self-scheduling is not enabled for this tournament.',
+        );
+      }
+
+      const isWindowOpen =
+        (tournament as any).schedulingWindowOpen ??
+        !tournament.schedulingPaused;
+
+      if (!isWindowOpen) {
+        throw new BadRequestException(
+          'Self-scheduling window is currently closed for this tournament.',
+        );
+      }
+
+      if (tournament.schedulingPaused) {
+        throw new BadRequestException(
+          'Tournament scheduling is temporarily paused by administration.',
+        );
+      }
+    }
+
+    const currentSchedule =
+      tournament.schedule as any as TournamentSchedulePayload;
+    if (!currentSchedule || !currentSchedule.structure) {
+      throw new BadRequestException(
+        'Tournament schedule and structure have not been generated yet.',
+      );
+    }
+
+    const matches: any[] = currentSchedule.structure.matches || [];
+    const targetMatch = matches.find(
+      (m) => m.id === matchId || m.canonicalMatchId === matchId,
+    );
+
+    if (!targetMatch) {
+      throw new NotFoundException(`Match #${matchId} not found in tournament`);
+    }
+
+    if (
+      targetMatch.status === 'COMPLETED' ||
+      targetMatch.status === 'CANCELLED'
+    ) {
+      throw new BadRequestException(
+        `Cannot reschedule a match that is ${targetMatch.status.toLowerCase()}.`,
+      );
+    }
+
+    // 2. Validate Player Ownership / Participation
+    if (isPlayer) {
+      const isParticipant =
+        targetMatch.player1Id === currentUser.userId ||
+        targetMatch.player2Id === currentUser.userId;
+
+      if (!isParticipant) {
+        throw new ForbiddenException(
+          'You are not an authorized competitor in this match.',
+        );
+      }
+
+      // Ensure both competitors are resolved
+      const p1 = targetMatch.player1Id;
+      const p2 = targetMatch.player2Id;
+      if (
+        !p1 ||
+        !p2 ||
+        p1.startsWith('TBD') ||
+        p2.startsWith('TBD') ||
+        p1.startsWith('BYE') ||
+        p2.startsWith('BYE')
+      ) {
+        throw new BadRequestException(
+          'Both competitors must be confirmed and resolved before booking this match.',
+        );
+      }
+
+      // Check matchday scheduling policy if configured
+      const venueSched = (currentSchedule.calendar || []).find(
+        (v) => v.venueId === dto.venueId,
+      );
+      const screenSched = venueSched?.screens?.find(
+        (s) => s.screenId === dto.screenId,
+      );
+      const daySched = screenSched?.days?.find((d) => d.date === dto.date);
+      const policy = daySched?.schedulingPolicy;
+
+      if (policy) {
+        if (policy.isWindowOpen === false) {
+          throw new BadRequestException(
+            'Self-scheduling is closed for this matchday.',
+          );
+        }
+        const now = Date.now();
+        if (
+          policy.windowOpenTime &&
+          now < new Date(policy.windowOpenTime).getTime()
+        ) {
+          throw new BadRequestException(
+            'The matchday booking window is not currently open.',
+          );
+        }
+        if (
+          policy.windowCloseTime &&
+          now >= new Date(policy.windowCloseTime).getTime()
+        ) {
+          throw new BadRequestException(
+            'The matchday booking window has expired.',
+          );
+        }
+      }
+    }
+
+    // 3. Perform canonical allocation with screen collision and player interval overlap validation
+    const { updatedSchedule, match, allocation } =
+      this.tournamentScheduleService.allocateMatch(
+        currentSchedule,
+        matchId,
+        dto.venueId,
+        dto.screenId,
+        dto.date,
+        dto.time,
+      );
+
+    await this.prisma.tournament.update({
+      where: { tournamentId: tournament.tournamentId },
+      data: { schedule: updatedSchedule as any },
+    });
+
+    await createActivities(
+      this.prisma,
+      'Match Fixture Booked',
+      `Match #${matchId} booked by ${currentUser.role || 'User'} #${currentUser.userId} on ${dto.date} at ${dto.time}`,
+      'TOURNAMENT',
+    );
+
+    return {
+      message: 'Match fixture successfully scheduled',
+      tournamentId: tournament.tournamentId,
+      match,
+      allocation,
     };
   }
 
