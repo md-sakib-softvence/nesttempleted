@@ -7,7 +7,7 @@ import { ForgetPasswordDto } from '../dto/forget-password.dto';
 import { Public } from '../../../common/decorators/public.decorator';
 
 @ApiTags('auth')
-@Controller('auth')
+@Controller(['auth', 'user'])
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
