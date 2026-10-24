@@ -51,7 +51,7 @@ export class EmployeeService {
       throw new ConflictException('Employee with this email already exists');
     }
 
-    const { password, ...rest } = createEmployeeDto;
+    const { password, qrCode, ...rest } = createEmployeeDto;
     const hashedPassword = await bcrypt.hash(
       password,
       Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
@@ -61,6 +61,7 @@ export class EmployeeService {
     const newEmployee = await this.prisma.employee.create({
       data: {
         ...rest,
+        qrCode: Array.isArray(qrCode) ? qrCode : (qrCode ? [qrCode] : []),
         password: hashedPassword,
         showEmployeeId,
         state: 'INACTIVE',
@@ -100,8 +101,15 @@ export class EmployeeService {
     }
 
     // 3. Prepare data safely without using 'any'
-    const { password, deletedDocuments, document, profileImage, ...restData } =
-      updateEmployeeDto;
+    const {
+      password,
+      deletedDocuments,
+      document,
+      deletedQrCodes,
+      qrCode,
+      profileImage,
+      ...restData
+    } = updateEmployeeDto;
     let hashedPassword: string | undefined = undefined;
     if (password) {
       hashedPassword = await bcrypt.hash(
@@ -146,6 +154,27 @@ export class EmployeeService {
       finalDocuments = [...finalDocuments, ...document];
     }
 
+    let finalQrCodes = existingEmployee.qrCode || [];
+
+    // Handle deleted QR codes
+    if (deletedQrCodes && deletedQrCodes.length > 0) {
+      const deletedKeys = deletedQrCodes.map(extractKey);
+      for (const key of deletedKeys) {
+        await deleteImageFromS3(key);
+      }
+      finalQrCodes = finalQrCodes.filter(
+        (qr) => !deletedKeys.includes(qr),
+      );
+    }
+
+    // Append new QR codes
+    if (qrCode && qrCode.length > 0) {
+      finalQrCodes = [
+        ...finalQrCodes,
+        ...(Array.isArray(qrCode) ? qrCode : [qrCode]),
+      ];
+    }
+
     // 4. Perform the update
     return this.prisma.employee.update({
       where: { employeeId: id },
@@ -153,6 +182,7 @@ export class EmployeeService {
         ...restData,
         ...(profileImage ? { profileImage } : {}),
         document: finalDocuments,
+        qrCode: finalQrCodes,
         ...(hashedPassword ? { password: hashedPassword } : {}),
       },
     });
@@ -178,6 +208,17 @@ export class EmployeeService {
     if (employee.document && employee.document.length > 0) {
       employee.document = await Promise.all(
         employee.document.map(async (doc) => getPreSignedUrl(doc)),
+      );
+    }
+
+    if (employee.qrCode && employee.qrCode.length > 0) {
+      employee.qrCode = await Promise.all(
+        employee.qrCode.map(async (qr) => {
+          if (qr.startsWith('http://') || qr.startsWith('https://')) {
+            return qr;
+          }
+          return getPreSignedUrl(qr);
+        }),
       );
     }
 
@@ -339,6 +380,17 @@ export class EmployeeService {
         if (employee.document && employee.document.length > 0) {
           employee.document = await Promise.all(
             employee.document.map(async (doc) => getPreSignedUrl(doc)),
+          );
+        }
+
+        if (employee.qrCode && employee.qrCode.length > 0) {
+          employee.qrCode = await Promise.all(
+            employee.qrCode.map(async (qr) => {
+              if (qr.startsWith('http://') || qr.startsWith('https://')) {
+                return qr;
+              }
+              return getPreSignedUrl(qr);
+            }),
           );
         }
 

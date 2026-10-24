@@ -8,6 +8,7 @@ model Employee {
   phoneNumber    String
   profileImage   String?
   document       String[]
+  qrCode         String[]                  @default([])
   cashLeader     Boolean                   @default(false)
   enablePost     Boolean                   @default(false)
   password       String
