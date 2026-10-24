@@ -22,12 +22,12 @@ export class UpdateEmployeeDto extends PartialType(CreateEmployeeDto) {
   document?: any[];
 
   @ApiPropertyOptional({
-    type: 'array',
-    items: { type: 'string', format: 'binary' },
-    description: 'QR Codes',
+    type: [String],
+    description: 'QR Codes (strings)',
+    example: ['QR_CODE_1'],
   })
   @IsOptional()
-  qrCode?: any;
+  qrCode?: string[] | string;
 
   @ApiPropertyOptional({ description: 'Is Cash Leader' })
   @Transform(({ value }) => value === 'true' || value === true)
