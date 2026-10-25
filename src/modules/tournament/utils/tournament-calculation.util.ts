@@ -88,6 +88,21 @@ export interface TournamentMatchEntity {
   screenName?: string;
   date?: string;
   time?: string;
+  selfSchedulingOpenedAt?: string;
+  schedulingPhase?: string;
+  proposedSlot?: {
+    venueId: string;
+    venueName?: string;
+    screenId: string;
+    screenName?: string;
+    date: string;
+    time: string;
+    proposedBy: string;
+    proposedByName?: string;
+    proposedAt: string;
+  };
+  emergencyTokenUsed?: boolean;
+  schedulingExceptionReason?: string;
 }
 
 export interface TournamentStructureSummary {
@@ -950,6 +965,19 @@ export function populateParticipantDetails(
         m.player2Id = p.playerId;
         m.player2Name = p.name;
       }
+    }
+
+    // Initialize self-scheduling clock when both participants are resolved
+    if (
+      m.player1Id &&
+      m.player2Id &&
+      !m.player1Id.startsWith('TBD') &&
+      !m.player2Id.startsWith('TBD') &&
+      !m.player1Id.startsWith('BYE') &&
+      !m.player2Id.startsWith('BYE') &&
+      !m.selfSchedulingOpenedAt
+    ) {
+      m.selfSchedulingOpenedAt = new Date().toISOString();
     }
   }
 }

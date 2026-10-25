@@ -34,6 +34,9 @@ import { UpdateMatchDisputeDto } from '../dto/tournament/update-dispute.dto';
 import { UpdateTournamentFinancialsDto } from '../dto/tournament/update-financials.dto';
 import { QueryTournamentRegistrationDto } from '../dto/tournament/query-registration.dto';
 import { PredictMatchDto } from '../dto/tournament/predict-match.dto';
+import { ProposeSlotDto } from '../dto/tournament/propose-slot.dto';
+import { SimulateSelfScheduleDto } from '../dto/tournament/simulate-self-schedule.dto';
+import { EmergencyAppealDto } from '../dto/tournament/emergency-appeal.dto';
 import { SchedulingMode } from '@prisma/client';
 
 /**
@@ -492,6 +495,85 @@ export class TournamentService {
       status: 'LOCKED',
       timestamp: new Date().toISOString(),
     };
+  }
+
+  // ==========================================
+  // Player Self-Schedule & Calendar Facade Methods
+  // ==========================================
+
+  async getPlayerScheduleCalendar(
+    playerId: string,
+    optionalTournamentId?: string,
+  ) {
+    return this.matches.getPlayerScheduleCalendar(
+      playerId,
+      optionalTournamentId,
+    );
+  }
+
+  async getMatchShowdownDetails(
+    matchId: string,
+    optionalTournamentId?: string,
+  ) {
+    return this.matches.getMatchShowdownDetails(matchId, optionalTournamentId);
+  }
+
+  async getPlayerPendingSelfScheduleMatches(
+    tournamentId: string,
+    playerId: string,
+  ) {
+    return this.matches.getPlayerPendingSelfScheduleMatches(
+      tournamentId,
+      playerId,
+    );
+  }
+
+  async getAvailableSlotsForMatch(
+    tournamentId: string,
+    matchId: string,
+    playerId: string,
+    userRole?: string,
+  ) {
+    return this.matches.getAvailableSlotsForMatch(
+      tournamentId,
+      matchId,
+      playerId,
+      userRole,
+    );
+  }
+
+  async proposeSlot(
+    tournamentId: string,
+    matchId: string,
+    playerId: string,
+    dto: ProposeSlotDto,
+  ) {
+    return this.matches.proposeSlot(tournamentId, matchId, playerId, dto);
+  }
+
+  async emergencyTokenAppeal(
+    tournamentId: string,
+    matchId: string,
+    playerId: string,
+    dto: EmergencyAppealDto,
+  ) {
+    return this.matches.emergencyTokenAppeal(
+      tournamentId,
+      matchId,
+      playerId,
+      dto,
+    );
+  }
+
+  async simulateSelfScheduling(
+    tournamentId: string,
+    dto: SimulateSelfScheduleDto,
+  ) {
+    return this.matches.simulateSelfScheduling(tournamentId, dto);
+  }
+
+  async processDueAutoAssignments(tournamentId?: string) {
+    return this.matches.processDueAutoAssignments(tournamentId);
   }
 }
 

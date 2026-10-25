@@ -1,5 +1,6 @@
 import {
   Controller,
+  Get,
   Post,
   Patch,
   Delete,
@@ -21,6 +22,8 @@ import { ScoreCorrectionDto } from '../../dto/tournament/score-correction.dto';
 import { CreateMatchDisputeDto } from '../../dto/tournament/match-dispute.dto';
 import { UpdateMatchDisputeDto } from '../../dto/tournament/update-dispute.dto';
 import { AllocateMatchDto } from '../../dto/tournament/allocate-match.dto';
+import { ProposeSlotDto } from '../../dto/tournament/propose-slot.dto';
+import { EmergencyAppealDto } from '../../dto/tournament/emergency-appeal.dto';
 import { sendResponse } from '../../../utils/response.util';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../../common/guards/roles.guard';
@@ -70,6 +73,136 @@ export class AdminMatchController {
     );
     return sendResponse({
       message: 'Match fixture successfully scheduled',
+      data,
+    });
+  }
+
+  @Get('player/calendar')
+  @Roles(
+    Role.PLAYER,
+    'player' as any,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'admin' as any,
+    'super_admin' as any,
+  )
+  @ApiOperation({
+    summary: 'Get Player Match Calendar',
+    description:
+      'Returns upcoming booked fixtures and completed match history for the authenticated player.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Player match calendar retrieved successfully',
+  })
+  async getPlayerCalendar(@Req() req: any) {
+    const data = await this.tournamentService.getPlayerScheduleCalendar(
+      req.user.userId,
+    );
+    return sendResponse({
+      message: 'Player calendar retrieved successfully',
+      data,
+    });
+  }
+
+  @Get(':matchId/details')
+  @Roles(
+    Role.PLAYER,
+    'player' as any,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'admin' as any,
+    'super_admin' as any,
+    Role.FAN,
+    'fan' as any,
+  )
+  @ApiOperation({
+    summary: 'Get Match Showdown Info',
+    description:
+      'Returns full showdown details including participant cards, arena details, and rules.',
+  })
+  @ApiParam({ name: 'matchId', description: 'Canonical Match ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Match showdown details retrieved successfully',
+  })
+  async getMatchDetails(@Param('matchId') matchId: string) {
+    const data =
+      await this.tournamentService.getMatchShowdownDetails(matchId);
+    return sendResponse({
+      message: 'Match showdown details retrieved successfully',
+      data,
+    });
+  }
+
+  @Post(':matchId/propose-slot')
+  @Roles(
+    Role.PLAYER,
+    'player' as any,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'admin' as any,
+    'super_admin' as any,
+  )
+  @ApiOperation({
+    summary: 'Propose / Cast Timeslot for Match',
+    description:
+      'Home or Away competitor casts a proposed timeslot for opponent visibility and fast-matching.',
+  })
+  @ApiParam({ name: 'matchId', description: 'Canonical Match ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Timeslot proposal submitted successfully',
+  })
+  async proposeSlot(
+    @Param('matchId') matchId: string,
+    @Body() body: ProposeSlotDto,
+    @Req() req: any,
+  ) {
+    const data = await this.tournamentService.proposeSlot(
+      '',
+      matchId,
+      req.user.userId,
+      body,
+    );
+    return sendResponse({
+      message: 'Timeslot proposed successfully',
+      data,
+    });
+  }
+
+  @Post(':matchId/emergency-appeal')
+  @Roles(
+    Role.PLAYER,
+    'player' as any,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'admin' as any,
+    'super_admin' as any,
+  )
+  @ApiOperation({
+    summary: 'Submit Emergency Token Appeal',
+    description:
+      'Consumes player 1/1 emergency token to unlock scheduling coordination for overdue matches.',
+  })
+  @ApiParam({ name: 'matchId', description: 'Canonical Match ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Emergency token appeal submitted successfully',
+  })
+  async emergencyAppeal(
+    @Param('matchId') matchId: string,
+    @Body() body: EmergencyAppealDto,
+    @Req() req: any,
+  ) {
+    const data = await this.tournamentService.emergencyTokenAppeal(
+      '',
+      matchId,
+      req.user.userId,
+      body,
+    );
+    return sendResponse({
+      message: 'Emergency appeal submitted successfully',
       data,
     });
   }

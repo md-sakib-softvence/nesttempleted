@@ -40,6 +40,9 @@ import { QueryTournamentRegistrationDto } from '../../dto/tournament/query-regis
 import { UpdateTournamentFinancialsDto } from '../../dto/tournament/update-financials.dto';
 import { AllocateMatchDto } from '../../dto/tournament/allocate-match.dto';
 import { CreateVenueDto } from '../../dto/venue/create-venue.dto';
+import { SimulateSelfScheduleDto } from '../../dto/tournament/simulate-self-schedule.dto';
+import { ProposeSlotDto } from '../../dto/tournament/propose-slot.dto';
+import { EmergencyAppealDto } from '../../dto/tournament/emergency-appeal.dto';
 import { Role, SchedulingMode } from '@prisma/client';
 import {
   uploadTournamentFiles,
@@ -346,6 +349,110 @@ export class TournamentController {
     );
     return sendResponse({
       message: 'Match fixture scheduled successfully',
+      data,
+    });
+  }
+
+  @Get(':id/self-schedule/pending-matches')
+  @Roles(
+    Role.PLAYER,
+    'player' as any,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'admin' as any,
+    'super_admin' as any,
+  )
+  @ApiOperation({
+    summary: 'Get Pending Matches for Player Self-Scheduling (Reservation Scheduler)',
+    description:
+      'Returns all active, unallocated canonical matches where player is a participant, with derived 3-stage escalation window metadata.',
+  })
+  async getPendingSelfScheduleMatches(
+    @Param('id') tournamentId: string,
+    @Req() req: any,
+  ) {
+    const data =
+      await this.tournamentService.getPlayerPendingSelfScheduleMatches(
+        tournamentId,
+        req.user.userId,
+      );
+    return sendResponse({
+      message: 'Pending self-schedule matches retrieved successfully',
+      data,
+    });
+  }
+
+  @Get(':id/self-schedule/matches/:matchId/available-slots')
+  @Roles(
+    Role.PLAYER,
+    'player' as any,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'admin' as any,
+    'super_admin' as any,
+  )
+  @ApiOperation({
+    summary: 'Get Available Arena Timeslots Grid for Match',
+    description:
+      'Returns date-grouped arena screens and timeslots with player collision prevention, peak slot flags, and opponent casted indicators.',
+  })
+  async getAvailableSlotsForMatch(
+    @Param('id') tournamentId: string,
+    @Param('matchId') matchId: string,
+    @Req() req: any,
+  ) {
+    const data = await this.tournamentService.getAvailableSlotsForMatch(
+      tournamentId,
+      matchId,
+      req.user.userId,
+      req.user.role,
+    );
+    return sendResponse({
+      message: 'Available timeslots retrieved successfully',
+      data,
+    });
+  }
+
+  @Post(':id/self-schedule/simulate')
+  @Roles(
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'admin' as any,
+    'super_admin' as any,
+    Role.PLAYER,
+    'player' as any,
+  )
+  @ApiOperation({
+    summary: 'Simulate Escalation Window (Developer Sandbox Bar)',
+    description:
+      'Read-only sandbox simulation answering: If current time were X, what phase would this match enter and what slot would be assigned?',
+  })
+  async simulateSelfSchedule(
+    @Param('id') tournamentId: string,
+    @Body() body: SimulateSelfScheduleDto,
+  ) {
+    const data = await this.tournamentService.simulateSelfScheduling(
+      tournamentId,
+      body,
+    );
+    return sendResponse({
+      message: 'Self-scheduling window simulated successfully',
+      data,
+    });
+  }
+
+  @Post(':id/process-auto-assignment')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin' as any, 'super_admin' as any)
+  @ApiOperation({
+    summary: 'Manually trigger Phase 3 automatic assignment evaluation',
+    description:
+      'Scans for overdue self-scheduling matches (96h+ elapsed) and deterministically assigns the earliest valid physical slot or marks CAPACITY_BLOCKED.',
+  })
+  async processAutoAssignment(@Param('id') tournamentId: string) {
+    const data =
+      await this.tournamentService.processDueAutoAssignments(tournamentId);
+    return sendResponse({
+      message: 'Auto-assignment processing completed',
       data,
     });
   }
