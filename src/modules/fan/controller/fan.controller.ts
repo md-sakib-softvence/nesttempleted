@@ -44,11 +44,11 @@ import { Role } from '@prisma/client';
 export class FanController {
   constructor(private readonly fanService: FanService) {}
 
+  @Public()
   @Post()
   @ApiOperation({ summary: 'Create Fan' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('profileImage'))
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   async createFan(
     @Body() createFanDto: CreateFanDto,
     @UploadedFile() profileImage?: Express.Multer.File,
