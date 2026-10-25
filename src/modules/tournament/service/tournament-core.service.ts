@@ -459,7 +459,7 @@ export class TournamentCoreService {
     ]);
 
     const formattedData = await Promise.all(
-      data.map((item) => presignTournamentMedia(item)),
+      data.map((item) => presignTournamentMedia(item, { isList: true })),
     );
 
     const meta = calculatePaginationMeta(total, page, limit);

@@ -6,6 +6,7 @@ import { getPreSignedUrl } from '../../utils/s3.util';
  */
 export async function presignTournamentMedia<T extends Record<string, any>>(
   tournament: T,
+  options: { isList?: boolean } = {},
 ): Promise<T> {
   if (!tournament) return tournament;
   const formatted: Record<string, any> = { ...tournament };
@@ -70,11 +71,19 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
   if (rawSchedule && typeof rawSchedule === 'object' && !Array.isArray(rawSchedule)) {
     schedulePayload = rawSchedule;
     if (Array.isArray((rawSchedule as any).calendar)) {
-      formatted.schedulePayload = rawSchedule;
+      if (!options.isList) {
+        formatted.schedulePayload = rawSchedule;
+      }
       formatted.schedule = (rawSchedule as any).calendar;
+    } else if (options.isList) {
+      formatted.schedule = [];
     }
   } else if (formatted.schedulePayload) {
     schedulePayload = formatted.schedulePayload;
+  }
+
+  if (options.isList) {
+    delete formatted.schedulePayload;
   }
 
   // Canonical Frontend Fields
@@ -180,10 +189,17 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
 
   // Matches, Slots, Seeds, Groups from Schedule Payload
   if (schedulePayload) {
-    formatted.matches = schedulePayload.canonicalMatches || schedulePayload.matches || [];
-    formatted.slots = schedulePayload.slots || [];
-    formatted.seeds = schedulePayload.seeds || [];
-    formatted.groups = schedulePayload.groups || [];
+    if (!options.isList) {
+      formatted.matches = schedulePayload.canonicalMatches || schedulePayload.matches || [];
+      formatted.slots = schedulePayload.slots || [];
+      formatted.seeds = schedulePayload.seeds || [];
+      formatted.groups = schedulePayload.groups || [];
+    } else {
+      formatted.matches = [];
+      formatted.slots = [];
+      formatted.seeds = [];
+      formatted.groups = [];
+    }
     formatted.guaranteedMatches = schedulePayload.summary?.guaranteedMatches || formatted.numberOfTeams;
     formatted.conditionalMatches = schedulePayload.summary?.conditionalMatches || 0;
     formatted.maximumPossibleMatches = schedulePayload.summary?.maximumPossibleMatches || formatted.numberOfTeams;
