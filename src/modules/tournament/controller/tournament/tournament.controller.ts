@@ -38,6 +38,7 @@ import { UpdateTournamentStatusDto } from '../../dto/tournament/update-tournamen
 import { RegistrationSelectionDto } from '../../dto/tournament/registration-selection.dto';
 import { QueryTournamentRegistrationDto } from '../../dto/tournament/query-registration.dto';
 import { UpdateTournamentFinancialsDto } from '../../dto/tournament/update-financials.dto';
+import { AllocateMatchDto } from '../../dto/tournament/allocate-match.dto';
 import { CreateVenueDto } from '../../dto/venue/create-venue.dto';
 import { Role, SchedulingMode } from '@prisma/client';
 import {
@@ -286,6 +287,7 @@ export class TournamentController {
     });
   }
 
+  @Public()
   @Get(':id/calendar')
   @ApiOperation({ summary: 'Get Tournament calendar grid' })
   async getCalendar(@Param('id') id: string) {
@@ -312,6 +314,38 @@ export class TournamentController {
     });
     return sendResponse({
       message: 'Tournament matches retrieved successfully',
+      data,
+    });
+  }
+
+  @Post(':id/matches/:matchId/self-book')
+  @Roles(
+    Role.PLAYER,
+    'player' as any,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'admin' as any,
+    'super_admin' as any,
+  )
+  @ApiOperation({
+    summary: 'Player self-booking match fixture for a tournament',
+    description:
+      'Allows a competitor to schedule their match fixture in PLAYER_SELF scheduling mode within an open window.',
+  })
+  async selfBookMatch(
+    @Param('id') tournamentId: string,
+    @Param('matchId') matchId: string,
+    @Body() body: AllocateMatchDto,
+    @Req() req: any,
+  ) {
+    const data = await this.tournamentService.selfBookMatch(
+      matchId,
+      body,
+      req.user,
+      tournamentId,
+    );
+    return sendResponse({
+      message: 'Match fixture scheduled successfully',
       data,
     });
   }
@@ -410,11 +444,23 @@ export class TournamentController {
   }
 
   @Post(':id/registrations')
+  @Roles(
+    Role.PLAYER,
+    'player' as any,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'admin' as any,
+    'super_admin' as any,
+  )
   @ApiOperation({ summary: 'Register a player for this tournament' })
   async registerPlayer(
     @Param('id') id: string,
     @Body() body: CreateTournamentRegistrationDto,
+    @Req() req: any,
   ) {
+    if (!body.playerId && req.user?.userId) {
+      body.playerId = req.user.userId;
+    }
     const data = await this.tournamentService.createRegistration(id, body);
     return sendResponse({
       message: 'Player registered successfully',
@@ -423,6 +469,14 @@ export class TournamentController {
   }
 
   @Get(':id/registrations')
+  @Roles(
+    Role.PLAYER,
+    'player' as any,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'admin' as any,
+    'super_admin' as any,
+  )
   @ApiOperation({ summary: 'Get all tournament registrations with counts and tab filtering' })
   async getRegistrations(
     @Param('id') id: string,

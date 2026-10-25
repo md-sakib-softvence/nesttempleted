@@ -130,3 +130,56 @@ export const deleteImageFromS3 = async (fileName: string): Promise<void> => {
     console.error('Failed to delete image from S3:', error);
   }
 };
+
+/**
+ * Converts a base64 Data URL (e.g. data:image/png;base64,...) to an S3 upload.
+ * If the input is already an S3 key or regular URL, returns it as-is.
+ */
+export const uploadBase64ToS3 = async (
+  dataUrlOrKey: string,
+  prefix: string = 'upload',
+): Promise<string> => {
+  if (!dataUrlOrKey || !dataUrlOrKey.startsWith('data:')) {
+    return dataUrlOrKey;
+  }
+
+  const matches = dataUrlOrKey.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+  if (!matches || matches.length !== 3) {
+    return dataUrlOrKey;
+  }
+
+  const contentType = matches[1];
+  const buffer = Buffer.from(matches[2], 'base64');
+  let ext = '.png';
+  if (contentType.includes('jpeg') || contentType.includes('jpg')) ext = '.jpg';
+  else if (contentType.includes('pdf')) ext = '.pdf';
+  else if (contentType.includes('webp')) ext = '.webp';
+
+  const s3Client = new S3Client({
+    region: process.env.AWS_REGION || 'us-east-1',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+    },
+  });
+
+  const bucketName = process.env.AWS_S3_BUCKET_NAME || '';
+  if (!bucketName) {
+    throw new Error(
+      'AWS_S3_BUCKET_NAME is not defined in environment variables',
+    );
+  }
+
+  const uniqueFileName = `${prefix}-${uuidv4()}${ext}`;
+
+  const command = new PutObjectCommand({
+    Bucket: bucketName,
+    Key: uniqueFileName,
+    Body: buffer,
+    ContentType: contentType,
+  });
+
+  await s3Client.send(command);
+  return uniqueFileName;
+};
+

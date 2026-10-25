@@ -169,6 +169,20 @@ export class TournamentService {
     return this.matches.unallocateTournamentMatch(tournamentId, matchId);
   }
 
+  async selfBookMatch(
+    matchId: string,
+    dto: AllocateMatchDto,
+    currentUser: { userId: string; role?: string },
+    optionalTournamentId?: string,
+  ) {
+    return this.matches.selfBookMatch(
+      matchId,
+      dto,
+      currentUser,
+      optionalTournamentId,
+    );
+  }
+
   async autoAllocateTournamentMatches(
     tournamentId: string,
     dto?: AutoAllocationDto,

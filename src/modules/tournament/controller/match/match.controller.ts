@@ -5,6 +5,7 @@ import {
   Delete,
   Body,
   Param,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -26,15 +27,55 @@ import { RolesGuard } from '../../../../common/guards/roles.guard';
 import { Roles } from '../../../../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 
-@ApiTags('Admin Matches & Fixtures')
+@ApiTags('Matches & Fixtures')
 @ApiBearerAuth()
 @Controller('matches')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN, Role.SUPER_ADMIN)
+@Roles(
+  Role.PLAYER,
+  'player' as any,
+  Role.ADMIN,
+  Role.SUPER_ADMIN,
+  'admin' as any,
+  'super_admin' as any,
+)
 export class AdminMatchController {
   constructor(private readonly tournamentService: TournamentService) {}
 
+  @Post(':matchId/self-book')
+  @Roles(
+    Role.PLAYER,
+    'player' as any,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'admin' as any,
+    'super_admin' as any,
+  )
+  @ApiOperation({
+    summary: 'Player Self-Booking Fixture (Canonical Match Scheduling)',
+    description:
+      'Allows a competitor to schedule their match fixture in PLAYER_SELF scheduling mode. Validates player participation, open window, and interval collision.',
+  })
+  @ApiParam({ name: 'matchId', description: 'Canonical Match ID' })
+  @ApiResponse({ status: 200, description: 'Match fixture booked successfully' })
+  async selfBookMatch(
+    @Param('matchId') matchId: string,
+    @Body() body: AllocateMatchDto,
+    @Req() req: any,
+  ) {
+    const data = await this.tournamentService.selfBookMatch(
+      matchId,
+      body,
+      req.user,
+    );
+    return sendResponse({
+      message: 'Match fixture successfully scheduled',
+      data,
+    });
+  }
+
   @Post(':matchId/score')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin' as any, 'super_admin' as any)
   @ApiOperation({
     summary:
       'Enters match score. Backend handles winner determination and propagates winner to next match.',
@@ -53,6 +94,7 @@ export class AdminMatchController {
   }
 
   @Post(':matchId/score-correction')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin' as any, 'super_admin' as any)
   @ApiOperation({
     summary:
       'Privileged admin score correction with audit trail. Guards against overwriting completed downstream matches.',
@@ -71,6 +113,7 @@ export class AdminMatchController {
   }
 
   @Post(':matchId/dispute')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin' as any, 'super_admin' as any)
   @ApiOperation({ summary: 'Flags a match under review' })
   @ApiParam({ name: 'matchId', description: 'Canonical Match ID' })
   @ApiResponse({ status: 200, description: 'Match flagged as UNDER_REVIEW' })
@@ -86,6 +129,7 @@ export class AdminMatchController {
   }
 
   @Post(':matchId/allocation')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin' as any, 'super_admin' as any)
   @ApiOperation({
     summary:
       'Manually assigns a match to a venue screen and timeslot. Checks screen collision and player time overlap.',
@@ -108,6 +152,7 @@ export class AdminMatchController {
   }
 
   @Delete(':matchId/allocation')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin' as any, 'super_admin' as any)
   @ApiOperation({ summary: 'De-allocates a match from its timeslot' })
   @ApiParam({ name: 'matchId', description: 'Canonical Match ID' })
   @ApiResponse({ status: 200, description: 'Match unallocated' })

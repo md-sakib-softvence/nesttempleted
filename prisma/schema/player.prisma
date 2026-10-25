@@ -11,9 +11,13 @@ model Player {
   surname      String?
   isDeleted    Boolean @default(false)
 
+  profilePicture String?
+  dateOfBirth    DateTime?
+
   document String[]
   status   PlayerStatus @default(ACTIVE)
 
+  documents           PlayerDocument[]
   marketingData       MarketingDataCollection?
   registrationHistory PlayerRegistrationHistory[]
   tournamentRegistrations TournamentRegistration[]
@@ -21,6 +25,8 @@ model Player {
   followers           Follower[] @relation("PlayerFollowing")
   followedBy          Follower[] @relation("PlayerFollowed")
   tickets             Ticket[]
+  wallet              Wallet?
+  payoutRequests      PayoutRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -48,5 +54,27 @@ enum PlayerStatus {
 enum RegistrationStatus {
   PENDING
   APPROVED
+  REJECTED
+}
+
+model PlayerDocument {
+  id         String         @id @default(uuid())
+  playerId   String
+  player     Player         @relation(fields: [playerId], references: [playerId], onDelete: Cascade)
+  type       String         @default("Government ID")
+  url        String
+  uploadDate DateTime       @default(now())
+  status     DocumentStatus @default(PENDING)
+  notes      String?
+
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([playerId])
+}
+
+enum DocumentStatus {
+  PENDING
+  VERIFIED
   REJECTED
 }
