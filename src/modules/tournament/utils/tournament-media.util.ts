@@ -71,20 +71,16 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
   if (rawSchedule && typeof rawSchedule === 'object' && !Array.isArray(rawSchedule)) {
     schedulePayload = rawSchedule;
     if (Array.isArray((rawSchedule as any).calendar)) {
-      if (!options.isList) {
-        formatted.schedulePayload = rawSchedule;
-      }
       formatted.schedule = (rawSchedule as any).calendar;
-    } else if (options.isList) {
+    } else {
       formatted.schedule = [];
     }
   } else if (formatted.schedulePayload) {
     schedulePayload = formatted.schedulePayload;
   }
 
-  if (options.isList) {
-    delete formatted.schedulePayload;
-  }
+  // Prevent leaking massive 15MB+ raw schedule payload (matches, slots) into HTTP responses
+  delete formatted.schedulePayload;
 
   // Canonical Frontend Fields
   formatted.id = formatted.tournamentId;
@@ -189,20 +185,39 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
 
   // Matches, Slots, Seeds, Groups from Schedule Payload
   if (schedulePayload) {
-    if (!options.isList) {
-      formatted.matches = schedulePayload.canonicalMatches || schedulePayload.matches || [];
-      formatted.slots = schedulePayload.slots || [];
-      formatted.seeds = schedulePayload.seeds || [];
-      formatted.groups = schedulePayload.groups || [];
+    const rawMatches =
+      schedulePayload.canonicalMatches ||
+      schedulePayload.matches ||
+      schedulePayload.structure?.matches ||
+      [];
+    // Embed matches only if small list (<= 100 items). Large fixtures (e.g. 32,000 matches) are queried via /tournaments/:id/matches
+    if (!options.isList && Array.isArray(rawMatches) && rawMatches.length <= 100) {
+      formatted.matches = rawMatches;
     } else {
       formatted.matches = [];
-      formatted.slots = [];
-      formatted.seeds = [];
-      formatted.groups = [];
     }
-    formatted.guaranteedMatches = schedulePayload.summary?.guaranteedMatches || formatted.numberOfTeams;
-    formatted.conditionalMatches = schedulePayload.summary?.conditionalMatches || 0;
-    formatted.maximumPossibleMatches = schedulePayload.summary?.maximumPossibleMatches || formatted.numberOfTeams;
+    formatted.slots = options.isList
+      ? []
+      : (schedulePayload.slots || schedulePayload.structure?.slots || []);
+    formatted.seeds = options.isList
+      ? []
+      : (schedulePayload.seeds || schedulePayload.structure?.seeds || []);
+    formatted.groups = options.isList
+      ? []
+      : (schedulePayload.groups || schedulePayload.structure?.groups || []);
+
+    formatted.guaranteedMatches =
+      schedulePayload.summary?.guaranteedMatches ||
+      schedulePayload.structure?.summary?.guaranteedMatches ||
+      formatted.numberOfTeams;
+    formatted.conditionalMatches =
+      schedulePayload.summary?.conditionalMatches ||
+      schedulePayload.structure?.summary?.conditionalMatches ||
+      0;
+    formatted.maximumPossibleMatches =
+      schedulePayload.summary?.maximumPossibleMatches ||
+      schedulePayload.structure?.summary?.maximumPossibleMatches ||
+      formatted.numberOfTeams;
   }
 
   // Normalized Registrations
