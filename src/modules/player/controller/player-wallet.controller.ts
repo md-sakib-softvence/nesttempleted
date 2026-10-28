@@ -53,17 +53,24 @@ export class PlayerWalletController {
    */
   @Get('passes')
   @ApiOperation({
-    summary: 'Get all Active Tournament Passes & Competitor Licenses for logged-in Player',
+    summary: 'Get all Active Tournament Passes & Competitor Licenses for logged-in Player (with pagination)',
     description:
       'Populates the "TOURNAMENT PASSES & IDS" screen in the Player Wallet with formatted tournament name, format, status, and QR tokens.',
   })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Passes retrieved successfully' })
-  async getMyPasses(@Req() req: RequestWithUser) {
+  async getMyPasses(
+    @Req() req: RequestWithUser,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
     const playerId = req.user.userId;
-    const data = await this.playerPassService.getMyPasses(playerId);
+    const data = await this.playerPassService.getMyPasses(playerId, { page, limit });
     return sendResponse({
       message: 'Competitor passes retrieved successfully',
       data,
+      meta: (data as any)?.meta || (data as any)?.pagination,
     });
   }
 
@@ -119,21 +126,23 @@ export class PlayerWalletController {
    */
   @Get('ledger')
   @ApiOperation({
-    summary: 'Get Player Financial Ledger History Table',
+    summary: 'Get Player Financial Ledger History Table (with pagination)',
     description:
       'Lists debit and credit postings with types, formatted dates, amounts, and audit references.',
   })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 50 })
   async getLedgerHistory(
     @Req() req: RequestWithUser,
+    @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
     const playerId = req.user.userId;
-    const parsedLimit = limit ? Number(limit) : 50;
-    const data = await this.playerWalletService.getLedgerHistory(playerId, parsedLimit);
+    const data = await this.playerWalletService.getLedgerHistory(playerId, { page, limit });
     return sendResponse({
       message: 'Financial ledger history retrieved successfully',
       data,
+      meta: (data as any)?.meta || (data as any)?.pagination,
     });
   }
 

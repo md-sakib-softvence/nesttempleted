@@ -31,7 +31,11 @@ export class TournamentLeaderboardService {
    * Computes standings / leaderboard table and performance analytics from tournament matches.
    * Supports filtering by 'table', 'goals', or 'metrics'.
    */
-  async getTournamentLeaderboard(tournamentId: string, filter?: string) {
+  async getTournamentLeaderboard(
+    tournamentId: string,
+    filter?: string,
+    query?: { page?: number | string; limit?: number | string },
+  ) {
     const tournament = await this.prisma.tournament.findUnique({
       where: { tournamentId },
     });
@@ -285,20 +289,50 @@ export class TournamentLeaderboardService {
 
     const normalizedFilter = filter?.toLowerCase()?.trim();
 
+    const isPaginated = query?.page !== undefined || query?.limit !== undefined;
+    const page = Math.max(1, Number(query?.page) || 1);
+    const limit = Math.max(1, Number(query?.limit) || 20);
+    const skip = (page - 1) * limit;
+
+    const totalStandings = sortedStandings.length;
+    const paginatedStandings = isPaginated
+      ? sortedStandings.slice(skip, skip + limit)
+      : sortedStandings;
+
+    const totalGoals = topScorers.length;
+    const paginatedGoals = isPaginated
+      ? topScorers.slice(skip, skip + limit)
+      : topScorers;
+
+    const pagination = isPaginated
+      ? {
+          total: normalizedFilter === 'goals' ? totalGoals : totalStandings,
+          page,
+          limit,
+          totalPages: Math.ceil(
+            (normalizedFilter === 'goals' ? totalGoals : totalStandings) / limit,
+          ),
+        }
+      : undefined;
+
     if (normalizedFilter === 'table') {
       return {
         filter: 'table',
-        standings: sortedStandings,
-        table: sortedStandings,
+        standings: paginatedStandings,
+        table: paginatedStandings,
+        pagination,
+        meta: pagination,
       };
     }
 
     if (normalizedFilter === 'goals') {
       return {
         filter: 'goals',
-        goals: topScorers,
-        topScorers,
+        goals: paginatedGoals,
+        topScorers: paginatedGoals,
         goldenBoot: awards.goldenBoot,
+        pagination,
+        meta: pagination,
       };
     }
 
@@ -308,18 +342,22 @@ export class TournamentLeaderboardService {
         metrics: analytics,
         analytics,
         awards,
+        pagination,
+        meta: pagination,
       };
     }
 
     return {
       filter: 'all',
-      standings: sortedStandings,
-      table: sortedStandings,
-      goals: topScorers,
-      topScorers,
+      standings: paginatedStandings,
+      table: paginatedStandings,
+      goals: paginatedGoals,
+      topScorers: paginatedGoals,
       metrics: analytics,
       analytics,
       awards,
+      pagination,
+      meta: pagination,
     };
   }
 }

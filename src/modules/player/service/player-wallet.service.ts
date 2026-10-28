@@ -109,23 +109,49 @@ export class PlayerWalletService {
    * 2. Get Ledger History Table
    * (Tab 2: 💰 Payout Ledger - Transaction Ledger History).
    */
-  async getLedgerHistory(playerId: string, limit: number = 50) {
+  async getLedgerHistory(
+    playerId: string,
+    options: number | { page?: number | string; limit?: number | string } = 50,
+  ) {
     if (!playerId) {
       throw new BadRequestException('Player ID is required');
     }
 
     const wallet = await this.getOrCreateWallet(playerId);
 
-    const transactions = await this.prisma.walletTransaction.findMany({
-      where: { walletId: wallet.walletId },
-      orderBy: { createdAt: 'desc' },
-      take: Math.min(100, Math.max(1, limit)),
-    });
+    const page =
+      typeof options === 'object' && options?.page !== undefined
+        ? Math.max(1, Number(options.page) || 1)
+        : 1;
+    const limit =
+      typeof options === 'number'
+        ? Math.min(100, Math.max(1, options))
+        : Math.min(100, Math.max(1, Number(options?.limit) || 50));
+    const skip = (page - 1) * limit;
+
+    const [total, transactions] = await Promise.all([
+      this.prisma.walletTransaction.count({
+        where: { walletId: wallet.walletId },
+      }),
+      this.prisma.walletTransaction.findMany({
+        where: { walletId: wallet.walletId },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    const pagination = {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
 
     return {
       walletId: wallet.walletId,
       currency: wallet.currency || 'NGN',
-      totalCount: transactions.length,
+      totalCount: total,
       transactions: transactions.map((tx) => ({
         id: tx.transactionId,
         reference: tx.reference,
@@ -139,6 +165,8 @@ export class PlayerWalletService {
         date: tx.createdAt.toISOString().split('T')[0],
         timestamp: tx.createdAt,
       })),
+      pagination,
+      meta: pagination,
     };
   }
 

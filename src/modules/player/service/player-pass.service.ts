@@ -66,7 +66,10 @@ export class PlayerPassService {
    * 1. Retrieve all Active Tournament Passes & Competitor Licenses for logged-in Player
    * (Tab 1: 🎟️ Secure Pass & ID parity).
    */
-  async getMyPasses(playerId: string) {
+  async getMyPasses(
+    playerId: string,
+    query?: { page?: number | string; limit?: number | string },
+  ) {
     if (!playerId) {
       throw new NotFoundException('Player ID is required');
     }
@@ -206,11 +209,29 @@ export class PlayerPassService {
       (p) => p.status === TournamentRegistrationStatus.REGISTERED,
     ).length;
 
+    let paginatedPasses = activePasses;
+    let pagination: any = undefined;
+
+    if (query?.page !== undefined || query?.limit !== undefined) {
+      const page = Math.max(1, Number(query.page) || 1);
+      const limit = Math.max(1, Number(query.limit) || 10);
+      const skip = (page - 1) * limit;
+      paginatedPasses = activePasses.slice(skip, skip + limit);
+      pagination = {
+        total: totalPasses,
+        page,
+        limit,
+        totalPages: Math.ceil(totalPasses / limit),
+      };
+    }
+
     return {
       totalPasses,
       confirmedCount,
       registeredCount,
-      passes: activePasses,
+      passes: paginatedPasses,
+      pagination,
+      meta: pagination,
     };
   }
 

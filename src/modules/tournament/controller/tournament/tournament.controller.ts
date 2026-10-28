@@ -156,8 +156,19 @@ export class TournamentController {
   @Get(':id')
   @Public()
   @ApiOperation({ summary: 'Get a Tournament by ID' })
-  async findOne(@Param('id') id: string) {
-    const data = await this.tournamentService.getTournamentById(id);
+  @ApiQuery({
+    name: 'include',
+    required: false,
+    description:
+      'Comma-separated list of heavy sub-resources to include (e.g. slots, seeds, matches, groups, or all)',
+    type: String,
+    example: 'slots,seeds',
+  })
+  async findOne(
+    @Param('id') id: string,
+    @Query('include') include?: string,
+  ) {
+    const data = await this.tournamentService.getTournamentById(id, include);
     return sendResponse({
       message: 'Tournament retrieved successfully',
       data,
@@ -303,21 +314,31 @@ export class TournamentController {
 
   @Get(':id/matches')
   @Public()
-  @ApiOperation({ summary: 'Get all canonical matches of a Tournament' })
+  @ApiOperation({ summary: 'Get all canonical matches of a Tournament (with optional pagination & filters)' })
+  @ApiQuery({ name: 'round', required: false, type: String })
+  @ApiQuery({ name: 'status', required: false, type: String })
+  @ApiQuery({ name: 'isAllocated', required: false, type: String })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   async getMatches(
     @Param('id') id: string,
     @Query('round') round?: string,
     @Query('status') status?: string,
     @Query('isAllocated') isAllocated?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
   ) {
     const data = await this.tournamentService.getTournamentMatches(id, {
       round,
       status,
       isAllocated,
+      page,
+      limit,
     });
     return sendResponse({
       message: 'Tournament matches retrieved successfully',
       data,
+      meta: data.meta,
     });
   }
 
@@ -526,7 +547,7 @@ export class TournamentController {
   @Get(':id/standings')
   @Public()
   @ApiOperation({
-    summary: 'Get tournament standings/leaderboard with filter (table, goals, metrics)',
+    summary: 'Get tournament standings/leaderboard with filter (table, goals, metrics) and pagination',
   })
   @ApiQuery({
     name: 'filter',
@@ -534,19 +555,25 @@ export class TournamentController {
     enum: ['table', 'goals', 'metrics', 'all'],
     description: 'Filter standings view by table, goals, or metrics',
   })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   async getLeaderboard(
     @Param('id') id: string,
     @Query('filter') filter?: string,
     @Query('tab') tab?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
   ) {
     const activeFilter = filter || tab;
     const data = await this.tournamentService.getTournamentLeaderboard(
       id,
       activeFilter,
+      { page, limit },
     );
     return sendResponse({
       message: 'Tournament leaderboard retrieved successfully',
       data,
+      meta: (data as any)?.meta,
     });
   }
 

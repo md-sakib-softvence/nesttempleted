@@ -15,7 +15,10 @@ export class SeriesLeaderboardService {
   /**
    * Authoritative series leaderboard from series points engine
    */
-  async getSeriesLeaderboard(seriesId: string) {
+  async getSeriesLeaderboard(
+    seriesId: string,
+    query?: { page?: number | string; limit?: number | string },
+  ) {
     const series = await this.prisma.series.findUnique({
       where: { id: seriesId },
     });
@@ -72,12 +75,31 @@ export class SeriesLeaderboardService {
       };
     });
 
+    const total = standings.length;
+    let paginatedStandings = standings;
+    let pagination: any = undefined;
+
+    if (query?.page !== undefined || query?.limit !== undefined) {
+      const page = Math.max(1, Number(query.page) || 1);
+      const limit = Math.max(1, Number(query.limit) || 20);
+      const skip = (page - 1) * limit;
+      paginatedStandings = standings.slice(skip, skip + limit);
+      pagination = {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      };
+    }
+
     return {
       seriesId: series.id,
       scoringMethod: series.scoringMethod,
       bestNResults: series.bestNResults,
       lastRecalculatedAt: series.updatedAt,
-      standings,
+      standings: paginatedStandings,
+      pagination,
+      meta: pagination,
     };
   }
 

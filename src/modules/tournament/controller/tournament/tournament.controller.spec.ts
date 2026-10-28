@@ -45,6 +45,13 @@ describe('TournamentController (Success Message & Spec API Verification)', () =>
     controller = module.get<TournamentController>(TournamentController);
   });
 
+  it('findOne should return tournament with include query parameter forwarded to service', async () => {
+    const res = await controller.findOne('t1', 'slots,seeds');
+    expect(res.success).toBe(true);
+    expect(res.message).toBe('Tournament retrieved successfully');
+    expect(service.getTournamentById).toHaveBeenCalledWith('t1', 'slots,seeds');
+  });
+
   it('updateStatus should return status updated successfully with proper message', async () => {
     const res = await controller.updateStatus('t1', {
       status: TournamentStatus.PAUSED,

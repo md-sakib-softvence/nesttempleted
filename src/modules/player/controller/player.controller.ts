@@ -156,24 +156,31 @@ export class PlayerController {
   @Get('matches')
   @ApiOperation({
     summary:
-      'Get all Competitor Matches categorized into upcoming, unscheduled, and completed',
+      'Get all Competitor Matches categorized into upcoming, unscheduled, and completed (with optional pagination)',
   })
   @ApiQuery({ name: 'tournamentId', required: false, type: String })
   @ApiQuery({ name: 'status', required: false, type: String })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   @Roles('player', Role.PLAYER)
   async getPlayerMatches(
     @Req() req: RequestWithUser,
     @Query('tournamentId') tournamentId?: string,
     @Query('status') status?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
   ) {
     const playerId = req.user.userId;
     const data = await this.playerService.getPlayerMatches(playerId, {
       tournamentId,
       status,
+      page,
+      limit,
     });
     return sendResponse({
       message: 'Competitor matches retrieved successfully',
       data,
+      meta: (data as any)?.meta || (data as any)?.pagination,
     });
   }
 

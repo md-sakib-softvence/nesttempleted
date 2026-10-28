@@ -6,7 +6,7 @@ import { getPreSignedUrl } from '../../utils/s3.util';
  */
 export async function presignTournamentMedia<T extends Record<string, any>>(
   tournament: T,
-  options: { isList?: boolean } = {},
+  options: { isList?: boolean; include?: string | string[] } = {},
 ): Promise<T> {
   if (!tournament) return tournament;
   const formatted: Record<string, any> = { ...tournament };
@@ -184,27 +184,105 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
   }
 
   // Matches, Slots, Seeds, Groups from Schedule Payload
+  const includeTokens: string[] = Array.isArray(options.include)
+    ? options.include.map((s) => String(s).toLowerCase().trim())
+    : typeof options.include === 'string'
+      ? options.include
+          .split(',')
+          .map((s) => s.toLowerCase().trim())
+          .filter(Boolean)
+      : [];
+
+  const includeAll =
+    includeTokens.includes('all') || includeTokens.includes('full');
+
+  // Ensure default arrays always exist so client contracts are never broken
+  if (!formatted.matches) formatted.matches = [];
+  if (!formatted.slots) formatted.slots = [];
+  if (!formatted.seeds) formatted.seeds = [];
+  if (!formatted.groups) formatted.groups = [];
+
   if (schedulePayload) {
     const rawMatches =
       schedulePayload.canonicalMatches ||
       schedulePayload.matches ||
       schedulePayload.structure?.matches ||
       [];
-    // Embed matches only if small list (<= 100 items). Large fixtures (e.g. 32,000 matches) are queried via /tournaments/:id/matches
-    if (!options.isList && Array.isArray(rawMatches) && rawMatches.length <= 100) {
+    const rawSlots =
+      schedulePayload.slots ||
+      schedulePayload.structure?.slots ||
+      [];
+    const rawSeeds =
+      schedulePayload.seeds ||
+      schedulePayload.structure?.seeds ||
+      [];
+    const rawGroups =
+      schedulePayload.groups ||
+      schedulePayload.structure?.groups ||
+      [];
+
+    const shouldIncludeMatches =
+      includeAll || includeTokens.includes('matches');
+    const shouldIncludeSlots =
+      includeAll || includeTokens.includes('slots');
+    const shouldIncludeSeeds =
+      includeAll || includeTokens.includes('seeds');
+    const shouldIncludeGroups =
+      includeAll || includeTokens.includes('groups');
+
+    // Embed matches only if explicitly requested, or if single item and small list (<= 100 items).
+    // Large fixtures (e.g. 32,000 matches) are queried via /tournaments/:id/matches
+    if (
+      !options.isList &&
+      (shouldIncludeMatches || (Array.isArray(rawMatches) && rawMatches.length <= 100))
+    ) {
       formatted.matches = rawMatches;
     } else {
       formatted.matches = [];
     }
-    formatted.slots = options.isList
-      ? []
-      : (schedulePayload.slots || schedulePayload.structure?.slots || []);
-    formatted.seeds = options.isList
-      ? []
-      : (schedulePayload.seeds || schedulePayload.structure?.seeds || []);
-    formatted.groups = options.isList
-      ? []
-      : (schedulePayload.groups || schedulePayload.structure?.groups || []);
+
+    // Embed slots only if explicitly requested (?include=slots) or small roster (<= 32 slots).
+    // For large tournaments (e.g. 254+ teams), slots are omitted by default to keep HTTP payload lightweight (~2KB instead of ~100KB+).
+    if (
+      !options.isList &&
+      (shouldIncludeSlots || (Array.isArray(rawSlots) && rawSlots.length <= 32))
+    ) {
+      formatted.slots = rawSlots;
+    } else {
+      formatted.slots = [];
+    }
+
+    // Embed seeds only if explicitly requested (?include=seeds) or small roster (<= 32 seeds).
+    if (
+      !options.isList &&
+      (shouldIncludeSeeds || (Array.isArray(rawSeeds) && rawSeeds.length <= 32))
+    ) {
+      formatted.seeds = rawSeeds;
+    } else {
+      formatted.seeds = [];
+    }
+
+    // Embed groups only if explicitly requested (?include=groups) or small list (<= 32 groups).
+    if (
+      !options.isList &&
+      (shouldIncludeGroups || (Array.isArray(rawGroups) && rawGroups.length <= 32))
+    ) {
+      formatted.groups = rawGroups;
+    } else {
+      formatted.groups = [];
+    }
+
+    // High-level slot and seeding statistics for fast UI consumption without downloading hundreds of entities
+    formatted.slotSummary = {
+      totalSlots: Array.isArray(rawSlots) ? rawSlots.length : 0,
+      assignedSlots: Array.isArray(rawSlots)
+        ? rawSlots.filter((s: any) => s.status === 'ASSIGNED' || s.participantId).length
+        : 0,
+      unassignedSlots: Array.isArray(rawSlots)
+        ? rawSlots.filter((s: any) => s.status === 'UNASSIGNED' && !s.participantId).length
+        : 0,
+      totalSeeds: Array.isArray(rawSeeds) ? rawSeeds.length : 0,
+    };
 
     formatted.guaranteedMatches =
       schedulePayload.summary?.guaranteedMatches ||

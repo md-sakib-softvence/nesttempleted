@@ -19,6 +19,7 @@ import {
   ApiParam,
   ApiResponse,
   ApiConsumes,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { SeriesService } from '../service/series.service';
@@ -198,14 +199,21 @@ export class SeriesController {
   }
 
   @Get(':id/tournaments')
-  @ApiOperation({ summary: 'Lists all tournaments linked to this series in sequence' })
+  @ApiOperation({ summary: 'Lists all tournaments linked to this series in sequence (with pagination)' })
   @ApiParam({ name: 'id', description: 'Series ID' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Series tournaments retrieved successfully' })
-  async getTournaments(@Param('id') id: string) {
-    const data = await this.seriesService.getSeriesTournaments(id);
+  async getTournaments(
+    @Param('id') id: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    const data = await this.seriesService.getSeriesTournaments(id, { page, limit });
     return sendResponse({
       message: 'Series tournaments retrieved successfully',
       data,
+      meta: (data as any)?.meta || (data as any)?.pagination,
     });
   }
 
@@ -297,14 +305,21 @@ export class SeriesController {
 
   @Get(':id/leaderboard')
   @Public()
-  @ApiOperation({ summary: 'Authoritative series leaderboard from series points engine' })
+  @ApiOperation({ summary: 'Authoritative series leaderboard from series points engine (with pagination)' })
   @ApiParam({ name: 'id', description: 'Series ID' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Series leaderboard retrieved successfully' })
-  async getLeaderboard(@Param('id') id: string) {
-    const data = await this.seriesService.getSeriesLeaderboard(id);
+  async getLeaderboard(
+    @Param('id') id: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    const data = await this.seriesService.getSeriesLeaderboard(id, { page, limit });
     return sendResponse({
       message: 'Series leaderboard retrieved successfully',
       data,
+      meta: (data as any)?.meta || (data as any)?.pagination,
     });
   }
 
@@ -342,14 +357,21 @@ export class SeriesController {
   }
 
   @Get(':id/adjustments')
-  @ApiOperation({ summary: 'Lists audit log of all manual point adjustments' })
+  @ApiOperation({ summary: 'Lists audit log of all manual point adjustments (with pagination)' })
   @ApiParam({ name: 'id', description: 'Series ID' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Series point adjustments retrieved successfully' })
-  async getAdjustments(@Param('id') id: string) {
-    const data = await this.seriesService.getPointAdjustments(id);
+  async getAdjustments(
+    @Param('id') id: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    const data = await this.seriesService.getPointAdjustments(id, { page, limit });
     return sendResponse({
       message: 'Series point adjustments retrieved successfully',
       data,
+      meta: (data as any)?.meta || (data as any)?.pagination,
     });
   }
 

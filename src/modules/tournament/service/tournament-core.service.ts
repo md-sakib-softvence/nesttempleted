@@ -467,7 +467,7 @@ export class TournamentCoreService {
     return { data: formattedData, meta };
   }
 
-  async getTournamentById(id: string) {
+  async getTournamentById(id: string, include?: string) {
     const tournament = await this.prisma.tournament.findUnique({
       where: { tournamentId: id },
       include: {
@@ -494,7 +494,7 @@ export class TournamentCoreService {
       throw new NotFoundException('Tournament not found or has been deleted');
     }
 
-    return presignTournamentMedia(tournament);
+    return presignTournamentMedia(tournament, { include });
   }
 
   async updateTournament(id: string, updateTournamentDto: UpdateTournamentDto) {

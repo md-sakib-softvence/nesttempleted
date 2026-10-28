@@ -720,7 +720,12 @@ export class PlayerService {
    */
   async getPlayerMatches(
     playerId: string,
-    filter?: { tournamentId?: string; status?: string },
+    filter?: {
+      tournamentId?: string;
+      status?: string;
+      page?: number | string;
+      limit?: number | string;
+    },
   ) {
     if (!playerId) {
       throw new BadRequestException('Player ID is required');
@@ -857,10 +862,62 @@ export class PlayerService {
       }
     }
 
+    const totalMatches = upcoming.length + unscheduled.length + completed.length;
+    let pagination: any = undefined;
+
+    if (filter?.page !== undefined || filter?.limit !== undefined) {
+      const page = Math.max(1, Number(filter?.page) || 1);
+      const limit = Math.max(1, Number(filter?.limit) || 20);
+      const skip = (page - 1) * limit;
+
+      const normStatus = filter?.status?.toUpperCase();
+      let targetListTotal = totalMatches;
+      if (normStatus === 'UPCOMING') targetListTotal = upcoming.length;
+      else if (normStatus === 'UNSCHEDULED') targetListTotal = unscheduled.length;
+      else if (normStatus === 'COMPLETED') targetListTotal = completed.length;
+
+      pagination = {
+        total: targetListTotal,
+        page,
+        limit,
+        totalPages: Math.ceil(targetListTotal / limit),
+      };
+
+      if (normStatus === 'UPCOMING') {
+        return {
+          upcoming: upcoming.slice(skip, skip + limit),
+          unscheduled: [],
+          completed: [],
+          pagination,
+          meta: pagination,
+        };
+      }
+      if (normStatus === 'UNSCHEDULED') {
+        return {
+          upcoming: [],
+          unscheduled: unscheduled.slice(skip, skip + limit),
+          completed: [],
+          pagination,
+          meta: pagination,
+        };
+      }
+      if (normStatus === 'COMPLETED') {
+        return {
+          upcoming: [],
+          unscheduled: [],
+          completed: completed.slice(skip, skip + limit),
+          pagination,
+          meta: pagination,
+        };
+      }
+    }
+
     return {
       upcoming,
       unscheduled,
       completed,
+      pagination,
+      meta: pagination,
     };
   }
 
@@ -876,8 +933,11 @@ export class PlayerService {
     return this.documentService.deleteDocument(playerId, documentId);
   }
 
-  async getMyPasses(playerId: string) {
-    return this.passService.getMyPasses(playerId);
+  async getMyPasses(
+    playerId: string,
+    query?: { page?: number | string; limit?: number | string },
+  ) {
+    return this.passService.getMyPasses(playerId, query);
   }
 
   async getPassByTournament(playerId: string, tournamentId: string) {
@@ -888,8 +948,11 @@ export class PlayerService {
     return this.walletService.getWalletBalance(playerId);
   }
 
-  async getLedgerHistory(playerId: string, limit?: number) {
-    return this.walletService.getLedgerHistory(playerId, limit);
+  async getLedgerHistory(
+    playerId: string,
+    options?: number | { page?: number | string; limit?: number | string },
+  ) {
+    return this.walletService.getLedgerHistory(playerId, options);
   }
 
   async requestPayout(playerId: string, dto: RequestPayoutDto) {

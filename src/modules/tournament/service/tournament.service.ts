@@ -94,8 +94,8 @@ export class TournamentService {
     return this.core.getAllTournaments(query);
   }
 
-  async getTournamentById(id: string) {
-    return this.core.getTournamentById(id);
+  async getTournamentById(id: string, include?: string) {
+    return this.core.getTournamentById(id, include);
   }
 
   async updateTournament(id: string, updateTournamentDto: UpdateTournamentDto) {
@@ -202,6 +202,8 @@ export class TournamentService {
       venueId?: string;
       date?: string;
       isAllocated?: string | boolean;
+      page?: number | string;
+      limit?: number | string;
     },
   ) {
     return this.matches.getTournamentMatches(tournamentId, filter);
@@ -358,8 +360,12 @@ export class TournamentService {
     return this.leaderboard.getTournamentResults(tournamentId);
   }
 
-  async getTournamentLeaderboard(tournamentId: string, filter?: string) {
-    return this.leaderboard.getTournamentLeaderboard(tournamentId, filter);
+  async getTournamentLeaderboard(
+    tournamentId: string,
+    filter?: string,
+    query?: { page?: number | string; limit?: number | string },
+  ) {
+    return this.leaderboard.getTournamentLeaderboard(tournamentId, filter, query);
   }
 
   // ==========================================

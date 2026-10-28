@@ -606,6 +606,8 @@ export class TournamentMatchesService {
       venueId?: string;
       date?: string;
       isAllocated?: string | boolean;
+      page?: number | string;
+      limit?: number | string;
     },
   ) {
     const tournament = await this.prisma.tournament.findUnique({
@@ -641,10 +643,29 @@ export class TournamentMatchesService {
       }
     }
 
+    const totalMatches = matches.length;
+    let paginatedMatches = matches;
+    let meta: any = undefined;
+
+    if (filter?.page !== undefined || filter?.limit !== undefined) {
+      const page = Math.max(1, Number(filter?.page) || 1);
+      const limit = Math.max(1, Number(filter?.limit) || 50);
+      const skip = (page - 1) * limit;
+      paginatedMatches = matches.slice(skip, skip + limit);
+      meta = {
+        total: totalMatches,
+        page,
+        limit,
+        totalPages: Math.ceil(totalMatches / limit),
+      };
+    }
+
     return {
       tournamentId: id,
       summary,
-      matches,
+      matches: paginatedMatches,
+      pagination: meta,
+      meta,
     };
   }
 

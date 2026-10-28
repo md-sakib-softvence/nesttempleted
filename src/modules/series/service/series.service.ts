@@ -74,8 +74,11 @@ export class SeriesService {
   // 2. Series Tournament Association (SeriesTournamentsService)
   // ==========================================
 
-  async getSeriesTournaments(seriesId: string) {
-    return this.tournamentsService!.getSeriesTournaments(seriesId);
+  async getSeriesTournaments(
+    seriesId: string,
+    query?: { page?: number | string; limit?: number | string },
+  ) {
+    return this.tournamentsService!.getSeriesTournaments(seriesId, query);
   }
 
   async linkTournaments(seriesId: string, dto: LinkTournamentsDto) {
@@ -117,16 +120,22 @@ export class SeriesService {
     return this.participantsService!.createPointAdjustment(seriesId, dto, createdBy);
   }
 
-  async getPointAdjustments(seriesId: string) {
-    return this.participantsService!.getPointAdjustments(seriesId);
+  async getPointAdjustments(
+    seriesId: string,
+    query?: { page?: number | string; limit?: number | string },
+  ) {
+    return this.participantsService!.getPointAdjustments(seriesId, query);
   }
 
   // ==========================================
   // 4. Series Standings & Scoring (SeriesLeaderboardService)
   // ==========================================
 
-  async getSeriesLeaderboard(seriesId: string) {
-    return this.leaderboardService!.getSeriesLeaderboard(seriesId);
+  async getSeriesLeaderboard(
+    seriesId: string,
+    query?: { page?: number | string; limit?: number | string },
+  ) {
+    return this.leaderboardService!.getSeriesLeaderboard(seriesId, query);
   }
 
   async recalculateSeriesStandings(seriesId: string, forceAll = true) {
