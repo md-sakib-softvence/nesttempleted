@@ -19,7 +19,8 @@ export class TournamentLeaderboardService {
     }
 
     const schedule = (tournament.schedule as any) || {};
-    const matches: any[] = schedule.structure?.matches || schedule.matches || [];
+    const matches: any[] =
+      schedule.structure?.matches || schedule.matches || [];
 
     return matches.filter(
       (m: any) =>
@@ -255,9 +256,12 @@ export class TournamentLeaderboardService {
       };
     });
 
-    const goldenBoot = [...analytics].sort((a, b) => b.goalsFor - a.goalsFor)[0];
+    const goldenBoot = [...analytics].sort(
+      (a, b) => b.goalsFor - a.goalsFor,
+    )[0];
     const goldenGlove = [...analytics].sort(
-      (a, b) => b.cleanSheets - a.cleanSheets || a.goalsAgainst - b.goalsAgainst,
+      (a, b) =>
+        b.cleanSheets - a.cleanSheets || a.goalsAgainst - b.goalsAgainst,
     )[0];
     const mostClinical = [...analytics].sort((a, b) => b.gdpm - a.gdpm)[0];
 
@@ -310,7 +314,8 @@ export class TournamentLeaderboardService {
           page,
           limit,
           totalPages: Math.ceil(
-            (normalizedFilter === 'goals' ? totalGoals : totalStandings) / limit,
+            (normalizedFilter === 'goals' ? totalGoals : totalStandings) /
+              limit,
           ),
         }
       : undefined;

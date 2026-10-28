@@ -29,7 +29,8 @@ export class ScoreCorrectionDto {
   reason: string;
 
   @ApiPropertyOptional({
-    description: 'Admin acknowledgement flag for modifying already-concluded match',
+    description:
+      'Admin acknowledgement flag for modifying already-concluded match',
     example: true,
   })
   @IsOptional()

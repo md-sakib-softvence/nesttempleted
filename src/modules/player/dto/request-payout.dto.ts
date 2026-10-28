@@ -17,7 +17,8 @@ export class RequestPayoutDto {
   @IsString()
   @IsNotEmpty()
   @Matches(/^\d{10}$/, {
-    message: 'Bank account number must be a valid 10-digit NUBAN card/account number',
+    message:
+      'Bank account number must be a valid 10-digit NUBAN card/account number',
   })
   bankAccount: string;
 
@@ -40,7 +41,8 @@ export class RequestPayoutDto {
   bankCode?: string;
 
   @ApiPropertyOptional({
-    description: 'Bank institution name (e.g., GTBank, Access Bank, Zenith Bank)',
+    description:
+      'Bank institution name (e.g., GTBank, Access Bank, Zenith Bank)',
     example: 'Guaranty Trust Bank',
   })
   @IsString()

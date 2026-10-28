@@ -68,10 +68,14 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
   // Schedule normalization
   const rawSchedule = formatted.schedule;
   let schedulePayload: any = null;
-  if (rawSchedule && typeof rawSchedule === 'object' && !Array.isArray(rawSchedule)) {
+  if (
+    rawSchedule &&
+    typeof rawSchedule === 'object' &&
+    !Array.isArray(rawSchedule)
+  ) {
     schedulePayload = rawSchedule;
-    if (Array.isArray((rawSchedule as any).calendar)) {
-      formatted.schedule = (rawSchedule as any).calendar;
+    if (Array.isArray(rawSchedule.calendar)) {
+      formatted.schedule = rawSchedule.calendar;
     } else {
       formatted.schedule = [];
     }
@@ -94,17 +98,35 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
     LEAGUE_AND_KNOCKOUT: 'League & Knockout',
     LEAGUE_AND_KNOCKOUT_DOUBLE: 'League & Knockout (Double)',
   };
-  formatted.format = formatMap[formatted.tournamentFormat] || formatted.tournamentFormat;
+  formatted.format =
+    formatMap[formatted.tournamentFormat] || formatted.tournamentFormat;
 
   formatted.paymentWindowHours = formatted.paymentWindow ?? 24;
-  formatted.registrationOpen = formatted.registrationOpen !== undefined ? formatted.registrationOpen : (formatted.registrationCutOffMode ? true : true);
-  formatted.registrationMode = formatted.registrationCutOffMode === 'DEADLINE' ? 'DEADLINE' : 'CAPACITY';
+  formatted.registrationOpen =
+    formatted.registrationOpen !== undefined
+      ? formatted.registrationOpen
+      : formatted.registrationCutOffMode
+        ? true
+        : true;
+  formatted.registrationMode =
+    formatted.registrationCutOffMode === 'DEADLINE' ? 'DEADLINE' : 'CAPACITY';
   formatted.maxCapacity = formatted.capacity || formatted.numberOfTeams;
-  formatted.deadlineDate = formatted.deadline ? new Date(formatted.deadline).toISOString() : undefined;
-  formatted.houseRakePercent = formatted.houseRake !== null && formatted.houseRake !== undefined ? Number(formatted.houseRake) : 30;
+  formatted.deadlineDate = formatted.deadline
+    ? new Date(formatted.deadline).toISOString()
+    : undefined;
+  formatted.houseRakePercent =
+    formatted.houseRake !== null && formatted.houseRake !== undefined
+      ? Number(formatted.houseRake)
+      : 30;
   formatted.prizePoolConfig = {
-    type: (formatted.prizeRule === 'FIXED_AMOUNT' || formatted.prizeRule === 'FIXED') ? 'fixed' : 'percentage',
-    value: formatted.percentage !== null && formatted.percentage !== undefined ? Number(formatted.percentage) : 70,
+    type:
+      formatted.prizeRule === 'FIXED_AMOUNT' || formatted.prizeRule === 'FIXED'
+        ? 'fixed'
+        : 'percentage',
+    value:
+      formatted.percentage !== null && formatted.percentage !== undefined
+        ? Number(formatted.percentage)
+        : 70,
   };
 
   formatted.logo = formatted.tournamentLogoUrl || formatted.canvasImage || null;
@@ -112,19 +134,29 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
   formatted.secondaryOrganizerLogo = formatted.secondaryOrganizerLogo || null;
   formatted.fanPassArtUrl = formatted.canvasImage || null;
   formatted.rulesUrl = (formatted.rules && formatted.rules[0]) || '';
-  formatted.termsAndConditionsUrl = (formatted.tsAndTc && formatted.tsAndTc[0]) || '';
-  formatted.seriesId = formatted.seriesTournaments?.[0]?.seriesId || formatted.seriesId || null;
+  formatted.termsAndConditionsUrl =
+    (formatted.tsAndTc && formatted.tsAndTc[0]) || '';
+  formatted.seriesId =
+    formatted.seriesTournaments?.[0]?.seriesId || formatted.seriesId || null;
 
   // Schedule Settings object
   const schedSettings = schedulePayload?.scheduleSettings || {};
   formatted.scheduleSettings = {
-    startDate: schedSettings.startDate || (formatted.startDate ? new Date(formatted.startDate).toISOString().slice(0, 10) : ''),
-    eventStartTime: schedSettings.eventStartTime || formatted.dailyStart || '10:00',
+    startDate:
+      schedSettings.startDate ||
+      (formatted.startDate
+        ? new Date(formatted.startDate).toISOString().slice(0, 10)
+        : ''),
+    eventStartTime:
+      schedSettings.eventStartTime || formatted.dailyStart || '10:00',
     eventEndTime: schedSettings.eventEndTime || formatted.dailyEnd || '19:00',
     slotDuration: schedSettings.slotDuration || formatted.matchDuration || 25,
-    turnoverDuration: schedSettings.turnoverDuration ?? formatted.turnoverDuration ?? 5,
-    lunchBreakStartTime: schedSettings.lunchBreakStartTime || formatted.lunchBreakTime || '13:00',
-    lunchBreakDuration: schedSettings.lunchBreakDuration ?? formatted.lunchDuration ?? 60,
+    turnoverDuration:
+      schedSettings.turnoverDuration ?? formatted.turnoverDuration ?? 5,
+    lunchBreakStartTime:
+      schedSettings.lunchBreakStartTime || formatted.lunchBreakTime || '13:00',
+    lunchBreakDuration:
+      schedSettings.lunchBreakDuration ?? formatted.lunchDuration ?? 60,
     thirdPlacePlayoffEnabled: schedSettings.thirdPlacePlayoffEnabled ?? true,
     grandFinalResetEnabled: schedSettings.grandFinalResetEnabled ?? false,
   };
@@ -137,7 +169,10 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
     MONTHLY: 'Monthly',
   };
   formatted.frequencySettings = {
-    frequency: freqSettings.frequency || freqNameMap[formatted.frequencyStatus] || 'Daily',
+    frequency:
+      freqSettings.frequency ||
+      freqNameMap[formatted.frequencyStatus] ||
+      'Daily',
     buffer: freqSettings.buffer ?? formatted.buffer ?? 0,
     playingDays: freqSettings.playingDays || [0, 6],
   };
@@ -164,12 +199,14 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
   }));
 
   // Normalized Prize Payouts
-  formatted.prizePayouts = (formatted.manageEventPrizes || []).map((p: any) => ({
-    id: p.manageEventPrizeId || p.id,
-    category: p.prizeCategory || p.category,
-    amount: Number(p.amount) || 0,
-    status: p.status || 'pending',
-  }));
+  formatted.prizePayouts = (formatted.manageEventPrizes || []).map(
+    (p: any) => ({
+      id: p.manageEventPrizeId || p.id,
+      category: p.prizeCategory || p.category,
+      amount: Number(p.amount) || 0,
+      status: p.status || 'pending',
+    }),
+  );
 
   // Normalized Sponsors
   if (formatted.sponsors && Array.isArray(formatted.sponsors)) {
@@ -209,32 +246,24 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
       schedulePayload.structure?.matches ||
       [];
     const rawSlots =
-      schedulePayload.slots ||
-      schedulePayload.structure?.slots ||
-      [];
+      schedulePayload.slots || schedulePayload.structure?.slots || [];
     const rawSeeds =
-      schedulePayload.seeds ||
-      schedulePayload.structure?.seeds ||
-      [];
+      schedulePayload.seeds || schedulePayload.structure?.seeds || [];
     const rawGroups =
-      schedulePayload.groups ||
-      schedulePayload.structure?.groups ||
-      [];
+      schedulePayload.groups || schedulePayload.structure?.groups || [];
 
     const shouldIncludeMatches =
       includeAll || includeTokens.includes('matches');
-    const shouldIncludeSlots =
-      includeAll || includeTokens.includes('slots');
-    const shouldIncludeSeeds =
-      includeAll || includeTokens.includes('seeds');
-    const shouldIncludeGroups =
-      includeAll || includeTokens.includes('groups');
+    const shouldIncludeSlots = includeAll || includeTokens.includes('slots');
+    const shouldIncludeSeeds = includeAll || includeTokens.includes('seeds');
+    const shouldIncludeGroups = includeAll || includeTokens.includes('groups');
 
     // Embed matches only if explicitly requested, or if single item and small list (<= 100 items).
     // Large fixtures (e.g. 32,000 matches) are queried via /tournaments/:id/matches
     if (
       !options.isList &&
-      (shouldIncludeMatches || (Array.isArray(rawMatches) && rawMatches.length <= 100))
+      (shouldIncludeMatches ||
+        (Array.isArray(rawMatches) && rawMatches.length <= 100))
     ) {
       formatted.matches = rawMatches;
     } else {
@@ -265,7 +294,8 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
     // Embed groups only if explicitly requested (?include=groups) or small list (<= 32 groups).
     if (
       !options.isList &&
-      (shouldIncludeGroups || (Array.isArray(rawGroups) && rawGroups.length <= 32))
+      (shouldIncludeGroups ||
+        (Array.isArray(rawGroups) && rawGroups.length <= 32))
     ) {
       formatted.groups = rawGroups;
     } else {
@@ -276,10 +306,14 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
     formatted.slotSummary = {
       totalSlots: Array.isArray(rawSlots) ? rawSlots.length : 0,
       assignedSlots: Array.isArray(rawSlots)
-        ? rawSlots.filter((s: any) => s.status === 'ASSIGNED' || s.participantId).length
+        ? rawSlots.filter(
+            (s: any) => s.status === 'ASSIGNED' || s.participantId,
+          ).length
         : 0,
       unassignedSlots: Array.isArray(rawSlots)
-        ? rawSlots.filter((s: any) => s.status === 'UNASSIGNED' && !s.participantId).length
+        ? rawSlots.filter(
+            (s: any) => s.status === 'UNASSIGNED' && !s.participantId,
+          ).length
         : 0,
       totalSeeds: Array.isArray(rawSeeds) ? rawSeeds.length : 0,
     };
@@ -302,8 +336,10 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
   if (formatted.registrations && Array.isArray(formatted.registrations)) {
     formatted.registrations = formatted.registrations.map((r: any) => {
       const playerName = r.player
-        ? `${r.player.firstName || ''} ${r.player.lastName || ''}`.trim() || r.player.gamerTag || 'Player'
-        : (r.fullName || 'Player');
+        ? `${r.player.firstName || ''} ${r.player.lastName || ''}`.trim() ||
+          r.player.gamerTag ||
+          'Player'
+        : r.fullName || 'Player';
       return {
         id: r.registrationId || r.id,
         playerId: r.playerId,
@@ -316,8 +352,12 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
         jerseySize: r.jerseySize || 'L',
         status: r.status,
         paymentStatus: r.paymentStatus || 'PENDING',
-        registrationDate: r.createdAt ? new Date(r.createdAt).toISOString() : new Date().toISOString(),
-        paymentDeadline: r.paymentDeadline ? new Date(r.paymentDeadline).toISOString() : null,
+        registrationDate: r.createdAt
+          ? new Date(r.createdAt).toISOString()
+          : new Date().toISOString(),
+        paymentDeadline: r.paymentDeadline
+          ? new Date(r.paymentDeadline).toISOString()
+          : null,
         checkedInVenue: r.checkedInVenue ?? false,
         qrCodeString: r.qrCodeString,
         assignedSlot: r.assignedSlot,

@@ -12,17 +12,26 @@ export class CreateTournamentRegistrationDto {
   @IsOptional()
   homeVenueId?: string;
 
-  @ApiPropertyOptional({ description: 'Primary chosen team ID/Name', example: 'Real Madrid' })
+  @ApiPropertyOptional({
+    description: 'Primary chosen team ID/Name',
+    example: 'Real Madrid',
+  })
   @IsString()
   @IsOptional()
   primaryTeamId?: string;
 
-  @ApiPropertyOptional({ description: 'Secondary chosen team ID/Name', example: 'Arsenal FC' })
+  @ApiPropertyOptional({
+    description: 'Secondary chosen team ID/Name',
+    example: 'Arsenal FC',
+  })
   @IsString()
   @IsOptional()
   secondaryTeamId?: string;
 
-  @ApiPropertyOptional({ description: 'Player shirt/jersey size', example: 'L' })
+  @ApiPropertyOptional({
+    description: 'Player shirt/jersey size',
+    example: 'L',
+  })
   @IsString()
   @IsOptional()
   jerseySize?: string;

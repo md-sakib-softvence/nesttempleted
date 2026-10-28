@@ -20,8 +20,12 @@ describe('TournamentService (Admin Invariants & Concurrency Tests)', () => {
     entryFee: 5000,
     currency: 'NGN',
     houseRake: 15,
-    manageEventCosts: [{ manageEventCostId: 'c1', costCategory: 'Venue', amount: 10000 }],
-    manageEventPrizes: [{ manageEventPrizeId: 'p1', prizeCategory: '1st', amount: 50000 }],
+    manageEventCosts: [
+      { manageEventCostId: 'c1', costCategory: 'Venue', amount: 10000 },
+    ],
+    manageEventPrizes: [
+      { manageEventPrizeId: 'p1', prizeCategory: '1st', amount: 50000 },
+    ],
     registrations: [{ registrationId: 'r1', status: 'CONFIRMED' }],
     venues: [{ venueId: 'v1', screens: [{ screenId: 's1' }] }],
     schedule: {
@@ -110,7 +114,10 @@ describe('TournamentService (Admin Invariants & Concurrency Tests)', () => {
     });
 
     it('should throw ConflictException on version mismatch', async () => {
-      prisma.tournament.findUnique.mockResolvedValue({ ...mockTournament, version: 3 });
+      prisma.tournament.findUnique.mockResolvedValue({
+        ...mockTournament,
+        version: 3,
+      });
 
       await expect(
         service.updateTournamentStatus('tourn-1', {
@@ -184,7 +191,9 @@ describe('TournamentService (Admin Invariants & Concurrency Tests)', () => {
         },
       };
 
-      prisma.tournament.findMany.mockResolvedValue([tournamentWithCompletedDownstream]);
+      prisma.tournament.findMany.mockResolvedValue([
+        tournamentWithCompletedDownstream,
+      ]);
 
       await expect(
         service.correctMatchScore('m1', {

@@ -202,7 +202,10 @@ export function findEarliestValidSlot(
           const day = s.days.find((d) => d.date === slot.date);
           if (day) {
             const occupiedSlot = day.timeslots.find(
-              (ts) => ts.time === slot.time && ts.canonicalMatchId && ts.canonicalMatchId !== targetMatchId,
+              (ts) =>
+                ts.time === slot.time &&
+                ts.canonicalMatchId &&
+                ts.canonicalMatchId !== targetMatchId,
             );
             if (occupiedSlot && occupiedSlot.game) {
               const g = occupiedSlot.game;

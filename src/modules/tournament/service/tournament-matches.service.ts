@@ -733,8 +733,7 @@ export class TournamentMatchesService {
       capacity.totalMatches ||
       tournament.numberOfTeams ||
       0;
-    const conditional =
-      schedule?.structure?.summary?.conditionalMatches || 0;
+    const conditional = schedule?.structure?.summary?.conditionalMatches || 0;
     const maximum =
       schedule?.structure?.summary?.maximumPossibleMatches ||
       guaranteed + conditional;
@@ -912,14 +911,17 @@ export class TournamentMatchesService {
     }
 
     const schedule = (tournament.schedule as any) || {};
-    const matches: any[] = schedule.structure?.matches || schedule.matches || [];
+    const matches: any[] =
+      schedule.structure?.matches || schedule.matches || [];
 
     const matchIndex = matches.findIndex(
       (m: any) => m.id === matchId || m.canonicalMatchId === matchId,
     );
 
     if (matchIndex === -1) {
-      throw new NotFoundException(`Match #${matchId} not found in tournament schedule`);
+      throw new NotFoundException(
+        `Match #${matchId} not found in tournament schedule`,
+      );
     }
 
     const match = matches[matchIndex];
@@ -1022,8 +1024,12 @@ export class TournamentMatchesService {
       }
 
       for (const m of matches) {
-        if (m.conditionType === 'GRAND_FINAL_RESET' && m.conditionMatchId === match.id) {
-          const activated = match.status === 'COMPLETED' && match.score2 > match.score1;
+        if (
+          m.conditionType === 'GRAND_FINAL_RESET' &&
+          m.conditionMatchId === match.id
+        ) {
+          const activated =
+            match.status === 'COMPLETED' && match.score2 > match.score1;
           m.isSchedulable = activated;
           if (activated && !m.selfSchedulingOpenedAt) {
             m.selfSchedulingOpenedAt = new Date().toISOString();
@@ -1032,13 +1038,18 @@ export class TournamentMatchesService {
       }
     }
 
-    const venueList = schedule.calendar?.venues || schedule.venueSchedules || [];
+    const venueList =
+      schedule.calendar?.venues || schedule.venueSchedules || [];
     if (Array.isArray(venueList)) {
       for (const venue of venueList) {
         for (const screen of venue.screens || []) {
           for (const day of screen.days || []) {
             for (const slot of day.timeslots || []) {
-              if (slot.game && (slot.game.id === matchId || slot.game.canonicalMatchId === matchId)) {
+              if (
+                slot.game &&
+                (slot.game.id === matchId ||
+                  slot.game.canonicalMatchId === matchId)
+              ) {
                 slot.game.score1 = match.score1;
                 slot.game.score2 = match.score2;
                 slot.game.status = match.status;
@@ -1058,7 +1069,7 @@ export class TournamentMatchesService {
 
     await this.prisma.tournament.update({
       where: { tournamentId },
-      data: { schedule: schedule as any },
+      data: { schedule: schedule },
     });
 
     return match;
@@ -1080,7 +1091,8 @@ export class TournamentMatchesService {
     }
 
     const schedule = (tournament.schedule as any) || {};
-    const matches: any[] = schedule.structure?.matches || schedule.matches || [];
+    const matches: any[] =
+      schedule.structure?.matches || schedule.matches || [];
     const match = matches.find(
       (m: any) => m.id === matchId || m.canonicalMatchId === matchId,
     );
@@ -1175,7 +1187,7 @@ export class TournamentMatchesService {
       });
     }
 
-    const schedule = (foundTourn.schedule as any) || {};
+    const schedule = foundTourn.schedule || {};
     const matches: any[] = schedule.matches || [];
 
     if (foundMatch.nextMatchWinnerTargetId) {
@@ -1293,7 +1305,7 @@ export class TournamentMatchesService {
     await this.prisma.tournament.update({
       where: { tournamentId: foundTourn.tournamentId },
       data: {
-        schedule: foundTourn.schedule as any,
+        schedule: foundTourn.schedule,
       },
     });
 
@@ -1368,7 +1380,10 @@ export class TournamentMatchesService {
   /**
    * Reconcile schedule capacity metrics
    */
-  async reconcileScheduleCapacity(tournamentId: string, expectedVersion?: number) {
+  async reconcileScheduleCapacity(
+    tournamentId: string,
+    expectedVersion?: number,
+  ) {
     const tournament = await this.prisma.tournament.findUnique({
       where: { tournamentId },
     });
@@ -1551,10 +1566,9 @@ export class TournamentMatchesService {
         })
       : null;
 
-    const registrations =
-      await this.prisma.tournamentRegistration.findMany({
-        where: { tournamentId: tournament.tournamentId },
-      });
+    const registrations = await this.prisma.tournamentRegistration.findMany({
+      where: { tournamentId: tournament.tournamentId },
+    });
     const reg1 = match.player1Id
       ? registrations.find((r: any) => r.playerId === match.player1Id)
       : null;
@@ -1638,9 +1652,7 @@ export class TournamentMatchesService {
     });
 
     const opponentIds = pending
-      .map((m: any) =>
-        m.player1Id === playerId ? m.player2Id : m.player1Id,
-      )
+      .map((m: any) => (m.player1Id === playerId ? m.player2Id : m.player1Id))
       .filter(Boolean);
     const opponents = await this.prisma.player.findMany({
       where: { playerId: { in: opponentIds } },
@@ -1912,7 +1924,9 @@ export class TournamentMatchesService {
     const venue = (schedule.calendar || []).find(
       (v: any) => v.venueId === dto.venueId,
     );
-    const screen = venue?.screens?.find((s: any) => s.screenId === dto.screenId);
+    const screen = venue?.screens?.find(
+      (s: any) => s.screenId === dto.screenId,
+    );
 
     const player = await this.prisma.player.findUnique({ where: { playerId } });
     const playerName = player

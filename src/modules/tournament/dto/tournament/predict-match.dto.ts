@@ -28,7 +28,8 @@ export class PredictMatchDto {
   wagerPoints: number;
 
   @ApiProperty({
-    description: 'Odds multiplier for the selected outcome (e.g. 1.85, 2.10, 3.10)',
+    description:
+      'Odds multiplier for the selected outcome (e.g. 1.85, 2.10, 3.10)',
     example: 1.85,
   })
   @IsNumber()

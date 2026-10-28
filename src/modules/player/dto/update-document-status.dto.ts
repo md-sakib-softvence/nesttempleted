@@ -5,7 +5,8 @@ import { DocumentStatus } from '@prisma/client';
 export class UpdateDocumentStatusDto {
   @ApiProperty({
     enum: DocumentStatus,
-    description: 'Updated compliance status for the document (PENDING, VERIFIED, REJECTED)',
+    description:
+      'Updated compliance status for the document (PENDING, VERIFIED, REJECTED)',
     example: DocumentStatus.VERIFIED,
   })
   @IsEnum(DocumentStatus)

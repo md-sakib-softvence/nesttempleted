@@ -21,17 +21,25 @@ export class QueryTicketDto {
   @IsOptional()
   tournamentId?: string;
 
-  @ApiPropertyOptional({ enum: TicketStatus, description: 'Filter by ticket status' })
+  @ApiPropertyOptional({
+    enum: TicketStatus,
+    description: 'Filter by ticket status',
+  })
   @IsEnum(TicketStatus)
   @IsOptional()
   status?: TicketStatus;
 
-  @ApiPropertyOptional({ enum: TicketType, description: 'Filter by ticket type' })
+  @ApiPropertyOptional({
+    enum: TicketType,
+    description: 'Filter by ticket type',
+  })
   @IsEnum(TicketType)
   @IsOptional()
   type?: TicketType;
 
-  @ApiPropertyOptional({ description: 'Search by purchaser name, email, or showTicketId' })
+  @ApiPropertyOptional({
+    description: 'Search by purchaser name, email, or showTicketId',
+  })
   @IsString()
   @IsOptional()
   searchTerm?: string;

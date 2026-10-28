@@ -13,7 +13,9 @@ describe('SeriesController (API & Success Message Contract Tests)', () => {
         items: [{ id: 'series-1', name: 'Series 1' }],
         pagination: { totalItems: 1, page: 1, limit: 25, totalPages: 1 },
       }),
-      getSeriesById: jest.fn().mockResolvedValue({ id: 'series-1', name: 'Series 1' }),
+      getSeriesById: jest
+        .fn()
+        .mockResolvedValue({ id: 'series-1', name: 'Series 1' }),
       createSeries: jest.fn().mockResolvedValue({
         id: 'series-1',
         name: 'Series 1',
@@ -22,21 +24,37 @@ describe('SeriesController (API & Success Message Contract Tests)', () => {
         published: false,
       }),
       updateSeries: jest.fn().mockResolvedValue({ id: 'series-1', version: 2 }),
-      updateSeriesStatus: jest.fn().mockResolvedValue({ id: 'series-1', status: 'ACTIVE' }),
+      updateSeriesStatus: jest
+        .fn()
+        .mockResolvedValue({ id: 'series-1', status: 'ACTIVE' }),
       getSeriesTournaments: jest.fn().mockResolvedValue({ tournaments: [] }),
       linkTournaments: jest.fn().mockResolvedValue({ tournaments: [] }),
       reorderTournaments: jest.fn().mockResolvedValue({ tournaments: [] }),
-      unlinkTournament: jest.fn().mockResolvedValue({ unlinkedTournamentId: 't1' }),
-      getSeriesParticipants: jest.fn().mockResolvedValue({ items: [], pagination: {} }),
-      updateSeriesParticipant: jest.fn().mockResolvedValue({ id: 'p1', status: 'DISQUALIFIED' }),
+      unlinkTournament: jest
+        .fn()
+        .mockResolvedValue({ unlinkedTournamentId: 't1' }),
+      getSeriesParticipants: jest
+        .fn()
+        .mockResolvedValue({ items: [], pagination: {} }),
+      updateSeriesParticipant: jest
+        .fn()
+        .mockResolvedValue({ id: 'p1', status: 'DISQUALIFIED' }),
       getSeriesLeaderboard: jest.fn().mockResolvedValue({ standings: [] }),
-      recalculateSeriesStandings: jest.fn().mockResolvedValue({ participantsProcessed: 5 }),
-      createPointAdjustment: jest.fn().mockResolvedValue({ adjustmentId: 'adj-1' }),
+      recalculateSeriesStandings: jest
+        .fn()
+        .mockResolvedValue({ participantsProcessed: 5 }),
+      createPointAdjustment: jest
+        .fn()
+        .mockResolvedValue({ adjustmentId: 'adj-1' }),
       getPointAdjustments: jest.fn().mockResolvedValue({ adjustments: [] }),
       getScoringConfig: jest.fn().mockResolvedValue({ scoringConfig: {} }),
-      updateScoringConfig: jest.fn().mockResolvedValue({ scoringConfigId: 'cfg-1' }),
+      updateScoringConfig: jest
+        .fn()
+        .mockResolvedValue({ scoringConfigId: 'cfg-1' }),
       getPublicationSettings: jest.fn().mockResolvedValue({ enabled: true }),
-      updatePublicationSettings: jest.fn().mockResolvedValue({ status: 'PUBLISHED' }),
+      updatePublicationSettings: jest
+        .fn()
+        .mockResolvedValue({ status: 'PUBLISHED' }),
     };
 
     const module: TestingModule = await Test.createTestingModule({

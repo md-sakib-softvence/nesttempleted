@@ -10,7 +10,12 @@ import {
   UseInterceptors,
   UploadedFile,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiConsumes,
+} from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { SponsorService } from '../../service/sponsor.service';
 import { CreateSponsorDto } from '../../dto/sponsor/create-sponsor.dto';

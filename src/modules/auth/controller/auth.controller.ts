@@ -66,4 +66,3 @@ export class AuthController {
     return this.authService.changePassword(req.user, changePasswordDto);
   }
 }
-

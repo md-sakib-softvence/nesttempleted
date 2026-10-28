@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { UpdateSeriesScoringConfigDto } from '../dto/update-scoring-config.dto';
 
@@ -204,8 +200,8 @@ export class SeriesLeaderboardService {
             m.participant2Ref?.displayName?.includes(reg.playerId);
 
           if (isP1 || isP2) {
-            const myScore = isP1 ? m.score1 ?? 0 : m.score2 ?? 0;
-            const oppScore = isP1 ? m.score2 ?? 0 : m.score1 ?? 0;
+            const myScore = isP1 ? (m.score1 ?? 0) : (m.score2 ?? 0);
+            const oppScore = isP1 ? (m.score2 ?? 0) : (m.score1 ?? 0);
             stats.goalsFor += myScore;
             stats.goalsAgainst += oppScore;
 
@@ -247,11 +243,10 @@ export class SeriesLeaderboardService {
       }
     }
 
-    const existingParticipants =
-      await this.prisma.seriesParticipant.findMany({
-        where: { seriesId },
-        include: { adjustments: true },
-      });
+    const existingParticipants = await this.prisma.seriesParticipant.findMany({
+      where: { seriesId },
+      include: { adjustments: true },
+    });
 
     const existingMap = new Map(
       existingParticipants.map((p) => [p.playerId, p]),

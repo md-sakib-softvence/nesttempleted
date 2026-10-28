@@ -12,10 +12,15 @@ export class ProposeSlotDto {
   @IsString()
   screenId: string;
 
-  @ApiProperty({ description: 'Target Playing Date (YYYY-MM-DD)', example: '2026-10-26' })
+  @ApiProperty({
+    description: 'Target Playing Date (YYYY-MM-DD)',
+    example: '2026-10-26',
+  })
   @IsNotEmpty()
   @IsString()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Date must be formatted as YYYY-MM-DD' })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'Date must be formatted as YYYY-MM-DD',
+  })
   date: string;
 
   @ApiProperty({ description: 'Target Timeslot (HH:mm)', example: '14:00' })

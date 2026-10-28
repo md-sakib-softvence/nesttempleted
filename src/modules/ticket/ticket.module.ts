@@ -12,4 +12,3 @@ import { FlutterwaveModule } from '../flutterwave/flutterwave.module';
   exports: [TicketService, TicketScanGateway],
 })
 export class TicketModule {}
-

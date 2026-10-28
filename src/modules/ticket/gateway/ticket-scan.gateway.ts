@@ -24,7 +24,9 @@ export class TicketScanGateway
   private readonly logger = new Logger(TicketScanGateway.name);
 
   afterInit(server: Server) {
-    this.logger.log('🚀 TicketScan WebSocket Gateway initialized on /ticket-scan');
+    this.logger.log(
+      '🚀 TicketScan WebSocket Gateway initialized on /ticket-scan',
+    );
   }
 
   handleConnection(client: Socket) {

@@ -36,12 +36,16 @@ export class TournamentRegistrationService {
     });
 
     if (!tournament || tournament.isDeleted) {
-      throw new NotFoundException(`Tournament #${tournamentId} not found or has been deleted`);
+      throw new NotFoundException(
+        `Tournament #${tournamentId} not found or has been deleted`,
+      );
     }
 
     // 1. Guard against registration on closed or non-active tournaments
     if (!tournament.registrationOpen) {
-      throw new BadRequestException('Registration is closed for this tournament.');
+      throw new BadRequestException(
+        'Registration is closed for this tournament.',
+      );
     }
 
     const nonRegistrableStatuses = ['COMPLETED', 'CANCELLED', 'ARCHIVED'];
@@ -90,7 +94,9 @@ export class TournamentRegistrationService {
     });
 
     if (existing) {
-      throw new BadRequestException('Player is already registered for this tournament');
+      throw new BadRequestException(
+        'Player is already registered for this tournament',
+      );
     }
 
     // 6. Handle potential base64 Data URL for player photo
@@ -102,7 +108,9 @@ export class TournamentRegistrationService {
           `reg-photo-${dto.playerId}`,
         );
       } catch (err) {
-        this.logger.warn(`Failed to convert base64 photo to S3: ${err?.message}`);
+        this.logger.warn(
+          `Failed to convert base64 photo to S3: ${err?.message}`,
+        );
       }
     }
 
@@ -252,7 +260,9 @@ export class TournamentRegistrationService {
         registrationCutOffMode: dto.mode,
         ...(dto.capacity !== undefined ? { capacity: dto.capacity } : {}),
         ...(dto.deadline ? { deadline: new Date(dto.deadline) } : {}),
-        ...(dto.requireJerseySize !== undefined ? { requireJerseySize: dto.requireJerseySize } : {}),
+        ...(dto.requireJerseySize !== undefined
+          ? { requireJerseySize: dto.requireJerseySize }
+          : {}),
       },
     });
   }
@@ -443,7 +453,9 @@ export class TournamentRegistrationService {
 
     if (dto.mode === SelectionMode.MANUAL) {
       if (!dto.registrationIds || dto.registrationIds.length === 0) {
-        throw new BadRequestException('registrationIds is required for manual mode');
+        throw new BadRequestException(
+          'registrationIds is required for manual mode',
+        );
       }
       const foundRegs = await this.prisma.tournamentRegistration.findMany({
         where: {
@@ -483,7 +495,8 @@ export class TournamentRegistrationService {
       targetRegs = shuffled.slice(0, count);
     }
 
-    const windowHours = dto.paymentWindowHours || tournament.paymentWindow || 24;
+    const windowHours =
+      dto.paymentWindowHours || tournament.paymentWindow || 24;
     const paymentDeadline = new Date(Date.now() + windowHours * 60 * 60 * 1000);
     const targetIds = targetRegs.map((r) => r.registrationId);
 
@@ -568,17 +581,20 @@ export class TournamentRegistrationService {
       });
     }
 
-    const existingConfirmed =
-      await this.prisma.tournamentRegistration.findMany({
+    const existingConfirmed = await this.prisma.tournamentRegistration.findMany(
+      {
         where: {
           tournamentId: reg.tournamentId,
           status: TournamentRegistrationStatus.CONFIRMED,
           assignedSlot: { not: null },
         },
         select: { assignedSlot: true },
-      });
+      },
+    );
 
-    const occupiedSlots = new Set(existingConfirmed.map((c) => c.assignedSlot!));
+    const occupiedSlots = new Set(
+      existingConfirmed.map((c) => c.assignedSlot!),
+    );
     let assignedSlot = 1;
     while (occupiedSlots.has(assignedSlot)) {
       assignedSlot++;

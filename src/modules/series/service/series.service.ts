@@ -16,9 +16,7 @@ import { CreateSeriesAdjustmentDto } from '../dto/create-adjustment.dto';
 import { UpdateSeriesScoringConfigDto } from '../dto/update-scoring-config.dto';
 import { UpdateSeriesPublicationDto } from '../dto/update-publication.dto';
 import { QuerySeriesDto } from '../dto/query-series.dto';
-import {
-  QuerySeriesParticipantDto,
-} from '../dto/query-participant.dto';
+import { QuerySeriesParticipantDto } from '../dto/query-participant.dto';
 
 /**
  * SeriesService acts as the Unified Master Facade for the Series domain.
@@ -39,11 +37,16 @@ export class SeriesService {
     @Optional() private leaderboardService?: SeriesLeaderboardService,
     @Optional() private publicationService?: SeriesPublicationService,
   ) {
-    if (!this.coreService) this.coreService = new SeriesCoreService(this.prisma);
-    if (!this.tournamentsService) this.tournamentsService = new SeriesTournamentsService(this.prisma);
-    if (!this.participantsService) this.participantsService = new SeriesParticipantsService(this.prisma);
-    if (!this.leaderboardService) this.leaderboardService = new SeriesLeaderboardService(this.prisma);
-    if (!this.publicationService) this.publicationService = new SeriesPublicationService(this.prisma);
+    if (!this.coreService)
+      this.coreService = new SeriesCoreService(this.prisma);
+    if (!this.tournamentsService)
+      this.tournamentsService = new SeriesTournamentsService(this.prisma);
+    if (!this.participantsService)
+      this.participantsService = new SeriesParticipantsService(this.prisma);
+    if (!this.leaderboardService)
+      this.leaderboardService = new SeriesLeaderboardService(this.prisma);
+    if (!this.publicationService)
+      this.publicationService = new SeriesPublicationService(this.prisma);
   }
 
   // ==========================================
@@ -90,7 +93,10 @@ export class SeriesService {
   }
 
   async unlinkTournament(seriesId: string, tournamentId: string) {
-    const result = await this.tournamentsService!.unlinkTournament(seriesId, tournamentId);
+    const result = await this.tournamentsService!.unlinkTournament(
+      seriesId,
+      tournamentId,
+    );
     // Recalculate standings after tournament is unlinked
     await this.leaderboardService!.recalculateSeriesStandings(seriesId, true);
     return result;
@@ -100,7 +106,10 @@ export class SeriesService {
   // 3. Series Participants & Adjustments (SeriesParticipantsService)
   // ==========================================
 
-  async getSeriesParticipants(seriesId: string, query: QuerySeriesParticipantDto) {
+  async getSeriesParticipants(
+    seriesId: string,
+    query: QuerySeriesParticipantDto,
+  ) {
     return this.participantsService!.getSeriesParticipants(seriesId, query);
   }
 
@@ -109,7 +118,11 @@ export class SeriesService {
     participantId: string,
     dto: UpdateSeriesParticipantDto,
   ) {
-    return this.participantsService!.updateSeriesParticipant(seriesId, participantId, dto);
+    return this.participantsService!.updateSeriesParticipant(
+      seriesId,
+      participantId,
+      dto,
+    );
   }
 
   async createPointAdjustment(
@@ -117,7 +130,11 @@ export class SeriesService {
     dto: CreateSeriesAdjustmentDto,
     createdBy = 'ADMIN',
   ) {
-    return this.participantsService!.createPointAdjustment(seriesId, dto, createdBy);
+    return this.participantsService!.createPointAdjustment(
+      seriesId,
+      dto,
+      createdBy,
+    );
   }
 
   async getPointAdjustments(
@@ -139,14 +156,20 @@ export class SeriesService {
   }
 
   async recalculateSeriesStandings(seriesId: string, forceAll = true) {
-    return this.leaderboardService!.recalculateSeriesStandings(seriesId, forceAll);
+    return this.leaderboardService!.recalculateSeriesStandings(
+      seriesId,
+      forceAll,
+    );
   }
 
   async getScoringConfig(seriesId: string) {
     return this.leaderboardService!.getScoringConfig(seriesId);
   }
 
-  async updateScoringConfig(seriesId: string, dto: UpdateSeriesScoringConfigDto) {
+  async updateScoringConfig(
+    seriesId: string,
+    dto: UpdateSeriesScoringConfigDto,
+  ) {
     return this.leaderboardService!.updateScoringConfig(seriesId, dto);
   }
 
@@ -158,7 +181,10 @@ export class SeriesService {
     return this.publicationService!.getPublicationSettings(seriesId);
   }
 
-  async updatePublicationSettings(seriesId: string, dto: UpdateSeriesPublicationDto) {
+  async updatePublicationSettings(
+    seriesId: string,
+    dto: UpdateSeriesPublicationDto,
+  ) {
     return this.publicationService!.updatePublicationSettings(seriesId, dto);
   }
 

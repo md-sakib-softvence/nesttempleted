@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { getPreSignedUrl } from '../../utils/s3.util';
 import { TournamentRegistrationStatus } from '@prisma/client';
@@ -110,12 +106,16 @@ export class PlayerPassService {
       if (!qrToken) {
         qrToken = `PLAYER:${tourney.tournamentId}:${playerId}:${reg.registrationId}`;
         // Asynchronously persist the generated QR token in background
-        void this.prisma.tournamentRegistration.update({
-          where: { registrationId: reg.registrationId },
-          data: { qrCodeString: qrToken },
-        }).catch((err) => {
-          this.logger.warn(`Failed to backfill qrCodeString for registration ${reg.registrationId}: ${err?.message}`);
-        });
+        void this.prisma.tournamentRegistration
+          .update({
+            where: { registrationId: reg.registrationId },
+            data: { qrCodeString: qrToken },
+          })
+          .catch((err) => {
+            this.logger.warn(
+              `Failed to backfill qrCodeString for registration ${reg.registrationId}: ${err?.message}`,
+            );
+          });
       }
 
       // Concurrently resolve presigned media assets
@@ -133,7 +133,8 @@ export class PlayerPassService {
         this.safePresign(tourney.tournamentLogoUrl),
       ]);
 
-      const fullName = `${reg.player.firstName || ''} ${reg.player.lastName || ''}`.trim();
+      const fullName =
+        `${reg.player.firstName || ''} ${reg.player.lastName || ''}`.trim();
       const gamertag = reg.player.gamerTag || 'COMPETITOR';
       const humanFormat = this.formatTournamentFormat(tourney.tournamentFormat);
 
@@ -241,7 +242,9 @@ export class PlayerPassService {
    */
   async getPassByTournament(playerId: string, tournamentId: string) {
     if (!playerId || !tournamentId) {
-      throw new NotFoundException('Both Player ID and Tournament ID are required');
+      throw new NotFoundException(
+        'Both Player ID and Tournament ID are required',
+      );
     }
 
     const reg = await this.prisma.tournamentRegistration.findFirst({
@@ -276,10 +279,12 @@ export class PlayerPassService {
     let qrToken = reg.qrCodeString;
     if (!qrToken) {
       qrToken = `PLAYER:${tournamentId}:${playerId}:${reg.registrationId}`;
-      void this.prisma.tournamentRegistration.update({
-        where: { registrationId: reg.registrationId },
-        data: { qrCodeString: qrToken },
-      }).catch(() => null);
+      void this.prisma.tournamentRegistration
+        .update({
+          where: { registrationId: reg.registrationId },
+          data: { qrCodeString: qrToken },
+        })
+        .catch(() => null);
     }
 
     const [
@@ -296,9 +301,12 @@ export class PlayerPassService {
       this.safePresign(reg.tournament.tournamentLogoUrl),
     ]);
 
-    const fullName = `${reg.player.firstName || ''} ${reg.player.lastName || ''}`.trim();
+    const fullName =
+      `${reg.player.firstName || ''} ${reg.player.lastName || ''}`.trim();
     const gamertag = reg.player.gamerTag || 'COMPETITOR';
-    const humanFormat = this.formatTournamentFormat(reg.tournament.tournamentFormat);
+    const humanFormat = this.formatTournamentFormat(
+      reg.tournament.tournamentFormat,
+    );
 
     return {
       tournamentId,

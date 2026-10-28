@@ -31,7 +31,13 @@ import { TicketModule } from './modules/ticket/ticket.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, databaseConfig, jwtConfig, paystackConfig, flutterwaveConfig],
+      load: [
+        appConfig,
+        databaseConfig,
+        jwtConfig,
+        paystackConfig,
+        flutterwaveConfig,
+      ],
       envFilePath: ['.env.local', '.env'],
     }),
     MailModule,

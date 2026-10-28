@@ -211,7 +211,9 @@ export class PlayerService {
         where: { email: updatePlayerDto.email.toLowerCase() },
       });
       if (emailTaken && emailTaken.playerId !== id) {
-        throw new ConflictException('Email is already in use by another account');
+        throw new ConflictException(
+          'Email is already in use by another account',
+        );
       }
     }
 
@@ -308,9 +310,7 @@ export class PlayerService {
           ...(updatePlayerDto.surname
             ? { surname: updatePlayerDto.surname }
             : {}),
-          ...(resolvedPhoneNumber
-            ? { phoneNumber: resolvedPhoneNumber }
-            : {}),
+          ...(resolvedPhoneNumber ? { phoneNumber: resolvedPhoneNumber } : {}),
           ...(parsedDob ? { dateOfBirth: parsedDob } : {}),
           profilePicture: updatedProfilePicture,
           document: updatedLegacyDocumentList,
@@ -325,12 +325,12 @@ export class PlayerService {
 
     // Cleanup S3 storage asynchronously after successful DB commit
     if (oldPictureToDelete) {
-      void deleteImageFromS3(this.documentService.extractKey(oldPictureToDelete));
+      void deleteImageFromS3(
+        this.documentService.extractKey(oldPictureToDelete),
+      );
     }
     if (docsToDeleteFromS3.length > 0) {
-      void Promise.all(
-        docsToDeleteFromS3.map((key) => deleteImageFromS3(key)),
-      );
+      void Promise.all(docsToDeleteFromS3.map((key) => deleteImageFromS3(key)));
     }
 
     return formatPlayerResponse(updatedPlayerRecord);
@@ -366,7 +366,14 @@ export class PlayerService {
   async getAllPlayer(query: QueryOptions = {}) {
     const { where, skip, take, orderBy, page, limit } = buildPrismaQuery(
       query,
-      ['firstName', 'lastName', 'email', 'showPlayerId', 'phoneNumber', 'gamerTag'],
+      [
+        'firstName',
+        'lastName',
+        'email',
+        'showPlayerId',
+        'phoneNumber',
+        'gamerTag',
+      ],
     );
 
     where.isDeleted = false;
@@ -449,7 +456,10 @@ export class PlayerService {
       },
     });
 
-    return { message: 'Player account successfully deactivated', id: updated.playerId };
+    return {
+      message: 'Player account successfully deactivated',
+      id: updated.playerId,
+    };
   }
 
   /**
@@ -854,7 +864,8 @@ export class PlayerService {
         if (m.opponentId && oppMap.has(m.opponentId)) {
           const opp = oppMap.get(m.opponentId)!;
           m.opponentGamertag = opp.gamerTag || 'Competitor';
-          m.opponentName = `${opp.firstName || ''} ${opp.lastName || ''}`.trim();
+          m.opponentName =
+            `${opp.firstName || ''} ${opp.lastName || ''}`.trim();
         } else {
           m.opponentGamertag = m.opponentId || 'Competitor';
           m.opponentName = m.opponentId || 'Competitor';
@@ -862,7 +873,8 @@ export class PlayerService {
       }
     }
 
-    const totalMatches = upcoming.length + unscheduled.length + completed.length;
+    const totalMatches =
+      upcoming.length + unscheduled.length + completed.length;
     let pagination: any = undefined;
 
     if (filter?.page !== undefined || filter?.limit !== undefined) {
@@ -873,7 +885,8 @@ export class PlayerService {
       const normStatus = filter?.status?.toUpperCase();
       let targetListTotal = totalMatches;
       if (normStatus === 'UPCOMING') targetListTotal = upcoming.length;
-      else if (normStatus === 'UNSCHEDULED') targetListTotal = unscheduled.length;
+      else if (normStatus === 'UNSCHEDULED')
+        targetListTotal = unscheduled.length;
       else if (normStatus === 'COMPLETED') targetListTotal = completed.length;
 
       pagination = {
@@ -925,7 +938,11 @@ export class PlayerService {
   // Facade delegations for backwards-compatibility with existing tests and code
   // ---------------------------------------------------------------------------
 
-  async updateDocumentStatus(playerId: string, documentId: string, dto: UpdateDocumentStatusDto) {
+  async updateDocumentStatus(
+    playerId: string,
+    documentId: string,
+    dto: UpdateDocumentStatusDto,
+  ) {
     return this.documentService.updateDocumentStatus(playerId, documentId, dto);
   }
 

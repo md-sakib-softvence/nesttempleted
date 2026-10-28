@@ -164,10 +164,7 @@ export class TournamentController {
     type: String,
     example: 'slots,seeds',
   })
-  async findOne(
-    @Param('id') id: string,
-    @Query('include') include?: string,
-  ) {
+  async findOne(@Param('id') id: string, @Query('include') include?: string) {
     const data = await this.tournamentService.getTournamentById(id, include);
     return sendResponse({
       message: 'Tournament retrieved successfully',
@@ -314,7 +311,10 @@ export class TournamentController {
 
   @Get(':id/matches')
   @Public()
-  @ApiOperation({ summary: 'Get all canonical matches of a Tournament (with optional pagination & filters)' })
+  @ApiOperation({
+    summary:
+      'Get all canonical matches of a Tournament (with optional pagination & filters)',
+  })
   @ApiQuery({ name: 'round', required: false, type: String })
   @ApiQuery({ name: 'status', required: false, type: String })
   @ApiQuery({ name: 'isAllocated', required: false, type: String })
@@ -345,11 +345,11 @@ export class TournamentController {
   @Post(':id/matches/:matchId/self-book')
   @Roles(
     Role.PLAYER,
-    'player' as any,
+    'player',
     Role.ADMIN,
     Role.SUPER_ADMIN,
-    'admin' as any,
-    'super_admin' as any,
+    'admin',
+    'super_admin',
   )
   @ApiOperation({
     summary: 'Player self-booking match fixture for a tournament',
@@ -377,14 +377,15 @@ export class TournamentController {
   @Get(':id/self-schedule/pending-matches')
   @Roles(
     Role.PLAYER,
-    'player' as any,
+    'player',
     Role.ADMIN,
     Role.SUPER_ADMIN,
-    'admin' as any,
-    'super_admin' as any,
+    'admin',
+    'super_admin',
   )
   @ApiOperation({
-    summary: 'Get Pending Matches for Player Self-Scheduling (Reservation Scheduler)',
+    summary:
+      'Get Pending Matches for Player Self-Scheduling (Reservation Scheduler)',
     description:
       'Returns all active, unallocated canonical matches where player is a participant, with derived 3-stage escalation window metadata.',
   })
@@ -406,11 +407,11 @@ export class TournamentController {
   @Get(':id/self-schedule/matches/:matchId/available-slots')
   @Roles(
     Role.PLAYER,
-    'player' as any,
+    'player',
     Role.ADMIN,
     Role.SUPER_ADMIN,
-    'admin' as any,
-    'super_admin' as any,
+    'admin',
+    'super_admin',
   )
   @ApiOperation({
     summary: 'Get Available Arena Timeslots Grid for Match',
@@ -438,10 +439,10 @@ export class TournamentController {
   @Roles(
     Role.ADMIN,
     Role.SUPER_ADMIN,
-    'admin' as any,
-    'super_admin' as any,
+    'admin',
+    'super_admin',
     Role.PLAYER,
-    'player' as any,
+    'player',
   )
   @ApiOperation({
     summary: 'Simulate Escalation Window (Developer Sandbox Bar)',
@@ -463,7 +464,7 @@ export class TournamentController {
   }
 
   @Post(':id/process-auto-assignment')
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin' as any, 'super_admin' as any)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
   @ApiOperation({
     summary: 'Manually trigger Phase 3 automatic assignment evaluation',
     description:
@@ -492,7 +493,7 @@ export class TournamentController {
   }
 
   @Post(':id/predict')
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.FAN, 'fan' as any, Role.PLAYER, 'player' as any)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.FAN, 'fan', Role.PLAYER, 'player')
   @ApiOperation({
     summary: 'Lock in coin prediction for a live tournament match',
   })
@@ -547,7 +548,8 @@ export class TournamentController {
   @Get(':id/standings')
   @Public()
   @ApiOperation({
-    summary: 'Get tournament standings/leaderboard with filter (table, goals, metrics) and pagination',
+    summary:
+      'Get tournament standings/leaderboard with filter (table, goals, metrics) and pagination',
   })
   @ApiQuery({
     name: 'filter',
@@ -580,11 +582,11 @@ export class TournamentController {
   @Post(':id/registrations')
   @Roles(
     Role.PLAYER,
-    'player' as any,
+    'player',
     Role.ADMIN,
     Role.SUPER_ADMIN,
-    'admin' as any,
-    'super_admin' as any,
+    'admin',
+    'super_admin',
   )
   @ApiOperation({ summary: 'Register a player for this tournament' })
   async registerPlayer(
@@ -605,13 +607,15 @@ export class TournamentController {
   @Get(':id/registrations')
   @Roles(
     Role.PLAYER,
-    'player' as any,
+    'player',
     Role.ADMIN,
     Role.SUPER_ADMIN,
-    'admin' as any,
-    'super_admin' as any,
+    'admin',
+    'super_admin',
   )
-  @ApiOperation({ summary: 'Get all tournament registrations with counts and tab filtering' })
+  @ApiOperation({
+    summary: 'Get all tournament registrations with counts and tab filtering',
+  })
   async getRegistrations(
     @Param('id') id: string,
     @Query() query: QueryTournamentRegistrationDto,
@@ -632,13 +636,20 @@ export class TournamentController {
   }
 
   @Patch(':id/registrations/:registrationId/status')
-  @ApiOperation({ summary: 'Update player registration status (Confirmed, Selected, Waitlist)' })
+  @ApiOperation({
+    summary:
+      'Update player registration status (Confirmed, Selected, Waitlist)',
+  })
   async updateRegistrationStatus(
     @Param('id') id: string,
     @Param('registrationId') registrationId: string,
     @Body() body: UpdateRegistrationStatusDto,
   ) {
-    const data = await this.tournamentService.updateRegistrationStatus(id, registrationId, body);
+    const data = await this.tournamentService.updateRegistrationStatus(
+      id,
+      registrationId,
+      body,
+    );
     return sendResponse({
       message: 'Registration status updated successfully',
       data,
@@ -646,7 +657,9 @@ export class TournamentController {
   }
 
   @Post(':id/status')
-  @ApiOperation({ summary: 'Transitions tournament lifecycle with state machine checks' })
+  @ApiOperation({
+    summary: 'Transitions tournament lifecycle with state machine checks',
+  })
   async updateStatus(
     @Param('id') id: string,
     @Body() body: UpdateTournamentStatusDto,
@@ -669,7 +682,9 @@ export class TournamentController {
   }
 
   @Delete(':id/venues/:venueId')
-  @ApiOperation({ summary: 'Deletes a venue from tournament if no matches are allocated' })
+  @ApiOperation({
+    summary: 'Deletes a venue from tournament if no matches are allocated',
+  })
   async deleteVenue(
     @Param('id') id: string,
     @Param('venueId') venueId: string,
@@ -714,7 +729,9 @@ export class TournamentController {
   }
 
   @Post(':id/reconcile-capacity')
-  @ApiOperation({ summary: 'Extends capacity windows when deficits are detected' })
+  @ApiOperation({
+    summary: 'Extends capacity windows when deficits are detected',
+  })
   async reconcileCapacity(
     @Param('id') id: string,
     @Body() body?: { expectedVersion?: number },
@@ -730,7 +747,9 @@ export class TournamentController {
   }
 
   @Get(':id/financials')
-  @ApiOperation({ summary: 'Returns complete financial ledger and cost/prize breakdown' })
+  @ApiOperation({
+    summary: 'Returns complete financial ledger and cost/prize breakdown',
+  })
   async getFinancials(@Param('id') id: string) {
     const data = await this.tournamentService.getTournamentFinancials(id);
     return sendResponse({
@@ -740,7 +759,9 @@ export class TournamentController {
   }
 
   @Patch(':id/financials')
-  @ApiOperation({ summary: 'Updates cost items, prize payouts, and rake percentage' })
+  @ApiOperation({
+    summary: 'Updates cost items, prize payouts, and rake percentage',
+  })
   async updateFinancials(
     @Param('id') id: string,
     @Body() body: UpdateTournamentFinancialsDto,

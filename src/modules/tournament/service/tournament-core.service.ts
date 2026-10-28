@@ -408,12 +408,10 @@ export class TournamentCoreService {
 
     // Normalize format to tournamentFormat
     if (where.format) {
-      where.tournamentFormat = mapTournamentFormat(where.format as string);
+      where.tournamentFormat = mapTournamentFormat(where.format);
       delete where.format;
     } else if (where.tournamentFormat) {
-      where.tournamentFormat = mapTournamentFormat(
-        where.tournamentFormat as string,
-      );
+      where.tournamentFormat = mapTournamentFormat(where.tournamentFormat);
     }
 
     // Filter out status if 'ALL' or 'all'
@@ -1063,10 +1061,10 @@ export class TournamentCoreService {
       where: { tournamentId },
       data: {
         ...(dto.playerCardTemplate !== undefined
-          ? { playerCardTemplate: dto.playerCardTemplate as any }
+          ? { playerCardTemplate: dto.playerCardTemplate }
           : {}),
         ...(dto.fanPassTemplate !== undefined
-          ? { fanPassTemplate: dto.fanPassTemplate as any }
+          ? { fanPassTemplate: dto.fanPassTemplate }
           : {}),
       },
     });
@@ -1089,7 +1087,6 @@ export class TournamentCoreService {
 
     return tournament;
   }
-
 
   async getTournamentFinancials(tournamentId: string) {
     const tournament = await this.prisma.tournament.findUnique({

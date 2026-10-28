@@ -29,7 +29,8 @@ export class InitializePaymentDto {
 
   @ApiPropertyOptional({
     example: 'NGN',
-    description: 'Currency code (e.g. NGN, USD, GHS, KES, ZAR, EUR). Defaults to NGN.',
+    description:
+      'Currency code (e.g. NGN, USD, GHS, KES, ZAR, EUR). Defaults to NGN.',
     default: 'NGN',
   })
   @IsString()
@@ -54,7 +55,8 @@ export class InitializePaymentDto {
 
   @ApiPropertyOptional({
     example: 'FLW-TX-12345678',
-    description: 'Optional unique transaction reference. Will be generated automatically if omitted.',
+    description:
+      'Optional unique transaction reference. Will be generated automatically if omitted.',
   })
   @IsString()
   @IsOptional()
@@ -62,7 +64,8 @@ export class InitializePaymentDto {
 
   @ApiPropertyOptional({
     example: 'https://www.tapegaming.com/payment/callback',
-    description: 'Redirect URL where the user will be redirected after completing payment',
+    description:
+      'Redirect URL where the user will be redirected after completing payment',
   })
   @IsString()
   @IsOptional()

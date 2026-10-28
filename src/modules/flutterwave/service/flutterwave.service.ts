@@ -209,7 +209,10 @@ export class FlutterwaveService {
       ) {
         throw error;
       }
-      this.logger.error('Unexpected error while verifying Flutterwave payment', error);
+      this.logger.error(
+        'Unexpected error while verifying Flutterwave payment',
+        error,
+      );
       throw new InternalServerErrorException(
         error?.message || 'Failed to verify payment transaction',
       );
@@ -219,11 +222,15 @@ export class FlutterwaveService {
   /**
    * Verify a Flutterwave transaction by custom transaction reference (tx_ref)
    */
-  async verifyTransactionByRef(txRef: string): Promise<FlutterwaveVerifyResponse> {
+  async verifyTransactionByRef(
+    txRef: string,
+  ): Promise<FlutterwaveVerifyResponse> {
     this.ensureSecretKeyConfigured();
 
     if (!txRef) {
-      throw new BadRequestException('Transaction reference (tx_ref) is required');
+      throw new BadRequestException(
+        'Transaction reference (tx_ref) is required',
+      );
     }
 
     try {
@@ -271,7 +278,10 @@ export class FlutterwaveService {
       ) {
         throw error;
       }
-      this.logger.error('Unexpected error while verifying Flutterwave payment by reference', error);
+      this.logger.error(
+        'Unexpected error while verifying Flutterwave payment by reference',
+        error,
+      );
       throw new InternalServerErrorException(
         error?.message || 'Failed to verify payment transaction',
       );
@@ -297,10 +307,14 @@ export class FlutterwaveService {
    */
   async handleWebhook(body: any, receivedHash?: string) {
     if (!this.verifyWebhookHash(receivedHash)) {
-      throw new UnauthorizedException('Invalid Flutterwave webhook hash signature');
+      throw new UnauthorizedException(
+        'Invalid Flutterwave webhook hash signature',
+      );
     }
 
-    this.logger.log(`Flutterwave webhook event received: ${body?.event || 'unknown'}`);
+    this.logger.log(
+      `Flutterwave webhook event received: ${body?.event || 'unknown'}`,
+    );
 
     // If event is charge.completed, extract transaction data
     const event = body?.event;
@@ -332,7 +346,9 @@ export class FlutterwaveService {
 
       const result = await response.json();
       if (!response.ok || result.status !== 'success') {
-        throw new BadRequestException(result.message || 'Failed to fetch banks');
+        throw new BadRequestException(
+          result.message || 'Failed to fetch banks',
+        );
       }
 
       return result.data;

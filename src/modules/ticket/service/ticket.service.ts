@@ -201,7 +201,9 @@ export class TicketService {
     dto: PurchaseTicketDto,
   ) {
     if (!currentUser?.userId) {
-      throw new UnauthorizedException('Authentication required to purchase tickets');
+      throw new UnauthorizedException(
+        'Authentication required to purchase tickets',
+      );
     }
 
     const tournament = await this.prisma.tournament.findUnique({
@@ -225,7 +227,10 @@ export class TicketService {
       },
     });
 
-    if (tournament.capacity && currentTotalSold + quantity > tournament.capacity) {
+    if (
+      tournament.capacity &&
+      currentTotalSold + quantity > tournament.capacity
+    ) {
       const remaining = Math.max(0, tournament.capacity - currentTotalSold);
       throw new BadRequestException(
         `Not enough seats available. Tournament capacity reached. Remaining seats: ${remaining}`,
@@ -238,15 +243,24 @@ export class TicketService {
     let ticketType: TicketType = dto.type || TicketType.DAY_PASS;
 
     if (dto.tierId) {
-      selectedTier = tournament.ticketTiers.find((t) => t.tierId === dto.tierId);
+      selectedTier = tournament.ticketTiers.find(
+        (t) => t.tierId === dto.tierId,
+      );
       if (!selectedTier) {
-        throw new NotFoundException(`Ticket Tier #${dto.tierId} not found for this tournament`);
+        throw new NotFoundException(
+          `Ticket Tier #${dto.tierId} not found for this tournament`,
+        );
       }
       if (selectedTier.status !== 'ACTIVE') {
-        throw new BadRequestException('This ticket tier is currently not active');
+        throw new BadRequestException(
+          'This ticket tier is currently not active',
+        );
       }
       if (selectedTier.sold + quantity > selectedTier.capacity) {
-        const remainingTier = Math.max(0, selectedTier.capacity - selectedTier.sold);
+        const remainingTier = Math.max(
+          0,
+          selectedTier.capacity - selectedTier.sold,
+        );
         throw new BadRequestException(
           `Selected tier has only ${remainingTier} ticket(s) left`,
         );
@@ -255,19 +269,24 @@ export class TicketService {
       ticketType = selectedTier.type;
     } else {
       // Default price from tournament entryFee or 1500 fallback
-      unitPrice = tournament.entryFee && tournament.entryFee > 0 ? tournament.entryFee : 1500;
+      unitPrice =
+        tournament.entryFee && tournament.entryFee > 0
+          ? tournament.entryFee
+          : 1500;
     }
 
     const totalAmount = unitPrice * quantity;
-    const purchaser = await this.resolvePurchaser(currentUser.userId, currentUser.role);
+    const purchaser = await this.resolvePurchaser(
+      currentUser.userId,
+      currentUser.role,
+    );
 
     const customerEmail = purchaser.email || 'customer@tapegaming.com';
     const customerName = purchaser.name || 'Spectator';
     const customerPhone = purchaser.phone || '+2348000000000';
 
     // Calculate designated seat
-    const seatNumber =
-      dto.seatNumber || `Seat ${currentTotalSold + 1}`;
+    const seatNumber = dto.seatNumber || `Seat ${currentTotalSold + 1}`;
 
     const txRef = `FLW-TCK-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
 
@@ -327,9 +346,14 @@ export class TicketService {
   /**
    * 3. Verify Payment and Issue Ticket
    */
-  async verifyPaymentAndIssueTicket(txRef: string, transactionId?: string | number) {
+  async verifyPaymentAndIssueTicket(
+    txRef: string,
+    transactionId?: string | number,
+  ) {
     if (!txRef) {
-      throw new BadRequestException('Transaction reference (txRef) is required');
+      throw new BadRequestException(
+        'Transaction reference (txRef) is required',
+      );
     }
 
     // 1. Check if tickets were already issued for this txRef
@@ -373,7 +397,9 @@ export class TicketService {
     const tournamentId = meta.tournamentId;
 
     if (!tournamentId) {
-      throw new BadRequestException('Invalid transaction metadata: missing tournamentId');
+      throw new BadRequestException(
+        'Invalid transaction metadata: missing tournamentId',
+      );
     }
 
     const tournament = await this.prisma.tournament.findUnique({
@@ -396,7 +422,9 @@ export class TicketService {
 
     const baseSeatNumber = meta.seatNumber || 'General Admission';
     const unitPrice =
-      quantity > 0 ? Number((txData.amount / quantity).toFixed(2)) : txData.amount;
+      quantity > 0
+        ? Number((txData.amount / quantity).toFixed(2))
+        : txData.amount;
 
     const issuedTickets: any[] = [];
 
@@ -405,7 +433,8 @@ export class TicketService {
       const ticketId = crypto.randomUUID();
       const currentCount = await this.prisma.ticket.count();
       const showTicketId = `TCK-${String(currentCount + 1 + i).padStart(5, '0')}`;
-      const seat = quantity === 1 ? baseSeatNumber : `${baseSeatNumber}-${i + 1}`;
+      const seat =
+        quantity === 1 ? baseSeatNumber : `${baseSeatNumber}-${i + 1}`;
 
       // Compatible with QRScannerModal format: FAN:tournamentId:userId:ticketId or PLAYER:tournamentId:userId:ticketId
       const prefix = userRole === 'PLAYER' ? 'PLAYER' : 'FAN';
@@ -473,14 +502,16 @@ export class TicketService {
 
     // Increment tier sold count if applicable
     if (tierId) {
-      await this.prisma.ticketTier.update({
-        where: { tierId },
-        data: {
-          sold: { increment: quantity },
-        },
-      }).catch((err) => {
-        this.logger.warn(`Failed to update tier sold count: ${err.message}`);
-      });
+      await this.prisma.ticketTier
+        .update({
+          where: { tierId },
+          data: {
+            sold: { increment: quantity },
+          },
+        })
+        .catch((err) => {
+          this.logger.warn(`Failed to update tier sold count: ${err.message}`);
+        });
     }
 
     const baseUrl = process.env.FRONTEND_URL || 'https://tapegaming.com';
@@ -489,9 +520,9 @@ export class TicketService {
     const formattedTickets = issuedTickets.map((t) => {
       const name = t.fan
         ? `${t.fan.firstName} ${t.fan.surname || ''}`.trim()
-        : (t.player
-            ? `${t.player.firstName} ${t.player.lastName}`.trim()
-            : 'Spectator');
+        : t.player
+          ? `${t.player.firstName} ${t.player.lastName}`.trim()
+          : 'Spectator';
       const email = t.fan?.email || t.player?.email || null;
       const phone = t.fan?.phoneNumber || t.player?.phoneNumber || null;
 
@@ -529,7 +560,10 @@ export class TicketService {
 
     this.logger.log(`Flutterwave ticket webhook event: ${body?.event}`);
 
-    if (body?.event === 'charge.completed' && body?.data?.status === 'successful') {
+    if (
+      body?.event === 'charge.completed' &&
+      body?.data?.status === 'successful'
+    ) {
       const txRef = body.data.tx_ref;
       const txId = body.data.id;
       if (txRef && txRef.startsWith('FLW-TCK')) {
@@ -550,7 +584,10 @@ export class TicketService {
 
     const trimmedToken = dto.qrToken.trim();
     const guardName =
-      staffUser?.name || staffUser?.fullName || staffUser?.email || 'Security Guard';
+      staffUser?.name ||
+      staffUser?.fullName ||
+      staffUser?.email ||
+      'Security Guard';
     const guardId = staffUser?.userId || staffUser?.id || null;
     const guardRole = staffUser?.role || 'SECURITY';
 
@@ -620,10 +657,7 @@ export class TicketService {
         const potentialTicketId = parts[3];
         ticket = await this.prisma.ticket.findFirst({
           where: {
-            OR: [
-              { ticketId: potentialTicketId },
-              { qrToken: trimmedToken },
-            ],
+            OR: [{ ticketId: potentialTicketId }, { qrToken: trimmedToken }],
           },
           include: {
             tournament: true,
@@ -673,7 +707,12 @@ export class TicketService {
             })
           : 'earlier';
         const errMsg = `This Day Pass has already been used on ${usedTime}. Duplicate entry denied.`;
-        await logAndBroadcast('ALREADY_CHECKED_IN', errMsg, ticket, attendeeName);
+        await logAndBroadcast(
+          'ALREADY_CHECKED_IN',
+          errMsg,
+          ticket,
+          attendeeName,
+        );
         throw new BadRequestException(errMsg);
       }
       newStatus = TicketStatus.USED;
@@ -693,7 +732,12 @@ export class TicketService {
             minute: '2-digit',
           });
           const errMsg = `This Season Pass was already used today at ${timeStr}. Valid again tomorrow!`;
-          await logAndBroadcast('ALREADY_CHECKED_IN', errMsg, ticket, attendeeName);
+          await logAndBroadcast(
+            'ALREADY_CHECKED_IN',
+            errMsg,
+            ticket,
+            attendeeName,
+          );
           throw new BadRequestException(errMsg);
         }
       }
@@ -708,12 +752,21 @@ export class TicketService {
         const cooldownMs = 15 * 60 * 1000; // 15 minutes anti-passback cooldown
 
         if (diffMs < cooldownMs) {
-          const remainingMinutes = Math.ceil((cooldownMs - diffMs) / (60 * 1000));
+          const remainingMinutes = Math.ceil(
+            (cooldownMs - diffMs) / (60 * 1000),
+          );
           const elapsedMinutes = Math.floor(diffMs / (60 * 1000));
           const errMsg = `Anti-passback Cooldown Active: VIP pass was scanned ${
-            elapsedMinutes === 0 ? 'less than a minute ago' : `${elapsedMinutes}m ago`
+            elapsedMinutes === 0
+              ? 'less than a minute ago'
+              : `${elapsedMinutes}m ago`
           }. Please wait ${remainingMinutes} more minute(s) before re-entering.`;
-          await logAndBroadcast('ALREADY_CHECKED_IN', errMsg, ticket, attendeeName);
+          await logAndBroadcast(
+            'ALREADY_CHECKED_IN',
+            errMsg,
+            ticket,
+            attendeeName,
+          );
           throw new BadRequestException(errMsg);
         }
       }
@@ -805,11 +858,7 @@ export class TicketService {
 
     const tickets = await this.prisma.ticket.findMany({
       where: {
-        OR: [
-          { purchasedBy: userId },
-          { fanId: userId },
-          { playerId: userId },
-        ],
+        OR: [{ purchasedBy: userId }, { fanId: userId }, { playerId: userId }],
       },
       include: {
         tournament: {
@@ -891,11 +940,12 @@ export class TicketService {
 
     const purchaserName = ticket.fan
       ? `${ticket.fan.firstName} ${ticket.fan.surname || ''}`.trim()
-      : (ticket.player
-          ? `${ticket.player.firstName} ${ticket.player.lastName}`.trim()
-          : 'Spectator');
+      : ticket.player
+        ? `${ticket.player.firstName} ${ticket.player.lastName}`.trim()
+        : 'Spectator';
     const purchaserEmail = ticket.fan?.email || ticket.player?.email || null;
-    const purchaserPhone = ticket.fan?.phoneNumber || ticket.player?.phoneNumber || null;
+    const purchaserPhone =
+      ticket.fan?.phoneNumber || ticket.player?.phoneNumber || null;
 
     return {
       id: ticket.ticketId,
@@ -992,9 +1042,9 @@ export class TicketService {
     const recentPurchases = allTickets.slice(0, 15).map((t) => {
       const name = t.fan
         ? `${t.fan.firstName} ${t.fan.surname || ''}`.trim()
-        : (t.player
-            ? `${t.player.firstName} ${t.player.lastName}`.trim()
-            : 'Anonymous Fan');
+        : t.player
+          ? `${t.player.firstName} ${t.player.lastName}`.trim()
+          : 'Anonymous Fan';
       return {
         id: t.ticketId,
         showTicketId: t.showTicketId,
@@ -1044,10 +1094,22 @@ export class TicketService {
         { showTicketId: { contains: query.searchTerm, mode: 'insensitive' } },
         { qrToken: { contains: query.searchTerm, mode: 'insensitive' } },
         { seatNumber: { contains: query.searchTerm, mode: 'insensitive' } },
-        { fan: { firstName: { contains: query.searchTerm, mode: 'insensitive' } } },
+        {
+          fan: {
+            firstName: { contains: query.searchTerm, mode: 'insensitive' },
+          },
+        },
         { fan: { email: { contains: query.searchTerm, mode: 'insensitive' } } },
-        { player: { firstName: { contains: query.searchTerm, mode: 'insensitive' } } },
-        { player: { email: { contains: query.searchTerm, mode: 'insensitive' } } },
+        {
+          player: {
+            firstName: { contains: query.searchTerm, mode: 'insensitive' },
+          },
+        },
+        {
+          player: {
+            email: { contains: query.searchTerm, mode: 'insensitive' },
+          },
+        },
       ];
     }
 
@@ -1093,9 +1155,9 @@ export class TicketService {
     const mappedTickets = tickets.map((t) => {
       const name = t.fan
         ? `${t.fan.firstName} ${t.fan.surname || ''}`.trim()
-        : (t.player
-            ? `${t.player.firstName} ${t.player.lastName}`.trim()
-            : 'Spectator');
+        : t.player
+          ? `${t.player.firstName} ${t.player.lastName}`.trim()
+          : 'Spectator';
       return {
         ...t,
         purchaserName: name,
@@ -1124,7 +1186,9 @@ export class TicketService {
     dto: TransferTicketDto,
   ) {
     if (!currentUser?.userId) {
-      throw new UnauthorizedException('Authentication required to transfer ticket');
+      throw new UnauthorizedException(
+        'Authentication required to transfer ticket',
+      );
     }
 
     const ticket = await this.prisma.ticket.findUnique({
@@ -1149,7 +1213,9 @@ export class TicketService {
       ticket.playerId === currentUser.userId;
 
     if (!isOwner && !isAdmin) {
-      throw new BadRequestException('You do not have permission to transfer this ticket.');
+      throw new BadRequestException(
+        'You do not have permission to transfer this ticket.',
+      );
     }
 
     // Usability checks
@@ -1157,14 +1223,16 @@ export class TicketService {
       throw new BadRequestException('Used tickets cannot be transferred.');
     }
     if (ticket.status === TicketStatus.TRANSFERRED) {
-      throw new BadRequestException('This ticket has already been transferred.');
+      throw new BadRequestException(
+        'This ticket has already been transferred.',
+      );
     }
     if (ticket.status === TicketStatus.CANCELLED) {
       throw new BadRequestException('Cancelled tickets cannot be transferred.');
     }
 
     // Clean recipient phone
-    const cleanPhone = dto.recipientPhone.replace(/[\s\-\(\)]/g, '');
+    const cleanPhone = dto.recipientPhone.replace(/[\s\-()]/g, '');
 
     // Search recipient Fan
     const recipientFan = await this.prisma.fan.findFirst({
@@ -1192,14 +1260,18 @@ export class TicketService {
       });
     }
 
-    const recipientRole = recipientFan ? 'FAN' : recipientPlayer ? 'PLAYER' : 'GUEST';
+    const recipientRole = recipientFan
+      ? 'FAN'
+      : recipientPlayer
+        ? 'PLAYER'
+        : 'GUEST';
     const recipientId =
       recipientFan?.fanId || recipientPlayer?.playerId || `guest-${Date.now()}`;
     const recipientName = recipientFan
       ? `${recipientFan.firstName} ${recipientFan.surname || ''}`.trim()
       : recipientPlayer
-      ? `${recipientPlayer.firstName} ${recipientPlayer.lastName}`.trim()
-      : dto.recipientPhone;
+        ? `${recipientPlayer.firstName} ${recipientPlayer.lastName}`.trim()
+        : dto.recipientPhone;
 
     const newShowTicketId = `TCK-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
     const newQrToken = `${recipientRole}:${ticket.tournamentId}:${recipientId}:${crypto.randomUUID()}`;
@@ -1207,56 +1279,61 @@ export class TicketService {
     // Perform atomic transaction:
     // 1. Mark current ticket as TRANSFERRED (locks ticket access for sender)
     // 2. Create new ACTIVE ticket for recipient
-    const [transferredOldTicket, newIssuedTicket] = await this.prisma.$transaction([
-      this.prisma.ticket.update({
-        where: { ticketId: ticket.ticketId },
-        data: {
-          status: TicketStatus.TRANSFERRED,
-          metadata: {
-            ...(typeof ticket.metadata === 'object' && ticket.metadata ? (ticket.metadata as object) : {}),
-            transferredAt: new Date().toISOString(),
-            transferredToPhone: dto.recipientPhone,
-            transferredToName: recipientName,
-            transferredToUserId: recipientId,
-            transferredFromUserId: currentUser.userId,
-          },
-        },
-      }),
-      this.prisma.ticket.create({
-        data: {
-          showTicketId: newShowTicketId,
-          tournamentId: ticket.tournamentId,
-          type: ticket.type,
-          pricePaid: ticket.pricePaid,
-          currency: ticket.currency,
-          seatNumber: ticket.seatNumber,
-          status: TicketStatus.ACTIVE,
-          checkedIn: false,
-          qrToken: newQrToken,
-          purchasedBy: recipientId,
-          purchaserRole: recipientRole,
-          fanId: recipientFan?.fanId || null,
-          playerId: recipientPlayer?.playerId || null,
-          paymentReference: `TRANSFER-${ticket.ticketId.slice(0, 8)}-${Date.now()}`,
-          metadata: {
-            ...(typeof ticket.metadata === 'object' && ticket.metadata ? (ticket.metadata as object) : {}),
-            transferredFromTicketId: ticket.ticketId,
-            transferredFromShowTicketId: ticket.showTicketId,
-            transferredFromUserId: currentUser.userId,
-            originalPurchaseDate: ticket.createdAt,
-          },
-        },
-        include: {
-          tournament: {
-            select: {
-              tournamentId: true,
-              name: true,
-              tournamentLogoUrl: true,
+    const [transferredOldTicket, newIssuedTicket] =
+      await this.prisma.$transaction([
+        this.prisma.ticket.update({
+          where: { ticketId: ticket.ticketId },
+          data: {
+            status: TicketStatus.TRANSFERRED,
+            metadata: {
+              ...(typeof ticket.metadata === 'object' && ticket.metadata
+                ? (ticket.metadata as object)
+                : {}),
+              transferredAt: new Date().toISOString(),
+              transferredToPhone: dto.recipientPhone,
+              transferredToName: recipientName,
+              transferredToUserId: recipientId,
+              transferredFromUserId: currentUser.userId,
             },
           },
-        },
-      }),
-    ]);
+        }),
+        this.prisma.ticket.create({
+          data: {
+            showTicketId: newShowTicketId,
+            tournamentId: ticket.tournamentId,
+            type: ticket.type,
+            pricePaid: ticket.pricePaid,
+            currency: ticket.currency,
+            seatNumber: ticket.seatNumber,
+            status: TicketStatus.ACTIVE,
+            checkedIn: false,
+            qrToken: newQrToken,
+            purchasedBy: recipientId,
+            purchaserRole: recipientRole,
+            fanId: recipientFan?.fanId || null,
+            playerId: recipientPlayer?.playerId || null,
+            paymentReference: `TRANSFER-${ticket.ticketId.slice(0, 8)}-${Date.now()}`,
+            metadata: {
+              ...(typeof ticket.metadata === 'object' && ticket.metadata
+                ? (ticket.metadata as object)
+                : {}),
+              transferredFromTicketId: ticket.ticketId,
+              transferredFromShowTicketId: ticket.showTicketId,
+              transferredFromUserId: currentUser.userId,
+              originalPurchaseDate: ticket.createdAt,
+            },
+          },
+          include: {
+            tournament: {
+              select: {
+                tournamentId: true,
+                name: true,
+                tournamentLogoUrl: true,
+              },
+            },
+          },
+        }),
+      ]);
 
     return {
       message: `Ticket successfully transferred to recipient (${recipientName || dto.recipientPhone}). Your ticket access has been locked.`,
@@ -1321,7 +1398,9 @@ export class TicketService {
         ...(dto.price !== undefined ? { price: dto.price } : {}),
         ...(dto.currency ? { currency: dto.currency } : {}),
         ...(dto.capacity !== undefined ? { capacity: dto.capacity } : {}),
-        ...(dto.description !== undefined ? { description: dto.description } : {}),
+        ...(dto.description !== undefined
+          ? { description: dto.description }
+          : {}),
         ...(dto.status ? { status: dto.status } : {}),
       },
     });

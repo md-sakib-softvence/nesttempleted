@@ -16,7 +16,10 @@ export class PublicSeriesController {
       'Public endpoint for public viewers, iframe widgets, and mobile apps. Returns only elements enabled in publication settings. No auth required.',
   })
   @ApiParam({ name: 'slug', description: 'Public Series URL Slug' })
-  @ApiResponse({ status: 200, description: 'Public series data retrieved successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Public series data retrieved successfully',
+  })
   async getPublicSeries(@Param('slug') slug: string) {
     const data = await this.seriesService.getPublicSeriesBySlug(slug);
     return sendResponse({

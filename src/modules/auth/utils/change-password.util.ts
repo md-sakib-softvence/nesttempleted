@@ -74,7 +74,9 @@ export const changePasswordUtil = async (
       break;
 
     default:
-      throw new UnauthorizedException(`Role '${userSession.role}' is not supported.`);
+      throw new UnauthorizedException(
+        `Role '${userSession.role}' is not supported.`,
+      );
   }
 
   if (!userRecord || userRecord.isDeleted) {
@@ -115,12 +117,20 @@ export const changePasswordUtil = async (
   // Log security activity
   const title = 'Password Change';
   const description = `User ${userRecord.firstName || userRecord.name || userSession.email} (${userSession.email}) successfully changed their account password.`;
-  await createActivities(prisma, title, description, userSession.role.toUpperCase());
+  await createActivities(
+    prisma,
+    title,
+    description,
+    userSession.role.toUpperCase(),
+  );
 
   // Optional: send email notification
   if (mailService && userRecord.email) {
     try {
-      if (typeof (mailService as any).sendPasswordChangedNotification === 'function') {
+      if (
+        typeof (mailService as any).sendPasswordChangedNotification ===
+        'function'
+      ) {
         await (mailService as any).sendPasswordChangedNotification(
           userRecord.email,
           userRecord.firstName || userRecord.name,

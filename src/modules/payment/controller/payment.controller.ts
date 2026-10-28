@@ -8,12 +8,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiParam,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { PaymentService } from '../service/payment.service';
 import { CreatePaymentDto } from '../dto/create-payment.dto';
 import { sendResponse } from '../../utils/response.util';
@@ -22,7 +17,7 @@ import { Public } from '../../../common/decorators/public.decorator';
 @ApiTags('payment')
 @Controller('payment')
 export class PaymentController {
-  constructor(private readonly paymentService: PaymentService) { }
+  constructor(private readonly paymentService: PaymentService) {}
 
   @Public()
   @Post('create')

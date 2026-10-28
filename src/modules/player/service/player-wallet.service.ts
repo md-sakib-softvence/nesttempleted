@@ -68,7 +68,9 @@ export class PlayerWalletService {
           },
         },
       });
-      this.logger.log(`Initialized fresh Player Wallet for player ID #${playerId}`);
+      this.logger.log(
+        `Initialized fresh Player Wallet for player ID #${playerId}`,
+      );
     }
 
     return wallet;
@@ -191,9 +193,7 @@ export class PlayerWalletService {
     // 2. Validate Minimum Payout Limit
     const payoutAmount = Number(dto.amount);
     if (isNaN(payoutAmount) || payoutAmount < 1000) {
-      throw new BadRequestException(
-        'Minimum payout amount limit is ₦1,000.',
-      );
+      throw new BadRequestException('Minimum payout amount limit is ₦1,000.');
     }
 
     // 3. Atomic execution block
@@ -220,8 +220,12 @@ export class PlayerWalletService {
         );
       }
 
-      const newCashBalance = Number((wallet.cashBalance - payoutAmount).toFixed(2));
-      const newEscrowBalance = Number((wallet.escrowBalance + payoutAmount).toFixed(2));
+      const newCashBalance = Number(
+        (wallet.cashBalance - payoutAmount).toFixed(2),
+      );
+      const newEscrowBalance = Number(
+        (wallet.escrowBalance + payoutAmount).toFixed(2),
+      );
 
       // 4. Atomically decrement withdrawable cash balance and allocate to clearing escrow
       await tx.wallet.update({
@@ -399,7 +403,9 @@ export class PlayerWalletService {
         },
       });
 
-      this.logger.log(`Credited ₦${amount} to Player ${playerId}. New Cash: ₦${newCashBalance}`);
+      this.logger.log(
+        `Credited ₦${amount} to Player ${playerId}. New Cash: ₦${newCashBalance}`,
+      );
 
       return {
         success: true,

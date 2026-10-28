@@ -23,7 +23,8 @@ export class RegistrationSelectionDto {
 
   @ApiPropertyOptional({
     type: [String],
-    description: 'Array of registration IDs to select (required if mode is manual)',
+    description:
+      'Array of registration IDs to select (required if mode is manual)',
     example: ['reg-9921', 'reg-9922'],
   })
   @IsOptional()

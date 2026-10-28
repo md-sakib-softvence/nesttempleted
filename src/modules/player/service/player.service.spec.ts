@@ -85,7 +85,10 @@ describe('PlayerService', () => {
         PlayerPassService,
         PlayerWalletService,
         { provide: PrismaService, useValue: prisma },
-        { provide: JwtService, useValue: { signAsync: jest.fn(), verifyAsync: jest.fn() } },
+        {
+          provide: JwtService,
+          useValue: { signAsync: jest.fn(), verifyAsync: jest.fn() },
+        },
         { provide: MailService, useValue: { sendRecoveryLink: jest.fn() } },
       ],
     }).compile();
@@ -195,11 +198,10 @@ describe('PlayerService', () => {
         notes: 'Approved by Admin',
       });
 
-      const result = await service.updateDocumentStatus(
-        'player-123',
-        'doc-1',
-        { status: DocumentStatus.VERIFIED, notes: 'Approved by Admin' },
-      );
+      const result = await service.updateDocumentStatus('player-123', 'doc-1', {
+        status: DocumentStatus.VERIFIED,
+        notes: 'Approved by Admin',
+      });
 
       expect(result.status).toBe(DocumentStatus.VERIFIED);
       expect(result.notes).toBe('Approved by Admin');

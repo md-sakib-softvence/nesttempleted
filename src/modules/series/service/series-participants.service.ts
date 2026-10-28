@@ -173,7 +173,8 @@ export class SeriesParticipantsService {
               }
 
               let pts =
-                (finishPosition && placementPointsMap[String(finishPosition)]) ||
+                (finishPosition &&
+                  placementPointsMap[String(finishPosition)]) ||
                 0;
               pts += participationPoints;
               if (finishPosition === 1) pts += championBonus;
@@ -302,7 +303,9 @@ export class SeriesParticipantsService {
 
     const targetId = dto.participantId || dto.playerId;
     if (!targetId) {
-      throw new BadRequestException('Either participantId or playerId is required');
+      throw new BadRequestException(
+        'Either participantId or playerId is required',
+      );
     }
 
     let participant = await this.prisma.seriesParticipant.findFirst({
@@ -418,7 +421,8 @@ export class SeriesParticipantsService {
         id: a.id,
         seriesId: a.seriesId,
         participantId: a.participantId,
-        playerName: `${a.participant.player.firstName} ${a.participant.player.lastName}`.trim(),
+        playerName:
+          `${a.participant.player.firstName} ${a.participant.player.lastName}`.trim(),
         gamerTag: a.participant.player.gamerTag,
         points: a.points,
         reason: a.reason,

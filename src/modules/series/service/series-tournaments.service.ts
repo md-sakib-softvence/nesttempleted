@@ -153,7 +153,8 @@ export class SeriesTournamentsService {
     }
 
     const rawTournaments = (dto as any)?.tournaments;
-    const rawOrderedIds = dto?.orderedTournamentIds || (dto as any)?.tournamentIds;
+    const rawOrderedIds =
+      dto?.orderedTournamentIds || (dto as any)?.tournamentIds;
     const incoming: Array<{ tournamentId: string; stageOrder: number }> =
       Array.isArray(rawTournaments)
         ? rawTournaments

@@ -75,7 +75,11 @@ describe('PlayerController', () => {
 
       const req: any = { user: { userId: 'player-1', role: 'player' } };
       const dto = { gamerTag: 'UPDATED_GAMER' };
-      const response = await controller.updateLoggedInPlayer(req, dto, undefined);
+      const response = await controller.updateLoggedInPlayer(
+        req,
+        dto,
+        undefined,
+      );
 
       expect(playerService.updatePlayer).toHaveBeenCalledWith(
         'player-1',
@@ -91,7 +95,10 @@ describe('PlayerController', () => {
 
   describe('changePassword', () => {
     it('should delegate to authService.changePassword with req.user', async () => {
-      const mockResult = { success: true, message: 'Password changed successfully' };
+      const mockResult = {
+        success: true,
+        message: 'Password changed successfully',
+      };
       authService.changePassword.mockResolvedValue(mockResult);
 
       const req: any = { user: { userId: 'player-1', role: 'player' } };

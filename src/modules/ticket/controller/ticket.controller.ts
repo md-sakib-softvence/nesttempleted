@@ -51,17 +51,20 @@ export class TicketController {
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Initialize ticket purchase with Flutterwave checkout URL & seat calculation',
+    summary:
+      'Initialize ticket purchase with Flutterwave checkout URL & seat calculation',
   })
   @ApiResponse({
     status: 200,
-    description: 'Returns Flutterwave paymentLink, txRef, price calculation, and seat number',
+    description:
+      'Returns Flutterwave paymentLink, txRef, price calculation, and seat number',
   })
   async purchaseTicket(@Req() req: Request, @Body() dto: PurchaseTicketDto) {
     const user = (req as any).user;
     const data = await this.ticketService.initializePurchase(user, dto);
     return sendResponse({
-      message: 'Ticket checkout initiated successfully. Redirect to payment link to complete payment.',
+      message:
+        'Ticket checkout initiated successfully. Redirect to payment link to complete payment.',
       data,
     });
   }
@@ -73,7 +76,8 @@ export class TicketController {
   @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Verify Flutterwave payment by txRef/transactionId and issue ticket(s)',
+    summary:
+      'Verify Flutterwave payment by txRef/transactionId and issue ticket(s)',
   })
   async verifyPaymentPost(@Body() dto: VerifyTicketDto) {
     const data = await this.ticketService.verifyPaymentAndIssueTicket(
@@ -92,7 +96,8 @@ export class TicketController {
   @Get('verify/:txRef')
   @Public()
   @ApiOperation({
-    summary: 'Verify Flutterwave payment by transaction reference (URL param) and issue ticket',
+    summary:
+      'Verify Flutterwave payment by transaction reference (URL param) and issue ticket',
   })
   @ApiParam({ name: 'txRef', description: 'Flutterwave transaction reference' })
   async verifyPaymentGet(
@@ -115,7 +120,9 @@ export class TicketController {
   @Post('flutterwave-webhook')
   @Public()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Webhook endpoint for Flutterwave payment notifications' })
+  @ApiOperation({
+    summary: 'Webhook endpoint for Flutterwave payment notifications',
+  })
   @ApiHeader({ name: 'verif-hash', required: false })
   async handleFlutterwaveWebhook(
     @Body() body: any,
@@ -135,7 +142,8 @@ export class TicketController {
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Venue check-in: validates QR code token, marks ticket USED, logs entry',
+    summary:
+      'Venue check-in: validates QR code token, marks ticket USED, logs entry',
   })
   async checkInByQr(@Req() req: Request, @Body() dto: CheckInTicketDto) {
     const user = (req as any).user;
@@ -203,7 +211,8 @@ export class TicketController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'ADMIN', 'SUPER_ADMIN')
   @ApiOperation({
-    summary: 'Get comprehensive ticket sales and revenue analytics for admin dashboard',
+    summary:
+      'Get comprehensive ticket sales and revenue analytics for admin dashboard',
   })
   async getAnalytics() {
     const data = await this.ticketService.getGlobalAnalytics();
@@ -219,12 +228,15 @@ export class TicketController {
   @Get('tournament/:tournamentId/summary')
   @Public()
   @ApiOperation({
-    summary: 'Get seat capacity, remaining seats, revenue, and tier breakdown for a tournament',
+    summary:
+      'Get seat capacity, remaining seats, revenue, and tier breakdown for a tournament',
   })
   @ApiParam({ name: 'tournamentId', description: 'Tournament ID' })
   async getTournamentSummary(@Param('tournamentId') tournamentId: string) {
     const data =
-      await this.ticketService.calculateTournamentCapacityAndSeats(tournamentId);
+      await this.ticketService.calculateTournamentCapacityAndSeats(
+        tournamentId,
+      );
     return sendResponse({
       message: 'Tournament ticket and seat calculations retrieved successfully',
       data,
@@ -317,7 +329,9 @@ export class TicketController {
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'ADMIN', 'SUPER_ADMIN')
-  @ApiOperation({ summary: 'Get all tickets with pagination, filters, and search' })
+  @ApiOperation({
+    summary: 'Get all tickets with pagination, filters, and search',
+  })
   async getAllTickets(@Query() query: QueryTicketDto) {
     const { data, meta } = await this.ticketService.getAllTickets(query);
     return sendResponse({

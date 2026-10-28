@@ -24,7 +24,7 @@ export class FanService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private mailService: MailService,
-  ) { }
+  ) {}
 
   async createFan(createFanDto: CreateFanDto) {
     const existingFan = await this.prisma.fan.findUnique({

@@ -1,10 +1,4 @@
-import {
-  IsString,
-  IsNumber,
-  Min,
-  IsOptional,
-  IsEnum,
-} from 'class-validator';
+import { IsString, IsNumber, Min, IsOptional, IsEnum } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { TicketType } from '@prisma/client';
 

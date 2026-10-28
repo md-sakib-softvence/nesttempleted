@@ -16,25 +16,48 @@ describe('TournamentController (Success Message & Spec API Verification)', () =>
         meta: { total: 1, page: 1, limit: 10 },
       }),
       getTournamentById: jest.fn().mockResolvedValue({ tournamentId: 't1' }),
-      updateTournament: jest.fn().mockResolvedValue({ tournamentId: 't1', version: 2 }),
-      deleteTournament: jest.fn().mockResolvedValue({ tournamentId: 't1', isDeleted: true }),
-      updateTournamentStatus: jest.fn().mockResolvedValue({ tournamentId: 't1', status: 'PAUSED', version: 6 }),
+      updateTournament: jest
+        .fn()
+        .mockResolvedValue({ tournamentId: 't1', version: 2 }),
+      deleteTournament: jest
+        .fn()
+        .mockResolvedValue({ tournamentId: 't1', isDeleted: true }),
+      updateTournamentStatus: jest.fn().mockResolvedValue({
+        tournamentId: 't1',
+        status: 'PAUSED',
+        version: 6,
+      }),
       addTournamentVenue: jest.fn().mockResolvedValue({ venue: { id: 'v1' } }),
-      deleteTournamentVenue: jest.fn().mockResolvedValue({ deletedVenueId: 'v1' }),
+      deleteTournamentVenue: jest
+        .fn()
+        .mockResolvedValue({ deletedVenueId: 'v1' }),
       getTournamentRegistrationsWithCounts: jest.fn().mockResolvedValue({
         items: [],
-        counts: { registered: 10, selectedUnpaid: 5, confirmed: 8, waitlisted: 2 },
+        counts: {
+          registered: 10,
+          selectedUnpaid: 5,
+          confirmed: 8,
+          waitlisted: 2,
+        },
         pagination: { totalItems: 25, page: 1, limit: 25, totalPages: 1 },
       }),
       selectRegistrations: jest.fn().mockResolvedValue({ selectedCount: 3 }),
       processPaymentExpiry: jest.fn().mockResolvedValue({ expiredCount: 2 }),
-      reconcileScheduleCapacity: jest.fn().mockResolvedValue({ success: true, slotsAdded: 10 }),
+      reconcileScheduleCapacity: jest
+        .fn()
+        .mockResolvedValue({ success: true, slotsAdded: 10 }),
       getTournamentLeaderboard: jest.fn().mockResolvedValue({ standings: [] }),
-      getTournamentFinancials: jest.fn().mockResolvedValue({ grossRevenue: 100000 }),
-      updateTournamentFinancials: jest.fn().mockResolvedValue({ grossRevenue: 100000 }),
+      getTournamentFinancials: jest
+        .fn()
+        .mockResolvedValue({ grossRevenue: 100000 }),
+      updateTournamentFinancials: jest
+        .fn()
+        .mockResolvedValue({ grossRevenue: 100000 }),
       getRaffles: jest.fn().mockResolvedValue([]),
       createRaffle: jest.fn().mockResolvedValue({ raffleId: 'raf-1' }),
-      drawRaffle: jest.fn().mockResolvedValue({ raffleId: 'raf-1', winners: [] }),
+      drawRaffle: jest
+        .fn()
+        .mockResolvedValue({ raffleId: 'raf-1', winners: [] }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -58,7 +81,9 @@ describe('TournamentController (Success Message & Spec API Verification)', () =>
       expectedVersion: 5,
     });
     expect(res.success).toBe(true);
-    expect(res.message).toBe('Tournament status updated to PAUSED successfully');
+    expect(res.message).toBe(
+      'Tournament status updated to PAUSED successfully',
+    );
     expect(res.data!.status).toBe('PAUSED');
   });
 
@@ -66,7 +91,7 @@ describe('TournamentController (Success Message & Spec API Verification)', () =>
     const res = await controller.addVenue('t1', {
       name: 'Ikeja Lounge',
       address: '12 Allen Ave',
-    } as any);
+    });
     expect(res.success).toBe(true);
     expect(res.message).toBe('Venue added to tournament successfully');
   });
@@ -105,7 +130,9 @@ describe('TournamentController (Success Message & Spec API Verification)', () =>
   });
 
   it('reconcileCapacity should return proper success message', async () => {
-    const res = await controller.reconcileCapacity('t1', { expectedVersion: 7 });
+    const res = await controller.reconcileCapacity('t1', {
+      expectedVersion: 7,
+    });
     expect(res.success).toBe(true);
     expect(res.message).toBe(
       'Tournament schedule capacity reconciled successfully',

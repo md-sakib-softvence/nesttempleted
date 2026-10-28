@@ -39,19 +39,24 @@ describe('AdminMatchController & DisputeController (Unit & Success Message Tests
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AdminMatchController, AdminDisputeController],
-      providers: [
-        { provide: TournamentService, useValue: tournamentService },
-      ],
+      providers: [{ provide: TournamentService, useValue: tournamentService }],
     }).compile();
 
     matchController = module.get<AdminMatchController>(AdminMatchController);
-    disputeController = module.get<AdminDisputeController>(AdminDisputeController);
+    disputeController = module.get<AdminDisputeController>(
+      AdminDisputeController,
+    );
   });
 
   it('updateScore should return success: true and proper message', async () => {
-    const res = await matchController.updateScore('m1', { score1: 3, score2: 1 });
+    const res = await matchController.updateScore('m1', {
+      score1: 3,
+      score2: 1,
+    });
     expect(res.success).toBe(true);
-    expect(res.message).toBe('Match score updated and winner propagated successfully');
+    expect(res.message).toBe(
+      'Match score updated and winner propagated successfully',
+    );
     expect(res.data).toBeDefined();
   });
 
@@ -62,7 +67,9 @@ describe('AdminMatchController & DisputeController (Unit & Success Message Tests
       reason: 'Score typo',
     });
     expect(res.success).toBe(true);
-    expect(res.message).toBe('Match score corrected successfully with audit log created');
+    expect(res.message).toBe(
+      'Match score corrected successfully with audit log created',
+    );
   });
 
   it('disputeMatch should return success: true and proper message', async () => {
@@ -70,7 +77,9 @@ describe('AdminMatchController & DisputeController (Unit & Success Message Tests
       reason: 'Controller disconnect',
     });
     expect(res.success).toBe(true);
-    expect(res.message).toBe('Match marked under review and dispute logged successfully');
+    expect(res.message).toBe(
+      'Match marked under review and dispute logged successfully',
+    );
   });
 
   it('allocate should return success: true and proper message', async () => {
@@ -87,7 +96,9 @@ describe('AdminMatchController & DisputeController (Unit & Success Message Tests
   it('unallocate should return success: true and proper message', async () => {
     const res = await matchController.unallocate('m1');
     expect(res.success).toBe(true);
-    expect(res.message).toBe('Match de-allocated from physical slot successfully');
+    expect(res.message).toBe(
+      'Match de-allocated from physical slot successfully',
+    );
   });
 
   it('resolveDispute should return success: true and proper message', async () => {

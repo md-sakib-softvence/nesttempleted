@@ -71,7 +71,10 @@ export class SeriesPublicationService {
     const slugToUse =
       dto.publicSlug ||
       existingPub?.publicSlug ||
-      series.code.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      series.code
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
 
     const enabledToUse =
       dto.enabled !== undefined ? dto.enabled : (existingPub?.enabled ?? false);
@@ -88,7 +91,12 @@ export class SeriesPublicationService {
       );
     }
 
-    const { enabled: _e, publicSlug: _ps, status = 'PUBLISHED', ...settings } = dto;
+    const {
+      enabled: _e,
+      publicSlug: _ps,
+      status = 'PUBLISHED',
+      ...settings
+    } = dto;
 
     const publication = await this.prisma.seriesPublication.upsert({
       where: { seriesId },
@@ -166,7 +174,9 @@ export class SeriesPublicationService {
     });
 
     if (!pub || !pub.enabled || pub.status !== 'PUBLISHED') {
-      throw new NotFoundException(`Public series portal '${slug}' is not published or active`);
+      throw new NotFoundException(
+        `Public series portal '${slug}' is not published or active`,
+      );
     }
 
     const series = pub.series;
@@ -200,7 +210,9 @@ export class SeriesPublicationService {
     return {
       title: series.name,
       slug: pub.publicSlug,
-      description: settings.showSeriesDescription ? series.description : undefined,
+      description: settings.showSeriesDescription
+        ? series.description
+        : undefined,
       dates: settings.showSeriesDates
         ? {
             startDate: series.startDate,

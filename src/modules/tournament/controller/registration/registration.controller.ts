@@ -1,10 +1,4 @@
-import {
-  Controller,
-  Post,
-  Body,
-  Param,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Post, Body, Param, UseGuards } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -42,8 +36,14 @@ export class AdminRegistrationController {
     summary:
       'Admin manual/override confirmation of participant entry payment. Converts status to Confirmed, sets paymentStatus = PAID, and assigns to lowest available tournament slot.',
   })
-  @ApiParam({ name: 'registrationId', description: 'Tournament Registration ID' })
-  @ApiResponse({ status: 200, description: 'Payment confirmed and slot assigned' })
+  @ApiParam({
+    name: 'registrationId',
+    description: 'Tournament Registration ID',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Payment confirmed and slot assigned',
+  })
   async confirmPayment(
     @Param('registrationId') registrationId: string,
     @Body() body?: ConfirmPaymentBodyDto,
@@ -64,7 +64,10 @@ export class AdminRegistrationController {
     summary:
       'Refunds an entry fee, releases player slot, and moves registration to Waitlisted',
   })
-  @ApiParam({ name: 'registrationId', description: 'Tournament Registration ID' })
+  @ApiParam({
+    name: 'registrationId',
+    description: 'Tournament Registration ID',
+  })
   @ApiResponse({ status: 200, description: 'Entry refunded and slot released' })
   async refund(
     @Param('registrationId') registrationId: string,

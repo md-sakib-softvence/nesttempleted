@@ -65,18 +65,12 @@ export class TournamentService {
   ) {
     this.core =
       coreService ||
-      new TournamentCoreService(
-        this.prisma,
-        this.tournamentScheduleService,
-      );
+      new TournamentCoreService(this.prisma, this.tournamentScheduleService);
     this.registration =
       registrationService || new TournamentRegistrationService(this.prisma);
     this.matches =
       matchesService ||
-      new TournamentMatchesService(
-        this.prisma,
-        this.tournamentScheduleService,
-      );
+      new TournamentMatchesService(this.prisma, this.tournamentScheduleService);
     this.leaderboard =
       leaderboardService || new TournamentLeaderboardService(this.prisma);
     this.raffleService = raffleService || new RaffleService(this.prisma);
@@ -269,7 +263,10 @@ export class TournamentService {
     tournamentId: string,
     expectedVersion?: number,
   ) {
-    return this.matches.reconcileScheduleCapacity(tournamentId, expectedVersion);
+    return this.matches.reconcileScheduleCapacity(
+      tournamentId,
+      expectedVersion,
+    );
   }
 
   // ==========================================
@@ -365,7 +362,11 @@ export class TournamentService {
     filter?: string,
     query?: { page?: number | string; limit?: number | string },
   ) {
-    return this.leaderboard.getTournamentLeaderboard(tournamentId, filter, query);
+    return this.leaderboard.getTournamentLeaderboard(
+      tournamentId,
+      filter,
+      query,
+    );
   }
 
   // ==========================================
@@ -431,7 +432,10 @@ export class TournamentService {
     }
 
     // Restriction: Predictions allowed on Live tournaments only
-    if (tournament.status !== 'IN_PROGRESS' && tournament.status !== 'UPCOMING') {
+    if (
+      tournament.status !== 'IN_PROGRESS' &&
+      tournament.status !== 'UPCOMING'
+    ) {
       throw new BadRequestException(
         'Predictions are strictly restricted to active Live tournaments only.',
       );
@@ -442,8 +446,7 @@ export class TournamentService {
     const matches: any[] =
       schedule.structure?.matches || schedule.matches || [];
     const match = matches.find(
-      (m: any) =>
-        m.id === dto.matchId || String(m.id).includes(dto.matchId),
+      (m: any) => m.id === dto.matchId || String(m.id).includes(dto.matchId),
     );
 
     if (match) {
@@ -582,4 +585,3 @@ export class TournamentService {
     return this.matches.processDueAutoAssignments(tournamentId);
   }
 }
-

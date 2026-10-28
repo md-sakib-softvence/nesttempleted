@@ -22,7 +22,9 @@ export class SeriesCoreService {
   /**
    * Helper to presign URLs if stored on S3
    */
-  async presignSeriesMedia<T extends Record<string, any>>(series: T): Promise<T> {
+  async presignSeriesMedia<T extends Record<string, any>>(
+    series: T,
+  ): Promise<T> {
     if (!series) return series;
     const formatted: Record<string, any> = { ...series };
     if (formatted.logoUrl && !String(formatted.logoUrl).startsWith('http')) {
@@ -43,7 +45,9 @@ export class SeriesCoreService {
         ? dto.tournamentIds
         : Array.isArray(dto.tournaments)
           ? dto.tournaments
-              .map((t: any) => (typeof t === 'object' && t ? t.id || t.tournamentId : t))
+              .map((t: any) =>
+                typeof t === 'object' && t ? t.id || t.tournamentId : t,
+              )
               .filter(Boolean)
           : [];
     const tournamentIds = rawTournamentIds;
@@ -68,9 +72,11 @@ export class SeriesCoreService {
     } = dto as any;
 
     const resolvedLogoUrl =
-      dto.logoUrl || (typeof (dto as any).logo === 'string' ? (dto as any).logo : undefined);
+      dto.logoUrl ||
+      (typeof (dto as any).logo === 'string' ? (dto as any).logo : undefined);
     const resolvedImageUrl =
-      dto.imageUrl || (typeof (dto as any).image === 'string' ? (dto as any).image : undefined);
+      dto.imageUrl ||
+      (typeof (dto as any).image === 'string' ? (dto as any).image : undefined);
 
     const existing = await this.prisma.series.findUnique({
       where: { code: dto.code },
@@ -86,23 +92,31 @@ export class SeriesCoreService {
       code: rest.code,
       ...(rest.description !== undefined && { description: rest.description }),
       ...(rest.status !== undefined && { status: rest.status }),
-      ...(rest.participantType !== undefined && { participantType: rest.participantType }),
-      ...(rest.participationMode !== undefined && { participationMode: rest.participationMode }),
+      ...(rest.participantType !== undefined && {
+        participantType: rest.participantType,
+      }),
+      ...(rest.participationMode !== undefined && {
+        participationMode: rest.participationMode,
+      }),
       ...(rest.minimumEventsRequired !== undefined && {
         minimumEventsRequired: rest.minimumEventsRequired,
       }),
-      ...(rest.scoringMethod !== undefined && { scoringMethod: rest.scoringMethod }),
-      ...(rest.bestNResults !== undefined && { bestNResults: rest.bestNResults }),
+      ...(rest.scoringMethod !== undefined && {
+        scoringMethod: rest.scoringMethod,
+      }),
+      ...(rest.bestNResults !== undefined && {
+        bestNResults: rest.bestNResults,
+      }),
       ...(rest.published !== undefined && { published: rest.published }),
       ...(resolvedLogoUrl !== undefined && { logoUrl: resolvedLogoUrl }),
       ...(resolvedImageUrl !== undefined && { imageUrl: resolvedImageUrl }),
       startDate: new Date(dto.startDate),
       endDate: dto.endDate ? new Date(dto.endDate) : null,
-      scoringConfig: (scoringConfig || {
+      scoringConfig: scoringConfig || {
         name: 'Standard Grand Prix Scoring',
         placementPoints: { '1': 100, '2': 75, '3': 50 },
         participationPoints: 5,
-      }) as any,
+      },
       status: dto.status || SeriesStatus.DRAFT,
       published: dto.published ?? false,
       version: 1,
@@ -411,10 +425,15 @@ export class SeriesCoreService {
     }
 
     let resolvedTournaments = dto.tournamentIds;
-    if (resolvedTournaments === undefined && (dto as any).tournaments !== undefined) {
+    if (
+      resolvedTournaments === undefined &&
+      (dto as any).tournaments !== undefined
+    ) {
       resolvedTournaments = Array.isArray((dto as any).tournaments)
         ? (dto as any).tournaments
-            .map((t: any) => (typeof t === 'object' && t ? t.id || t.tournamentId : t))
+            .map((t: any) =>
+              typeof t === 'object' && t ? t.id || t.tournamentId : t,
+            )
             .filter(Boolean)
         : [];
     }
@@ -441,22 +460,32 @@ export class SeriesCoreService {
     } = dto as any;
 
     const resolvedLogoUrl =
-      dto.logoUrl || (typeof (dto as any).logo === 'string' ? (dto as any).logo : undefined);
+      dto.logoUrl ||
+      (typeof (dto as any).logo === 'string' ? (dto as any).logo : undefined);
     const resolvedImageUrl =
-      dto.imageUrl || (typeof (dto as any).image === 'string' ? (dto as any).image : undefined);
+      dto.imageUrl ||
+      (typeof (dto as any).image === 'string' ? (dto as any).image : undefined);
 
     const dataToUpdate: Prisma.SeriesUpdateInput = {
       ...(rest.name !== undefined && { name: rest.name }),
       ...(rest.code !== undefined && { code: rest.code }),
       ...(rest.description !== undefined && { description: rest.description }),
       ...(rest.status !== undefined && { status: rest.status }),
-      ...(rest.participantType !== undefined && { participantType: rest.participantType }),
-      ...(rest.participationMode !== undefined && { participationMode: rest.participationMode }),
+      ...(rest.participantType !== undefined && {
+        participantType: rest.participantType,
+      }),
+      ...(rest.participationMode !== undefined && {
+        participationMode: rest.participationMode,
+      }),
       ...(rest.minimumEventsRequired !== undefined && {
         minimumEventsRequired: rest.minimumEventsRequired,
       }),
-      ...(rest.scoringMethod !== undefined && { scoringMethod: rest.scoringMethod }),
-      ...(rest.bestNResults !== undefined && { bestNResults: rest.bestNResults }),
+      ...(rest.scoringMethod !== undefined && {
+        scoringMethod: rest.scoringMethod,
+      }),
+      ...(rest.bestNResults !== undefined && {
+        bestNResults: rest.bestNResults,
+      }),
       ...(rest.published !== undefined && { published: rest.published }),
       ...(resolvedLogoUrl !== undefined && { logoUrl: resolvedLogoUrl }),
       ...(resolvedImageUrl !== undefined && { imageUrl: resolvedImageUrl }),
@@ -464,7 +493,7 @@ export class SeriesCoreService {
       ...(dto.endDate !== undefined && {
         endDate: dto.endDate ? new Date(dto.endDate) : null,
       }),
-      ...(scoringConfig && { scoringConfig: scoringConfig as any }),
+      ...(scoringConfig && { scoringConfig: scoringConfig }),
       version: { increment: 1 },
     };
 

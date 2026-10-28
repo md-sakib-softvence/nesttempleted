@@ -14,7 +14,9 @@ import { TournamentMatchesService } from './tournament-matches.service';
  * If no valid slot exists, transitions the match into CAPACITY_BLOCKED / ADMIN_ACTION_REQUIRED.
  */
 @Injectable()
-export class SelfScheduleWorkerService implements OnModuleInit, OnModuleDestroy {
+export class SelfScheduleWorkerService
+  implements OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger(SelfScheduleWorkerService.name);
   private timer: NodeJS.Timeout | null = null;
   private isProcessing = false;
@@ -24,7 +26,9 @@ export class SelfScheduleWorkerService implements OnModuleInit, OnModuleDestroy 
   ) {}
 
   onModuleInit() {
-    this.logger.log('Starting Self-Scheduling Phase 3 Auto-Assignment Worker...');
+    this.logger.log(
+      'Starting Self-Scheduling Phase 3 Auto-Assignment Worker...',
+    );
     // Initial run after 10 seconds, then repeat every 60 seconds
     setTimeout(() => {
       this.runCycle();

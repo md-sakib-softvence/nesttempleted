@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 import { TournamentStatus } from '@prisma/client';
 
 export class UpdateTournamentStatusDto {
@@ -8,7 +15,10 @@ export class UpdateTournamentStatusDto {
   @IsNotEmpty()
   status: TournamentStatus;
 
-  @ApiPropertyOptional({ description: 'Expected version for optimistic locking', example: 5 })
+  @ApiPropertyOptional({
+    description: 'Expected version for optimistic locking',
+    example: 5,
+  })
   @IsOptional()
   @IsInt()
   @Min(1)

@@ -1,4 +1,3 @@
-
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
@@ -33,17 +32,17 @@ export function mapTournamentFormat(val: any): TournamentFormat | undefined {
   const str = String(val).trim();
   const map: Record<string, TournamentFormat> = {
     'Single Elimination': TournamentFormat.SINGLE_ELIMINATION,
-    'SINGLE_ELIMINATION': TournamentFormat.SINGLE_ELIMINATION,
+    SINGLE_ELIMINATION: TournamentFormat.SINGLE_ELIMINATION,
     'Double Elimination': TournamentFormat.DOUBLE_ELIMINATION,
-    'DOUBLE_ELIMINATION': TournamentFormat.DOUBLE_ELIMINATION,
-    'League': TournamentFormat.LEAGUE,
-    'LEAGUE': TournamentFormat.LEAGUE,
+    DOUBLE_ELIMINATION: TournamentFormat.DOUBLE_ELIMINATION,
+    League: TournamentFormat.LEAGUE,
+    LEAGUE: TournamentFormat.LEAGUE,
     'League (Double)': TournamentFormat.LEAGUE_DOUBLE,
-    'LEAGUE_DOUBLE': TournamentFormat.LEAGUE_DOUBLE,
+    LEAGUE_DOUBLE: TournamentFormat.LEAGUE_DOUBLE,
     'League & Knockout': TournamentFormat.LEAGUE_AND_KNOCKOUT,
     'League & Knockout (Double)': TournamentFormat.LEAGUE_AND_KNOCKOUT_DOUBLE,
-    'LEAGUE_AND_KNOCKOUT': TournamentFormat.LEAGUE_AND_KNOCKOUT,
-    'LEAGUE_AND_KNOCKOUT_DOUBLE': TournamentFormat.LEAGUE_AND_KNOCKOUT_DOUBLE,
+    LEAGUE_AND_KNOCKOUT: TournamentFormat.LEAGUE_AND_KNOCKOUT,
+    LEAGUE_AND_KNOCKOUT_DOUBLE: TournamentFormat.LEAGUE_AND_KNOCKOUT_DOUBLE,
   };
   return map[str] || (TournamentFormat as any)[str];
 }
@@ -51,7 +50,8 @@ export function mapTournamentFormat(val: any): TournamentFormat | undefined {
 export function mapPrizeRule(val: any): PrizeRule | undefined {
   if (!val) return undefined;
   const upper = String(val).toUpperCase();
-  if (upper === 'FIXED' || upper === 'FIXED_AMOUNT') return PrizeRule.FIXED_AMOUNT;
+  if (upper === 'FIXED' || upper === 'FIXED_AMOUNT')
+    return PrizeRule.FIXED_AMOUNT;
   return PrizeRule.PERCENTAGE;
 }
 
@@ -89,7 +89,11 @@ export class CreateTournamentDto {
   @IsNotEmpty()
   name: string;
 
-  @ApiPropertyOptional({ description: 'Game Title', example: 'EAFC 25', default: 'EAFC 25' })
+  @ApiPropertyOptional({
+    description: 'Game Title',
+    example: 'EAFC 25',
+    default: 'EAFC 25',
+  })
   @Transform(({ value, obj }) => value || obj?.game || 'EAFC 25')
   @IsString()
   @IsOptional()
@@ -102,7 +106,8 @@ export class CreateTournamentDto {
 
   // Frontend canonical format string
   @ApiPropertyOptional({
-    description: 'Tournament format (Frontend Canonical: Single Elimination, League, etc.)',
+    description:
+      'Tournament format (Frontend Canonical: Single Elimination, League, etc.)',
     example: 'Single Elimination',
   })
   @IsOptional()
@@ -116,21 +121,37 @@ export class CreateTournamentDto {
     example: TournamentFormat.SINGLE_ELIMINATION,
   })
   @Transform(({ value, obj }) => {
-    return mapTournamentFormat(value) || mapTournamentFormat(obj?.format) || TournamentFormat.SINGLE_ELIMINATION;
+    return (
+      mapTournamentFormat(value) ||
+      mapTournamentFormat(obj?.format) ||
+      TournamentFormat.SINGLE_ELIMINATION
+    );
   })
   @IsEnum(TournamentFormat)
   @IsOptional()
   tournamentFormat?: TournamentFormat;
 
   // Frontend canonical teams capacity
-  @ApiPropertyOptional({ description: 'Number of teams (Frontend Canonical)', example: 16 })
+  @ApiPropertyOptional({
+    description: 'Number of teams (Frontend Canonical)',
+    example: 16,
+  })
   @IsOptional()
   teams?: number;
 
   // Backend Prisma numberOfTeams
-  @ApiPropertyOptional({ description: 'Number of teams (Prisma)', example: 16, default: 16 })
+  @ApiPropertyOptional({
+    description: 'Number of teams (Prisma)',
+    example: 16,
+    default: 16,
+  })
   @Transform(({ value, obj }) => {
-    const raw = value !== undefined && value !== '' ? value : (obj?.teams !== undefined ? obj.teams : 16);
+    const raw =
+      value !== undefined && value !== ''
+        ? value
+        : obj?.teams !== undefined
+          ? obj.teams
+          : 16;
     const n = Number(raw);
     return isNaN(n) || n < 2 ? 16 : n;
   })
@@ -140,7 +161,11 @@ export class CreateTournamentDto {
   @IsOptional()
   numberOfTeams?: number;
 
-  @ApiPropertyOptional({ description: 'Entry Fee amount', example: 50, default: 0 })
+  @ApiPropertyOptional({
+    description: 'Entry Fee amount',
+    example: 50,
+    default: 0,
+  })
   @Transform(({ value }) => {
     const n = Number(value);
     return isNaN(n) ? 0 : n;
@@ -162,14 +187,26 @@ export class CreateTournamentDto {
   currency?: Currency;
 
   // Frontend canonical paymentWindowHours
-  @ApiPropertyOptional({ description: 'Payment window in hours (Frontend Canonical)', example: 24 })
+  @ApiPropertyOptional({
+    description: 'Payment window in hours (Frontend Canonical)',
+    example: 24,
+  })
   @IsOptional()
   paymentWindowHours?: number;
 
   // Backend Prisma paymentWindow
-  @ApiPropertyOptional({ description: 'Payment window in hours (Prisma)', example: 24, default: 24 })
+  @ApiPropertyOptional({
+    description: 'Payment window in hours (Prisma)',
+    example: 24,
+    default: 24,
+  })
   @Transform(({ value, obj }) => {
-    const raw = value !== undefined && value !== '' ? value : (obj?.paymentWindowHours !== undefined ? obj.paymentWindowHours : 24);
+    const raw =
+      value !== undefined && value !== ''
+        ? value
+        : obj?.paymentWindowHours !== undefined
+          ? obj.paymentWindowHours
+          : 24;
     const n = Number(raw);
     return isNaN(n) || n < 1 ? 24 : n;
   })
@@ -181,12 +218,17 @@ export class CreateTournamentDto {
 
   // Frontend canonical prizePoolConfig
   @ApiPropertyOptional({
-    description: 'Prize pool config { type: "percentage" | "fixed", value: number }',
+    description:
+      'Prize pool config { type: "percentage" | "fixed", value: number }',
     example: { type: 'percentage', value: 70 },
   })
   @Transform(({ value }) => {
     if (typeof value === 'string') {
-      try { return JSON.parse(value); } catch {}
+      try {
+        return JSON.parse(value);
+      } catch {
+        /* ignore invalid JSON string */
+      }
     }
     return value;
   })
@@ -201,7 +243,8 @@ export class CreateTournamentDto {
   })
   @Transform(({ value, obj }) => {
     if (value) return mapPrizeRule(value);
-    if (obj?.prizePoolConfig?.type) return mapPrizeRule(obj.prizePoolConfig.type);
+    if (obj?.prizePoolConfig?.type)
+      return mapPrizeRule(obj.prizePoolConfig.type);
     return PrizeRule.PERCENTAGE;
   })
   @IsEnum(PrizeRule)
@@ -209,10 +252,15 @@ export class CreateTournamentDto {
   prizeRule?: PrizeRule;
 
   // Backend Prisma percentage
-  @ApiPropertyOptional({ description: 'Prize pool percentage', example: 70, default: 70 })
+  @ApiPropertyOptional({
+    description: 'Prize pool percentage',
+    example: 70,
+    default: 70,
+  })
   @Transform(({ value, obj }) => {
     if (value !== undefined && value !== '') return Number(value);
-    if (obj?.prizePoolConfig?.value !== undefined) return Number(obj.prizePoolConfig.value);
+    if (obj?.prizePoolConfig?.value !== undefined)
+      return Number(obj.prizePoolConfig.value);
     return 70;
   })
   @Type(() => Number)
@@ -222,15 +270,23 @@ export class CreateTournamentDto {
   percentage?: number;
 
   // Frontend canonical houseRakePercent
-  @ApiPropertyOptional({ description: 'House rake percentage (Frontend Canonical)', example: 30 })
+  @ApiPropertyOptional({
+    description: 'House rake percentage (Frontend Canonical)',
+    example: 30,
+  })
   @IsOptional()
   houseRakePercent?: number;
 
   // Backend Prisma houseRake
-  @ApiPropertyOptional({ description: 'House rake percentage (Prisma)', example: 30, default: 30 })
+  @ApiPropertyOptional({
+    description: 'House rake percentage (Prisma)',
+    example: 30,
+    default: 30,
+  })
   @Transform(({ value, obj }) => {
     if (value !== undefined && value !== '') return Number(value);
-    if (obj?.houseRakePercent !== undefined) return Number(obj.houseRakePercent);
+    if (obj?.houseRakePercent !== undefined)
+      return Number(obj.houseRakePercent);
     return 30;
   })
   @Type(() => Number)
@@ -299,7 +355,11 @@ export class CreateTournamentDto {
   })
   @Transform(({ value }) => {
     if (typeof value === 'string') {
-      try { return JSON.parse(value); } catch {}
+      try {
+        return JSON.parse(value);
+      } catch {
+        /* ignore invalid JSON string */
+      }
     }
     return value;
   })
@@ -319,7 +379,9 @@ export class CreateTournamentDto {
       return tomorrow.toISOString();
     }
     const date = new Date(raw);
-    return isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+    return isNaN(date.getTime())
+      ? new Date().toISOString()
+      : date.toISOString();
   })
   @IsDateString()
   @IsOptional()
@@ -338,7 +400,9 @@ export class CreateTournamentDto {
       return defaultDate.toISOString();
     }
     const date = new Date(raw);
-    return isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+    return isNaN(date.getTime())
+      ? new Date().toISOString()
+      : date.toISOString();
   })
   @IsDateString()
   @IsOptional()
@@ -353,14 +417,28 @@ export class CreateTournamentDto {
   deadlineDate?: string;
 
   // Frontend canonical maxCapacity
-  @ApiPropertyOptional({ description: 'Max Capacity (Frontend Canonical)', example: 16 })
+  @ApiPropertyOptional({
+    description: 'Max Capacity (Frontend Canonical)',
+    example: 16,
+  })
   @IsOptional()
   maxCapacity?: number;
 
   // Backend Prisma capacity
-  @ApiPropertyOptional({ description: 'Tournament Capacity (Prisma)', example: 16, default: 16 })
+  @ApiPropertyOptional({
+    description: 'Tournament Capacity (Prisma)',
+    example: 16,
+    default: 16,
+  })
   @Transform(({ value, obj }) => {
-    const raw = value !== undefined && value !== '' ? value : (obj?.maxCapacity !== undefined ? obj.maxCapacity : (obj?.teams !== undefined ? obj.teams : obj?.numberOfTeams));
+    const raw =
+      value !== undefined && value !== ''
+        ? value
+        : obj?.maxCapacity !== undefined
+          ? obj.maxCapacity
+          : obj?.teams !== undefined
+            ? obj.teams
+            : obj?.numberOfTeams;
     const n = Number(raw);
     return isNaN(n) || n < 1 ? 16 : n;
   })
@@ -370,21 +448,41 @@ export class CreateTournamentDto {
   @IsOptional()
   capacity?: number;
 
-  @ApiPropertyOptional({ description: 'Daily Start Time', example: '10:00', default: '10:00' })
-  @Transform(({ value, obj }) => value || obj?.scheduleSettings?.eventStartTime || '10:00')
+  @ApiPropertyOptional({
+    description: 'Daily Start Time',
+    example: '10:00',
+    default: '10:00',
+  })
+  @Transform(
+    ({ value, obj }) =>
+      value || obj?.scheduleSettings?.eventStartTime || '10:00',
+  )
   @IsString()
   @IsOptional()
   dailyStart?: string;
 
-  @ApiPropertyOptional({ description: 'Daily End Time', example: '19:00', default: '19:00' })
-  @Transform(({ value, obj }) => value || obj?.scheduleSettings?.eventEndTime || '19:00')
+  @ApiPropertyOptional({
+    description: 'Daily End Time',
+    example: '19:00',
+    default: '19:00',
+  })
+  @Transform(
+    ({ value, obj }) => value || obj?.scheduleSettings?.eventEndTime || '19:00',
+  )
   @IsString()
   @IsOptional()
   dailyEnd?: string;
 
-  @ApiPropertyOptional({ description: 'Match duration in minutes', example: 25, default: 25 })
+  @ApiPropertyOptional({
+    description: 'Match duration in minutes',
+    example: 25,
+    default: 25,
+  })
   @Transform(({ value, obj }) => {
-    const raw = value !== undefined && value !== '' ? value : obj?.scheduleSettings?.slotDuration;
+    const raw =
+      value !== undefined && value !== ''
+        ? value
+        : obj?.scheduleSettings?.slotDuration;
     const n = Number(raw);
     return isNaN(n) || n < 1 ? 25 : n;
   })
@@ -400,7 +498,10 @@ export class CreateTournamentDto {
     default: 5,
   })
   @Transform(({ value, obj }) => {
-    const raw = value !== undefined && value !== '' ? value : obj?.scheduleSettings?.turnoverDuration;
+    const raw =
+      value !== undefined && value !== ''
+        ? value
+        : obj?.scheduleSettings?.turnoverDuration;
     const n = Number(raw);
     return isNaN(n) || n < 0 ? 5 : n;
   })
@@ -411,7 +512,9 @@ export class CreateTournamentDto {
   turnoverDuration?: number;
 
   @ApiPropertyOptional({ description: 'Lunch break time', example: '13:00' })
-  @Transform(({ value, obj }) => value || obj?.scheduleSettings?.lunchBreakStartTime)
+  @Transform(
+    ({ value, obj }) => value || obj?.scheduleSettings?.lunchBreakStartTime,
+  )
   @IsString()
   @IsOptional()
   lunchBreakTime?: string;
@@ -421,7 +524,10 @@ export class CreateTournamentDto {
     example: 60,
   })
   @Transform(({ value, obj }) => {
-    const raw = value !== undefined && value !== '' ? value : obj?.scheduleSettings?.lunchBreakDuration;
+    const raw =
+      value !== undefined && value !== ''
+        ? value
+        : obj?.scheduleSettings?.lunchBreakDuration;
     return raw !== undefined && raw !== '' ? Number(raw) : undefined;
   })
   @Type(() => Number)
@@ -437,7 +543,11 @@ export class CreateTournamentDto {
   })
   @Transform(({ value }) => {
     if (typeof value === 'string') {
-      try { return JSON.parse(value); } catch {}
+      try {
+        return JSON.parse(value);
+      } catch {
+        /* ignore invalid JSON string */
+      }
     }
     return value;
   })
@@ -446,7 +556,10 @@ export class CreateTournamentDto {
 
   @ApiPropertyOptional({ description: 'Buffer days', example: 0, default: 0 })
   @Transform(({ value, obj }) => {
-    const raw = value !== undefined && value !== '' ? value : obj?.frequencySettings?.buffer;
+    const raw =
+      value !== undefined && value !== ''
+        ? value
+        : obj?.frequencySettings?.buffer;
     const n = Number(raw);
     return isNaN(n) || n < 0 ? 0 : n;
   })
@@ -475,7 +588,8 @@ export class CreateTournamentDto {
     default: [],
   })
   @Transform(({ value, obj }) => {
-    const raw = value !== undefined ? value : obj?.frequencySettings?.playingDays;
+    const raw =
+      value !== undefined ? value : obj?.frequencySettings?.playingDays;
     if (!raw) return [];
     if (typeof raw === 'string') {
       try {
@@ -519,7 +633,9 @@ export class CreateTournamentDto {
     if (obj?.isDraft === true) return TournamentStatus.DRAFT;
     if (value) {
       const upper = String(value).toUpperCase();
-      return (TournamentStatus as any)[upper] || TournamentStatus.REGISTRATION_OPEN;
+      return (
+        (TournamentStatus as any)[upper] || TournamentStatus.REGISTRATION_OPEN
+      );
     }
     return TournamentStatus.REGISTRATION_OPEN;
   })
@@ -527,7 +643,10 @@ export class CreateTournamentDto {
   @IsOptional()
   status?: TournamentStatus;
 
-  @ApiPropertyOptional({ description: 'Flag to save tournament as DRAFT', example: false })
+  @ApiPropertyOptional({
+    description: 'Flag to save tournament as DRAFT',
+    example: false,
+  })
   @IsOptional()
   isDraft?: boolean;
 
@@ -620,14 +739,21 @@ export class CreateTournamentDto {
     if (!value) return [];
     let parsed = value;
     if (typeof value === 'string') {
-      try { parsed = JSON.parse(value); } catch { return []; }
+      try {
+        parsed = JSON.parse(value);
+      } catch {
+        return [];
+      }
     }
     if (!Array.isArray(parsed)) parsed = [parsed];
     return parsed.map((item: any) => {
       if (typeof item === 'string') return item;
-      const screens = item.screens && Array.isArray(item.screens)
-        ? item.screens.map((s: any) => (typeof s === 'string' ? s : s.name || s.screenName || 'Screen'))
-        : [];
+      const screens =
+        item.screens && Array.isArray(item.screens)
+          ? item.screens.map((s: any) =>
+              typeof s === 'string' ? s : s.name || s.screenName || 'Screen',
+            )
+          : [];
       return {
         name: item.name || 'Venue',
         address: item.address || '',
@@ -636,7 +762,7 @@ export class CreateTournamentDto {
     });
   })
   @IsOptional()
-  venues?: CreateVenueDto[] | any;
+  venues?: CreateVenueDto[] | Record<string, any>[];
 
   @ApiPropertyOptional({
     description: 'Sponsors',
@@ -646,7 +772,11 @@ export class CreateTournamentDto {
     if (!value) return [];
     let parsed = value;
     if (typeof value === 'string') {
-      try { parsed = JSON.parse(value); } catch { return []; }
+      try {
+        parsed = JSON.parse(value);
+      } catch {
+        return [];
+      }
     }
     if (!Array.isArray(parsed)) parsed = [parsed];
     return parsed.map((item: any) => {
@@ -655,13 +785,19 @@ export class CreateTournamentDto {
         name: item.name || 'Sponsor',
         logo: item.logo || item.logoUrl,
         website: item.website,
-        value: item.value !== undefined ? Number(item.value) : (item.contractValue !== undefined ? Number(item.contractValue) : undefined),
-        priority: item.priority || (item.priorityOrder === 1 ? 'PRIMARY' : 'SECONDARY'),
+        value:
+          item.value !== undefined
+            ? Number(item.value)
+            : item.contractValue !== undefined
+              ? Number(item.contractValue)
+              : undefined,
+        priority:
+          item.priority || (item.priorityOrder === 1 ? 'PRIMARY' : 'SECONDARY'),
       };
     });
   })
   @IsOptional()
-  sponsors?: CreateSponsorDto[] | any;
+  sponsors?: CreateSponsorDto[] | Record<string, any>[];
 
   // Frontend canonical eventCosts
   @ApiPropertyOptional({ description: 'Event Costs (Frontend Canonical)' })
@@ -678,7 +814,11 @@ export class CreateTournamentDto {
     if (!raw) return [];
     let parsed = raw;
     if (typeof raw === 'string') {
-      try { parsed = JSON.parse(raw); } catch { return []; }
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return [];
+      }
     }
     if (!Array.isArray(parsed)) parsed = [parsed];
     return parsed.map((item: any) => {
@@ -690,7 +830,7 @@ export class CreateTournamentDto {
     });
   })
   @IsOptional()
-  manageEventCosts?: CreateManageEventCostDto[] | any;
+  manageEventCosts?: CreateManageEventCostDto[] | Record<string, any>[];
 
   // Frontend canonical prizePayouts
   @ApiPropertyOptional({ description: 'Prize payouts (Frontend Canonical)' })
@@ -707,7 +847,11 @@ export class CreateTournamentDto {
     if (!raw) return [];
     let parsed = raw;
     if (typeof raw === 'string') {
-      try { parsed = JSON.parse(raw); } catch { return []; }
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return [];
+      }
     }
     if (!Array.isArray(parsed)) parsed = [parsed];
     return parsed.map((item: any) => {
@@ -719,10 +863,11 @@ export class CreateTournamentDto {
     });
   })
   @IsOptional()
-  manageEventPrizes?: CreateManageEventPrizeDto[] | any;
+  manageEventPrizes?: CreateManageEventPrizeDto[] | Record<string, any>[];
 
   @ApiPropertyOptional({
-    description: 'List of participating player IDs or participants (JSON string or array)',
+    description:
+      'List of participating player IDs or participants (JSON string or array)',
     example: ['player-uuid-1', 'player-uuid-2'],
   })
   @Transform(({ value }) => {
@@ -755,7 +900,10 @@ export class CreateTournamentDto {
   @Transform(({ value, obj }) => {
     if (value !== undefined) return value === 'true' || value === true;
     if (obj?.scheduleSettings?.thirdPlacePlayoffEnabled !== undefined) {
-      return obj.scheduleSettings.thirdPlacePlayoffEnabled === true || obj.scheduleSettings.thirdPlacePlayoffEnabled === 'true';
+      return (
+        obj.scheduleSettings.thirdPlacePlayoffEnabled === true ||
+        obj.scheduleSettings.thirdPlacePlayoffEnabled === 'true'
+      );
     }
     return true;
   })
@@ -830,4 +978,3 @@ export class CreateTournamentDto {
   @IsOptional()
   groups?: any;
 }
-
