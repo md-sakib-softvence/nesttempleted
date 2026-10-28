@@ -2,6 +2,7 @@ import { PrismaClient, Role, Status, AdminRole } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import * as bcrypt from 'bcrypt';
+import { seedTournaments } from './tournament.seed';
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -32,6 +33,9 @@ async function main() {
   } else {
     console.log('Super admin already exists, skipping seed.');
   }
+
+  // Seed Tournaments
+  await seedTournaments(prisma);
 
   console.log('✅ Seeding complete!');
 }
