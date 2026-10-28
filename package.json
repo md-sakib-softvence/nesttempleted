@@ -104,6 +104,7 @@
     "testEnvironment": "node"
   },
   "prisma": {
+    "schema": "prisma/schema",
     "seed": "ts-node prisma/seeds/index.ts"
   }
 }

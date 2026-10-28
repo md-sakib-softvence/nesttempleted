@@ -1,7 +1,7 @@
 # ──────────────────────────────────────────
 # Stage 1: Builder
 # ──────────────────────────────────────────
-FROM node:20-bookworm AS builder
+FROM node:22-bookworm AS builder
 
 RUN apt-get -o Acquire::Check-Valid-Until=false update && apt-get install -y \
   python3 make g++ gcc postgresql-client \
@@ -13,6 +13,7 @@ WORKDIR /usr/src/app
 USER node
 
 COPY --chown=node:node package*.json ./
+COPY --chown=node:node prisma.config.ts ./
 COPY --chown=node:node prisma ./prisma
 
 RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
@@ -25,7 +26,7 @@ RUN npm run build
 # ──────────────────────────────────────────
 # Stage 2: Runtime (lean production image)
 # ──────────────────────────────────────────
-FROM node:20-bookworm AS runtime
+FROM node:22-bookworm AS runtime
 
 RUN apt-get -o Acquire::Check-Valid-Until=false update && apt-get install -y \
   postgresql-client \
