@@ -76,9 +76,11 @@ export class EmployeeService {
   }
 
   async updateEmployee(id: string, updateEmployeeDto: UpdateEmployeeDto) {
-    // 1. Check if the employee exists
-    const existingEmployee = await this.prisma.employee.findUnique({
-      where: { employeeId: id },
+    // 1. Check if the employee exists by employeeId or showEmployeeId
+    const existingEmployee = await this.prisma.employee.findFirst({
+      where: {
+        OR: [{ employeeId: id }, { showEmployeeId: id }],
+      },
     });
 
     if (!existingEmployee) {
@@ -177,7 +179,7 @@ export class EmployeeService {
 
     // 4. Perform the update
     return this.prisma.employee.update({
-      where: { employeeId: id },
+      where: { employeeId: existingEmployee.employeeId },
       data: {
         ...restData,
         ...(profileImage ? { profileImage } : {}),
@@ -193,8 +195,10 @@ export class EmployeeService {
       throw new NotFoundException('Employee ID is required');
     }
 
-    const employee = await this.prisma.employee.findUnique({
-      where: { employeeId: id },
+    const employee = await this.prisma.employee.findFirst({
+      where: {
+        OR: [{ employeeId: id }, { showEmployeeId: id }],
+      },
     });
 
     if (!employee || employee.isDeleted) {
@@ -232,8 +236,10 @@ export class EmployeeService {
       throw new NotFoundException('Employee ID is required');
     }
 
-    const employee = await this.prisma.employee.findUnique({
-      where: { employeeId: id },
+    const employee = await this.prisma.employee.findFirst({
+      where: {
+        OR: [{ employeeId: id }, { showEmployeeId: id }],
+      },
     });
 
     if (!employee || employee.isDeleted) {
@@ -406,8 +412,10 @@ export class EmployeeService {
   }
 
   async deleteEmployee(id: string) {
-    const employee = await this.prisma.employee.findUnique({
-      where: { employeeId: id },
+    const employee = await this.prisma.employee.findFirst({
+      where: {
+        OR: [{ employeeId: id }, { showEmployeeId: id }],
+      },
     });
 
     if (!employee || employee.isDeleted) {
@@ -415,7 +423,7 @@ export class EmployeeService {
     }
 
     return this.prisma.employee.update({
-      where: { employeeId: id },
+      where: { employeeId: employee.employeeId },
       data: {
         isDeleted: true,
       },

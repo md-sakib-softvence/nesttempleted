@@ -142,7 +142,6 @@ export class SeriesPublicationService {
                     status: true,
                     startDate: true,
                     numberOfTeams: true,
-                    schedule: true,
                   },
                 },
               },

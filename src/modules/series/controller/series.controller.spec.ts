@@ -58,7 +58,7 @@ describe('SeriesController (API & Success Message Contract Tests)', () => {
     const res = await controller.findOne('series-1');
     expect(res.success).toBe(true);
     expect(res.message).toBe('Series details retrieved successfully');
-    expect(res.data.id).toBe('series-1');
+    expect(res.data!.id).toBe('series-1');
   });
 
   it('create should return success: true and Series created successfully', async () => {

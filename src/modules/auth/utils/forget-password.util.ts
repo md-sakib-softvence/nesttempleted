@@ -28,6 +28,7 @@ export const forgetPasswordUtil = async (
       if (user) userRole = user.role;
       break;
     case 'security':
+    case 'security_guard':
     case 'employee':
     case 'manager':
     case 'ambassador':

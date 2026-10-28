@@ -157,6 +157,7 @@ export class EmployeeController {
   }
 
   @Patch(':id')
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, ...Object.values(EmployeeRole))
   @ApiOperation({ summary: 'Update Employee' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(

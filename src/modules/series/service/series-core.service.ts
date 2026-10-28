@@ -280,7 +280,6 @@ export class SeriesCoreService {
                 status: true,
                 startDate: true,
                 numberOfTeams: true,
-                schedule: true,
               },
             },
           },

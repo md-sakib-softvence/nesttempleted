@@ -146,6 +146,19 @@ export class TicketController {
     });
   }
 
+  @Get('recent-scans')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Get recent venue entrance scan logs across all security guards',
+  })
+  async getRecentScans() {
+    const data = await this.ticketService.getRecentScans(40);
+    return sendResponse({
+      message: 'Recent check-ins retrieved',
+      data,
+    });
+  }
+
   /**
    * 6. User's Purchased Tickets Wallet (Total Passes, Active Codes, and Registered Passes)
    */

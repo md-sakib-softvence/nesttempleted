@@ -39,6 +39,7 @@ export class AuthService {
         );
         break;
       case 'security':
+      case 'security_guard':
       case 'employee':
       case 'manager':
       case 'ambassador':
