@@ -27,17 +27,26 @@ export class CreatePlayerDto {
   @IsNotEmpty()
   phoneNumber: string;
 
-  @ApiPropertyOptional({ description: 'Gamer Tag / In-game Alias', example: 'PRO_SLAYER' })
+  @ApiPropertyOptional({
+    description: 'Gamer Tag / In-game Alias',
+    example: 'PRO_SLAYER',
+  })
   @IsString()
   @IsOptional()
   gamerTag?: string;
 
-  @ApiPropertyOptional({ description: 'Gamer Tag alias', example: 'PRO_SLAYER' })
+  @ApiPropertyOptional({
+    description: 'Gamer Tag alias',
+    example: 'PRO_SLAYER',
+  })
   @IsString()
   @IsOptional()
   gamertag?: string;
 
-  @ApiPropertyOptional({ description: 'Date of Birth (YYYY-MM-DD)', example: '1998-05-15' })
+  @ApiPropertyOptional({
+    description: 'Date of Birth (YYYY-MM-DD)',
+    example: '1998-05-15',
+  })
   @IsString()
   @IsOptional()
   dateOfBirth?: string;

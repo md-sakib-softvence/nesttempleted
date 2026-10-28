@@ -1,6 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 import {
   SeriesParticipantStatus,
   SeriesQualificationStatus,
@@ -9,13 +16,17 @@ import {
 export class QuerySeriesParticipantDto {
   @ApiPropertyOptional({ enum: SeriesParticipantStatus })
   @IsOptional()
-  @Transform(({ value }) => (!value || value === 'ALL' || value === 'all' ? undefined : value))
+  @Transform(({ value }) =>
+    !value || value === 'ALL' || value === 'all' ? undefined : value,
+  )
   @IsEnum(SeriesParticipantStatus)
   status?: SeriesParticipantStatus;
 
   @ApiPropertyOptional({ enum: SeriesQualificationStatus })
   @IsOptional()
-  @Transform(({ value }) => (!value || value === 'ALL' || value === 'all' ? undefined : value))
+  @Transform(({ value }) =>
+    !value || value === 'ALL' || value === 'all' ? undefined : value,
+  )
   @IsEnum(SeriesQualificationStatus)
   qualificationStatus?: SeriesQualificationStatus;
 

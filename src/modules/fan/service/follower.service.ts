@@ -15,7 +15,7 @@ import { getPreSignedUrl } from '../../utils/s3.util';
 
 @Injectable()
 export class FollowerService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Search Players and Fans by gamerTag (case-insensitive)
@@ -138,7 +138,6 @@ export class FollowerService {
       throw new UnauthorizedException('Authentication token required');
     }
 
-
     const roleStr = String(currentUser.role || '').toUpperCase();
     const isPlayer = roleStr.includes('PLAYER');
     const followerFanId = isPlayer ? null : currentUser.userId;
@@ -249,7 +248,14 @@ export class FollowerService {
               ...(targetPlayerId ? [{ targetPlayerId }] : []),
               ...(targetFanId ? [{ targetFanId }] : []),
               ...(gamerTag
-                ? [{ gamerTag: { equals: gamerTag, mode: 'insensitive' as const } }]
+                ? [
+                    {
+                      gamerTag: {
+                        equals: gamerTag,
+                        mode: 'insensitive' as const,
+                      },
+                    },
+                  ]
                 : []),
             ],
           },
@@ -648,9 +654,7 @@ export class FollowerService {
       .map((f) => f.targetPlayerId)
       .filter(Boolean) as string[];
 
-    const gamerTags = follows
-      .map((f) => f.gamerTag)
-      .filter(Boolean) as string[];
+    const gamerTags = follows.map((f) => f.gamerTag).filter(Boolean);
     if (gamerTags.length > 0) {
       const tagPlayers = await this.prisma.player.findMany({
         where: { gamerTag: { in: gamerTags } },
@@ -664,7 +668,9 @@ export class FollowerService {
     const tournaments = await this.prisma.tournament.findMany({
       where: {
         isDeleted: false,
-        status: { in: ['IN_PROGRESS', 'UPCOMING', 'REGISTRATION_OPEN', 'ACTIVE'] as any },
+        status: {
+          in: ['IN_PROGRESS', 'UPCOMING', 'REGISTRATION_OPEN', 'ACTIVE'] as any,
+        },
       },
       include: {
         venues: true,
@@ -677,7 +683,8 @@ export class FollowerService {
 
     for (const t of tournaments) {
       const schedule = (t.schedule as any) || {};
-      const matches: any[] = schedule.structure?.matches || schedule.matches || [];
+      const matches: any[] =
+        schedule.structure?.matches || schedule.matches || [];
       const venues = t.venues || [];
 
       for (const m of matches) {
@@ -707,7 +714,8 @@ export class FollowerService {
             },
             player2: {
               id: p2Id,
-              gamertag: m.player2Name || m.participant2Ref?.name || 'GAMERTAG83',
+              gamertag:
+                m.player2Name || m.participant2Ref?.name || 'GAMERTAG83',
               isFollowed: p2Followed,
             },
             venueName: m.venueName || venues[0]?.name || 'Main Arena',
@@ -721,5 +729,3 @@ export class FollowerService {
     return results;
   }
 }
-
-

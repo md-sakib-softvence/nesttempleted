@@ -1,5 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsDateString, IsEnum, IsInt, IsNotEmpty, IsOptional, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  Min,
+} from 'class-validator';
 import { RegistrationCutOffMode } from '@prisma/client';
 import { Transform, Type } from 'class-transformer';
 
@@ -13,7 +21,10 @@ export class OpenRegistrationDto {
   @IsNotEmpty()
   mode: RegistrationCutOffMode;
 
-  @ApiPropertyOptional({ description: 'Max Capacity of players/teams', example: 32 })
+  @ApiPropertyOptional({
+    description: 'Max Capacity of players/teams',
+    example: 32,
+  })
   @Type(() => Number)
   @IsInt()
   @Min(2)

@@ -226,10 +226,7 @@ export class EmployeeController {
     }
 
     if (uploadedFiles.qrCode.length > 0 || bodyQrCodes.length > 0) {
-      updateEmployeeDto.qrCode = [
-        ...bodyQrCodes,
-        ...uploadedFiles.qrCode,
-      ];
+      updateEmployeeDto.qrCode = [...bodyQrCodes, ...uploadedFiles.qrCode];
     } else {
       delete updateEmployeeDto.qrCode;
     }

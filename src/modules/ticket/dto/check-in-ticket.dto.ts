@@ -12,7 +12,8 @@ export class CheckInTicketDto {
   qrToken: string;
 
   @ApiPropertyOptional({
-    description: 'Current tournament ID of the venue/scanner (for mismatch validation)',
+    description:
+      'Current tournament ID of the venue/scanner (for mismatch validation)',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
   @IsString()

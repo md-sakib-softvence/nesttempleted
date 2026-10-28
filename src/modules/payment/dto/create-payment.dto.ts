@@ -30,7 +30,8 @@ export class CreatePaymentDto {
 
   @ApiPropertyOptional({
     example: 'XOF',
-    description: 'Currency code (e.g. XOF, NGN, USD, GHS, ZAR). Defaults to merchant currency if omitted.',
+    description:
+      'Currency code (e.g. XOF, NGN, USD, GHS, ZAR). Defaults to merchant currency if omitted.',
   })
   @IsString()
   @IsOptional()

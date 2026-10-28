@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { UpdateSeriesScoringConfigDto } from '../dto/update-scoring-config.dto';
 
@@ -15,7 +11,10 @@ export class SeriesLeaderboardService {
   /**
    * Authoritative series leaderboard from series points engine
    */
-  async getSeriesLeaderboard(seriesId: string) {
+  async getSeriesLeaderboard(
+    seriesId: string,
+    query?: { page?: number | string; limit?: number | string },
+  ) {
     const series = await this.prisma.series.findUnique({
       where: { id: seriesId },
     });
@@ -72,12 +71,31 @@ export class SeriesLeaderboardService {
       };
     });
 
+    const total = standings.length;
+    let paginatedStandings = standings;
+    let pagination: any = undefined;
+
+    if (query?.page !== undefined || query?.limit !== undefined) {
+      const page = Math.max(1, Number(query.page) || 1);
+      const limit = Math.max(1, Number(query.limit) || 20);
+      const skip = (page - 1) * limit;
+      paginatedStandings = standings.slice(skip, skip + limit);
+      pagination = {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      };
+    }
+
     return {
       seriesId: series.id,
       scoringMethod: series.scoringMethod,
       bestNResults: series.bestNResults,
       lastRecalculatedAt: series.updatedAt,
-      standings,
+      standings: paginatedStandings,
+      pagination,
+      meta: pagination,
     };
   }
 
@@ -182,8 +200,8 @@ export class SeriesLeaderboardService {
             m.participant2Ref?.displayName?.includes(reg.playerId);
 
           if (isP1 || isP2) {
-            const myScore = isP1 ? m.score1 ?? 0 : m.score2 ?? 0;
-            const oppScore = isP1 ? m.score2 ?? 0 : m.score1 ?? 0;
+            const myScore = isP1 ? (m.score1 ?? 0) : (m.score2 ?? 0);
+            const oppScore = isP1 ? (m.score2 ?? 0) : (m.score1 ?? 0);
             stats.goalsFor += myScore;
             stats.goalsAgainst += oppScore;
 
@@ -225,11 +243,10 @@ export class SeriesLeaderboardService {
       }
     }
 
-    const existingParticipants =
-      await this.prisma.seriesParticipant.findMany({
-        where: { seriesId },
-        include: { adjustments: true },
-      });
+    const existingParticipants = await this.prisma.seriesParticipant.findMany({
+      where: { seriesId },
+      include: { adjustments: true },
+    });
 
     const existingMap = new Map(
       existingParticipants.map((p) => [p.playerId, p]),

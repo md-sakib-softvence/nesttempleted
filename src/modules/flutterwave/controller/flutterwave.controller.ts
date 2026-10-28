@@ -35,7 +35,8 @@ export class FlutterwaveController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Payment session initialized. Returns hosted checkout link and txRef.',
+    description:
+      'Payment session initialized. Returns hosted checkout link and txRef.',
   })
   async initializePayment(@Body() dto: InitializePaymentDto) {
     const data = await this.flutterwaveService.initializePayment(dto);
@@ -63,7 +64,8 @@ export class FlutterwaveController {
   @Post()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Initialize a Flutterwave payment session (standard REST endpoint)',
+    summary:
+      'Initialize a Flutterwave payment session (standard REST endpoint)',
   })
   async createStandard(@Body() dto: InitializePaymentDto) {
     const data = await this.flutterwaveService.initializePayment(dto);
@@ -99,7 +101,8 @@ export class FlutterwaveController {
   @Public()
   @Get('verify-by-ref/:reference')
   @ApiOperation({
-    summary: 'Verify Flutterwave payment status by custom transaction reference (tx_ref)',
+    summary:
+      'Verify Flutterwave payment status by custom transaction reference (tx_ref)',
   })
   @ApiParam({
     name: 'reference',
@@ -112,7 +115,8 @@ export class FlutterwaveController {
     description: 'Payment verification status and details',
   })
   async verifyByRef(@Param('reference') reference: string) {
-    const data = await this.flutterwaveService.verifyTransactionByRef(reference);
+    const data =
+      await this.flutterwaveService.verifyTransactionByRef(reference);
     return sendResponse({
       message: 'Flutterwave payment verified successfully by reference',
       data,

@@ -53,7 +53,10 @@ export class FanFollowController {
   ) {
     const term = query || searchTerm || '';
     const currentUserId = req?.user?.userId;
-    const data = await this.followerService.searchGamertags(term, currentUserId);
+    const data = await this.followerService.searchGamertags(
+      term,
+      currentUserId,
+    );
     return sendResponse({
       message: 'Gamertags retrieved successfully',
       data,
@@ -143,9 +146,7 @@ export class FanFollowController {
     summary:
       'Get upcoming scheduled matches of followed pro players (Upcoming Followed Matches feed)',
   })
-  async getFollowedMatches(
-    @Req() req: Request & { user: { userId: string } },
-  ) {
+  async getFollowedMatches(@Req() req: Request & { user: { userId: string } }) {
     const data = await this.followerService.getFollowedUpcomingMatches(
       req.user.userId,
     );
@@ -193,4 +194,3 @@ export class FanFollowController {
     });
   }
 }
-

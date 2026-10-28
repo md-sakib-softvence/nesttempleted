@@ -143,7 +143,7 @@ export const uploadBase64ToS3 = async (
     return dataUrlOrKey;
   }
 
-  const matches = dataUrlOrKey.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+  const matches = dataUrlOrKey.match(/^data:([A-Za-z\-+/]+);base64,(.+)$/);
   if (!matches || matches.length !== 3) {
     return dataUrlOrKey;
   }
@@ -182,4 +182,3 @@ export const uploadBase64ToS3 = async (
   await s3Client.send(command);
   return uniqueFileName;
 };
-

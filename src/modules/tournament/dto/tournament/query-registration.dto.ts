@@ -28,7 +28,9 @@ export class QueryTournamentRegistrationDto {
   @IsString()
   paymentStatus?: string;
 
-  @ApiPropertyOptional({ description: 'Search player gamerTag, full name, or email' })
+  @ApiPropertyOptional({
+    description: 'Search player gamerTag, full name, or email',
+  })
   @IsOptional()
   @IsString()
   search?: string;

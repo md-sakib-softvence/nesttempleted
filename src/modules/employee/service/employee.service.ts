@@ -61,7 +61,7 @@ export class EmployeeService {
     const newEmployee = await this.prisma.employee.create({
       data: {
         ...rest,
-        qrCode: Array.isArray(qrCode) ? qrCode : (qrCode ? [qrCode] : []),
+        qrCode: Array.isArray(qrCode) ? qrCode : qrCode ? [qrCode] : [],
         password: hashedPassword,
         showEmployeeId,
         state: 'INACTIVE',
@@ -164,9 +164,7 @@ export class EmployeeService {
       for (const key of deletedKeys) {
         await deleteImageFromS3(key);
       }
-      finalQrCodes = finalQrCodes.filter(
-        (qr) => !deletedKeys.includes(qr),
-      );
+      finalQrCodes = finalQrCodes.filter((qr) => !deletedKeys.includes(qr));
     }
 
     // Append new QR codes

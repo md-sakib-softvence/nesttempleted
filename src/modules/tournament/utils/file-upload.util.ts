@@ -37,7 +37,8 @@ export async function uploadTournamentFiles(files: {
       s3PlayerOrgUrl = await uploadImageToS3(playerOrgFile);
     }
 
-    const prOrgFile = files?.prOrgUrl?.[0] || files?.secondaryOrganizerLogo?.[0];
+    const prOrgFile =
+      files?.prOrgUrl?.[0] || files?.secondaryOrganizerLogo?.[0];
     if (prOrgFile) {
       s3PrOrgUrl = await uploadImageToS3(prOrgFile);
     }

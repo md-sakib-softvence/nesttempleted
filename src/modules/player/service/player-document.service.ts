@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { UpdateDocumentStatusDto } from '../dto/update-document-status.dto';
 import { UpdatePlayerDto } from '../dto/update-player.dto';
@@ -23,7 +19,9 @@ export class PlayerDocumentService {
     if (urlOrKey.startsWith('http://') || urlOrKey.startsWith('https://')) {
       try {
         const url = new URL(urlOrKey);
-        return url.pathname.startsWith('/') ? url.pathname.substring(1) : url.pathname;
+        return url.pathname.startsWith('/')
+          ? url.pathname.substring(1)
+          : url.pathname;
       } catch {
         return urlOrKey;
       }
@@ -80,7 +78,9 @@ export class PlayerDocumentService {
     try {
       await deleteImageFromS3(this.extractKey(doc.url));
     } catch (err) {
-      this.logger.warn(`Failed to delete S3 file for document ${documentId}: ${err?.message}`);
+      this.logger.warn(
+        `Failed to delete S3 file for document ${documentId}: ${err?.message}`,
+      );
     }
 
     await this.prisma.playerDocument.delete({
@@ -165,10 +165,12 @@ export class PlayerDocumentService {
     // 3. Compute legacy document list
     let updatedLegacyDocumentList = existingPlayer.document || [];
     if (documentsToDeleteFromS3.length > 0) {
-      updatedLegacyDocumentList = updatedLegacyDocumentList.filter((doc: string) => {
-        const docKey = this.extractKey(doc);
-        return !documentsToDeleteFromS3.includes(docKey);
-      });
+      updatedLegacyDocumentList = updatedLegacyDocumentList.filter(
+        (doc: string) => {
+          const docKey = this.extractKey(doc);
+          return !documentsToDeleteFromS3.includes(docKey);
+        },
+      );
     }
     if (newDocumentKeys && newDocumentKeys.length > 0) {
       updatedLegacyDocumentList = [

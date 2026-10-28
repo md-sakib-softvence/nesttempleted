@@ -21,6 +21,16 @@ import { MatchNoShowDto } from '../dto/tournament/match-no-show.dto';
 import { ScoreCorrectionDto } from '../dto/tournament/score-correction.dto';
 import { CreateMatchDisputeDto } from '../dto/tournament/match-dispute.dto';
 import { UpdateMatchDisputeDto } from '../dto/tournament/update-dispute.dto';
+import { ProposeSlotDto } from '../dto/tournament/propose-slot.dto';
+import { SimulateSelfScheduleDto } from '../dto/tournament/simulate-self-schedule.dto';
+import { EmergencyAppealDto } from '../dto/tournament/emergency-appeal.dto';
+import {
+  MatchSchedulingPhase,
+  evaluateSelfSchedulingWindow,
+  findEarliestValidSlot,
+  isPeakTimeslot,
+  CandidateSlot,
+} from '../utils/self-schedule.util';
 import { SchedulingMode, Prisma, Role } from '@prisma/client';
 import { presignTournamentMedia } from '../utils/tournament-media.util';
 import { createActivities } from '../../utils/activity.util';
@@ -393,7 +403,14 @@ export class TournamentMatchesService {
       );
     }
 
-    // 2. Validate Player Ownership / Participation
+    // Atomic allocation check: prevent double-booking if opponent or worker already booked
+    if (targetMatch.date && targetMatch.time && targetMatch.venueId) {
+      throw new ConflictException(
+        'MATCH_ALREADY_ALLOCATED: This match has already been scheduled and allocated to a timeslot.',
+      );
+    }
+
+    // 2. Validate Player Ownership / Participation & Escalation Phase
     if (isPlayer) {
       const isParticipant =
         targetMatch.player1Id === currentUser.userId ||
@@ -402,6 +419,16 @@ export class TournamentMatchesService {
       if (!isParticipant) {
         throw new ForbiddenException(
           'You are not an authorized competitor in this match.',
+        );
+      }
+
+      // Phase 3 deadline check (96+ hours)
+      const windowState = evaluateSelfSchedulingWindow(
+        targetMatch.selfSchedulingOpenedAt || tournament.startDate,
+      );
+      if (windowState.phase === 3 && !targetMatch.emergencyTokenUsed) {
+        throw new ForbiddenException(
+          'The 96-hour self-scheduling deadline has expired. This match is closed for manual booking and queued for system auto-assignment.',
         );
       }
 
@@ -468,9 +495,19 @@ export class TournamentMatchesService {
         dto.time,
       );
 
+    // Clear proposal slot if booked
+    if (match) {
+      match.proposedSlot = undefined;
+      match.schedulingPhase = MatchSchedulingPhase.SCHEDULED;
+      match.status = 'SCHEDULED';
+    }
+
     await this.prisma.tournament.update({
       where: { tournamentId: tournament.tournamentId },
-      data: { schedule: updatedSchedule as any },
+      data: {
+        schedule: updatedSchedule as any,
+        version: { increment: 1 },
+      },
     });
 
     await createActivities(
@@ -569,6 +606,8 @@ export class TournamentMatchesService {
       venueId?: string;
       date?: string;
       isAllocated?: string | boolean;
+      page?: number | string;
+      limit?: number | string;
     },
   ) {
     const tournament = await this.prisma.tournament.findUnique({
@@ -604,10 +643,29 @@ export class TournamentMatchesService {
       }
     }
 
+    const totalMatches = matches.length;
+    let paginatedMatches = matches;
+    let meta: any = undefined;
+
+    if (filter?.page !== undefined || filter?.limit !== undefined) {
+      const page = Math.max(1, Number(filter?.page) || 1);
+      const limit = Math.max(1, Number(filter?.limit) || 50);
+      const skip = (page - 1) * limit;
+      paginatedMatches = matches.slice(skip, skip + limit);
+      meta = {
+        total: totalMatches,
+        page,
+        limit,
+        totalPages: Math.ceil(totalMatches / limit),
+      };
+    }
+
     return {
       tournamentId: id,
       summary,
-      matches,
+      matches: paginatedMatches,
+      pagination: meta,
+      meta,
     };
   }
 
@@ -675,8 +733,7 @@ export class TournamentMatchesService {
       capacity.totalMatches ||
       tournament.numberOfTeams ||
       0;
-    const conditional =
-      schedule?.structure?.summary?.conditionalMatches || 0;
+    const conditional = schedule?.structure?.summary?.conditionalMatches || 0;
     const maximum =
       schedule?.structure?.summary?.maximumPossibleMatches ||
       guaranteed + conditional;
@@ -854,14 +911,17 @@ export class TournamentMatchesService {
     }
 
     const schedule = (tournament.schedule as any) || {};
-    const matches: any[] = schedule.structure?.matches || schedule.matches || [];
+    const matches: any[] =
+      schedule.structure?.matches || schedule.matches || [];
 
     const matchIndex = matches.findIndex(
       (m: any) => m.id === matchId || m.canonicalMatchId === matchId,
     );
 
     if (matchIndex === -1) {
-      throw new NotFoundException(`Match #${matchId} not found in tournament schedule`);
+      throw new NotFoundException(
+        `Match #${matchId} not found in tournament schedule`,
+      );
     }
 
     const match = matches[matchIndex];
@@ -884,15 +944,46 @@ export class TournamentMatchesService {
             ? match.participant1Ref
             : null;
 
+      const winnerPlayerId =
+        match.score1 > match.score2 ? match.player1Id : match.player2Id;
+      const winnerPlayerName =
+        match.score1 > match.score2 ? match.player1Name : match.player2Name;
+      const loserPlayerId =
+        match.score1 > match.score2 ? match.player2Id : match.player1Id;
+      const loserPlayerName =
+        match.score1 > match.score2 ? match.player2Name : match.player1Name;
+
       if (winner && match.nextMatchWinnerTargetId) {
         const nextWinnerMatch = matches.find(
           (m: any) => m.id === match.nextMatchWinnerTargetId,
         );
         if (nextWinnerMatch) {
-          if (!nextWinnerMatch.participant1Ref || nextWinnerMatch.participant1Ref.sourceMatchId === match.id) {
+          if (
+            !nextWinnerMatch.participant1Ref ||
+            nextWinnerMatch.participant1Ref.value === match.id ||
+            nextWinnerMatch.participant1Ref.sourceMatchId === match.id
+          ) {
             nextWinnerMatch.participant1Ref = winner;
-          } else if (!nextWinnerMatch.participant2Ref || nextWinnerMatch.participant2Ref.sourceMatchId === match.id) {
+            nextWinnerMatch.player1Id = winnerPlayerId;
+            nextWinnerMatch.player1Name = winnerPlayerName;
+          } else if (
+            !nextWinnerMatch.participant2Ref ||
+            nextWinnerMatch.participant2Ref.value === match.id ||
+            nextWinnerMatch.participant2Ref.sourceMatchId === match.id
+          ) {
             nextWinnerMatch.participant2Ref = winner;
+            nextWinnerMatch.player2Id = winnerPlayerId;
+            nextWinnerMatch.player2Name = winnerPlayerName;
+          }
+
+          if (
+            nextWinnerMatch.player1Id &&
+            nextWinnerMatch.player2Id &&
+            !nextWinnerMatch.player1Id.startsWith('TBD') &&
+            !nextWinnerMatch.player2Id.startsWith('TBD') &&
+            !nextWinnerMatch.selfSchedulingOpenedAt
+          ) {
+            nextWinnerMatch.selfSchedulingOpenedAt = new Date().toISOString();
           }
         }
       }
@@ -902,29 +993,63 @@ export class TournamentMatchesService {
           (m: any) => m.id === match.nextMatchLoserTargetId,
         );
         if (nextLoserMatch) {
-          if (!nextLoserMatch.participant1Ref || nextLoserMatch.participant1Ref.sourceMatchId === match.id) {
+          if (
+            !nextLoserMatch.participant1Ref ||
+            nextLoserMatch.participant1Ref.value === match.id ||
+            nextLoserMatch.participant1Ref.sourceMatchId === match.id
+          ) {
             nextLoserMatch.participant1Ref = loser;
-          } else if (!nextLoserMatch.participant2Ref || nextLoserMatch.participant2Ref.sourceMatchId === match.id) {
+            nextLoserMatch.player1Id = loserPlayerId;
+            nextLoserMatch.player1Name = loserPlayerName;
+          } else if (
+            !nextLoserMatch.participant2Ref ||
+            nextLoserMatch.participant2Ref.value === match.id ||
+            nextLoserMatch.participant2Ref.sourceMatchId === match.id
+          ) {
             nextLoserMatch.participant2Ref = loser;
+            nextLoserMatch.player2Id = loserPlayerId;
+            nextLoserMatch.player2Name = loserPlayerName;
+          }
+
+          if (
+            nextLoserMatch.player1Id &&
+            nextLoserMatch.player2Id &&
+            !nextLoserMatch.player1Id.startsWith('TBD') &&
+            !nextLoserMatch.player2Id.startsWith('TBD') &&
+            !nextLoserMatch.selfSchedulingOpenedAt
+          ) {
+            nextLoserMatch.selfSchedulingOpenedAt = new Date().toISOString();
           }
         }
       }
 
       for (const m of matches) {
-        if (m.conditionType === 'GRAND_FINAL_RESET' && m.conditionMatchId === match.id) {
-          const activated = match.status === 'COMPLETED' && match.score2 > match.score1;
+        if (
+          m.conditionType === 'GRAND_FINAL_RESET' &&
+          m.conditionMatchId === match.id
+        ) {
+          const activated =
+            match.status === 'COMPLETED' && match.score2 > match.score1;
           m.isSchedulable = activated;
+          if (activated && !m.selfSchedulingOpenedAt) {
+            m.selfSchedulingOpenedAt = new Date().toISOString();
+          }
         }
       }
     }
 
-    const venueList = schedule.calendar?.venues || schedule.venueSchedules || [];
+    const venueList =
+      schedule.calendar?.venues || schedule.venueSchedules || [];
     if (Array.isArray(venueList)) {
       for (const venue of venueList) {
         for (const screen of venue.screens || []) {
           for (const day of screen.days || []) {
             for (const slot of day.timeslots || []) {
-              if (slot.game && (slot.game.id === matchId || slot.game.canonicalMatchId === matchId)) {
+              if (
+                slot.game &&
+                (slot.game.id === matchId ||
+                  slot.game.canonicalMatchId === matchId)
+              ) {
                 slot.game.score1 = match.score1;
                 slot.game.score2 = match.score2;
                 slot.game.status = match.status;
@@ -944,7 +1069,7 @@ export class TournamentMatchesService {
 
     await this.prisma.tournament.update({
       where: { tournamentId },
-      data: { schedule: schedule as any },
+      data: { schedule: schedule },
     });
 
     return match;
@@ -966,7 +1091,8 @@ export class TournamentMatchesService {
     }
 
     const schedule = (tournament.schedule as any) || {};
-    const matches: any[] = schedule.structure?.matches || schedule.matches || [];
+    const matches: any[] =
+      schedule.structure?.matches || schedule.matches || [];
     const match = matches.find(
       (m: any) => m.id === matchId || m.canonicalMatchId === matchId,
     );
@@ -1061,7 +1187,7 @@ export class TournamentMatchesService {
       });
     }
 
-    const schedule = (foundTourn.schedule as any) || {};
+    const schedule = foundTourn.schedule || {};
     const matches: any[] = schedule.matches || [];
 
     if (foundMatch.nextMatchWinnerTargetId) {
@@ -1179,7 +1305,7 @@ export class TournamentMatchesService {
     await this.prisma.tournament.update({
       where: { tournamentId: foundTourn.tournamentId },
       data: {
-        schedule: foundTourn.schedule as any,
+        schedule: foundTourn.schedule,
       },
     });
 
@@ -1254,7 +1380,10 @@ export class TournamentMatchesService {
   /**
    * Reconcile schedule capacity metrics
    */
-  async reconcileScheduleCapacity(tournamentId: string, expectedVersion?: number) {
+  async reconcileScheduleCapacity(
+    tournamentId: string,
+    expectedVersion?: number,
+  ) {
     const tournament = await this.prisma.tournament.findUnique({
       where: { tournamentId },
     });
@@ -1278,6 +1407,794 @@ export class TournamentMatchesService {
       playingDaysAdded: 1,
       guaranteedDeficitBefore: 0,
       guaranteedDeficitAfter: 0,
+    };
+  }
+
+  /**
+   * =========================================================================
+   * PLAYER SELF-SCHEDULING & CALENDAR MODULE SERVICES (v1.2 Engine Contract)
+   * =========================================================================
+   */
+
+  /**
+   * 1. Get Player Match Calendar (Upcoming Booked Matches & Completed Match History)
+   */
+  async getPlayerScheduleCalendar(
+    playerId: string,
+    optionalTournamentId?: string,
+  ) {
+    const whereClause: any = {
+      isDeleted: false,
+    };
+    if (optionalTournamentId) {
+      whereClause.tournamentId = optionalTournamentId;
+    }
+
+    const tournaments = await this.prisma.tournament.findMany({
+      where: whereClause,
+      include: {
+        venues: { include: { screens: true } },
+        registrations: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const upcomingMatches: any[] = [];
+    const completedMatches: any[] = [];
+    let pendingCount = 0;
+
+    const opponentIds = new Set<string>();
+
+    for (const t of tournaments) {
+      const schedule = t.schedule as any as TournamentSchedulePayload;
+      if (!schedule || !schedule.structure?.matches) continue;
+
+      const matches = schedule.structure.matches;
+      for (const m of matches) {
+        if (m.player1Id === playerId || m.player2Id === playerId) {
+          const oppId = m.player1Id === playerId ? m.player2Id : m.player1Id;
+          if (oppId && !oppId.startsWith('TBD') && !oppId.startsWith('BYE')) {
+            opponentIds.add(oppId);
+          }
+
+          const isAllocated = !!(m.date && m.time && m.venueId);
+
+          if (m.status === 'COMPLETED') {
+            completedMatches.push({
+              tournamentId: t.tournamentId,
+              tournamentName: t.name,
+              match: m,
+              allocation: isAllocated
+                ? {
+                    venueId: m.venueId,
+                    venueName: m.venueName,
+                    screenId: m.screenId,
+                    screenName: m.screenName,
+                    date: m.date,
+                    time: m.time,
+                  }
+                : null,
+            });
+          } else if (isAllocated) {
+            upcomingMatches.push({
+              tournamentId: t.tournamentId,
+              tournamentName: t.name,
+              match: m,
+              date: m.date,
+              time: m.time,
+              venueName: m.venueName,
+              screenName: m.screenName,
+              status: m.status,
+            });
+          } else if (m.isSchedulable !== false && !m.isAutoAdvance) {
+            pendingCount++;
+          }
+        }
+      }
+    }
+
+    const opponentPlayers = await this.prisma.player.findMany({
+      where: { playerId: { in: Array.from(opponentIds) } },
+    });
+    const opponentMap: Record<string, string> = {};
+    for (const p of opponentPlayers) {
+      opponentMap[p.playerId] =
+        `${p.firstName || ''} ${p.lastName || ''}`.trim() ||
+        p.gamerTag ||
+        p.username ||
+        'Opponent';
+    }
+
+    return {
+      upcomingMatches: upcomingMatches.map((item) => {
+        const oppId =
+          item.match.player1Id === playerId
+            ? item.match.player2Id
+            : item.match.player1Id;
+        return {
+          ...item,
+          opponentName: opponentMap[oppId] || 'Opponent Competitor',
+          opponentId: oppId,
+        };
+      }),
+      completedMatches: completedMatches.map((item) => {
+        const oppId =
+          item.match.player1Id === playerId
+            ? item.match.player2Id
+            : item.match.player1Id;
+        return {
+          ...item,
+          opponentName: opponentMap[oppId] || 'Opponent Competitor',
+          opponentId: oppId,
+        };
+      }),
+      pendingCount,
+      opponentNameMap: opponentMap,
+    };
+  }
+
+  /**
+   * 2. Get Match Showdown Details (Match Rules, Competitor Profiles, Venue Details)
+   */
+  async getMatchShowdownDetails(
+    matchId: string,
+    optionalTournamentId?: string,
+  ) {
+    const tournament = await this.resolveTournamentForMatch(
+      optionalTournamentId,
+      matchId,
+    );
+    const schedule = tournament.schedule as any as TournamentSchedulePayload;
+    if (!schedule?.structure?.matches) {
+      throw new NotFoundException('Match not found');
+    }
+    const match = schedule.structure.matches.find(
+      (m: any) => m.id === matchId || m.canonicalMatchId === matchId,
+    );
+    if (!match) {
+      throw new NotFoundException(`Match #${matchId} not found`);
+    }
+
+    const p1 = match.player1Id
+      ? await this.prisma.player.findUnique({
+          where: { playerId: match.player1Id },
+        })
+      : null;
+    const p2 = match.player2Id
+      ? await this.prisma.player.findUnique({
+          where: { playerId: match.player2Id },
+        })
+      : null;
+
+    const registrations = await this.prisma.tournamentRegistration.findMany({
+      where: { tournamentId: tournament.tournamentId },
+    });
+    const reg1 = match.player1Id
+      ? registrations.find((r: any) => r.playerId === match.player1Id)
+      : null;
+    const reg2 = match.player2Id
+      ? registrations.find((r: any) => r.playerId === match.player2Id)
+      : null;
+
+    return {
+      match,
+      tournament: {
+        id: tournament.tournamentId,
+        name: tournament.name,
+        gameTitle: tournament.gameTitle,
+        rules: tournament.rules,
+        tsAndTc: tournament.tsAndTc,
+        status: tournament.status,
+      },
+      player1: p1
+        ? {
+            id: p1.playerId,
+            name:
+              `${p1.firstName || ''} ${p1.lastName || ''}`.trim() ||
+              p1.gamerTag ||
+              p1.username,
+            gamerTag: p1.gamerTag,
+            profilePicture: p1.profilePicture,
+            jerseySize: reg1?.jerseySize,
+            primaryTeam: reg1?.primaryTeamId,
+          }
+        : null,
+      player2: p2
+        ? {
+            id: p2.playerId,
+            name:
+              `${p2.firstName || ''} ${p2.lastName || ''}`.trim() ||
+              p2.gamerTag ||
+              p2.username,
+            gamerTag: p2.gamerTag,
+            profilePicture: p2.profilePicture,
+            jerseySize: reg2?.jerseySize,
+            primaryTeam: reg2?.primaryTeamId,
+          }
+        : null,
+      venueName: match.venueName || 'Awaiting physical scheduling',
+      screenName: match.screenName || '',
+      date: match.date || '',
+      time: match.time || '',
+    };
+  }
+
+  /**
+   * 3. Get Pending Matches to Book for Player (Reservation Scheduler Step 1)
+   */
+  async getPlayerPendingSelfScheduleMatches(
+    tournamentId: string,
+    playerId: string,
+  ) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+      include: { venues: { include: { screens: true } } },
+    });
+    if (!tournament || tournament.isDeleted) {
+      throw new NotFoundException('Tournament not found');
+    }
+
+    const schedule = tournament.schedule as any as TournamentSchedulePayload;
+    if (!schedule?.structure?.matches) {
+      return { tournamentName: tournament.name, pendingMatches: [] };
+    }
+
+    const matches = schedule.structure.matches;
+    const pending = matches.filter((m: any) => {
+      const isParticipant =
+        m.player1Id === playerId || m.player2Id === playerId;
+      const isUnallocated = !m.date || !m.time || !m.venueId;
+      const isPlayable =
+        !m.isAutoAdvance &&
+        m.status !== 'COMPLETED' &&
+        m.status !== 'CANCELLED';
+      return isParticipant && isUnallocated && isPlayable;
+    });
+
+    const opponentIds = pending
+      .map((m: any) => (m.player1Id === playerId ? m.player2Id : m.player1Id))
+      .filter(Boolean);
+    const opponents = await this.prisma.player.findMany({
+      where: { playerId: { in: opponentIds } },
+    });
+    const oppMap = new Map<string, any>(opponents.map((o) => [o.playerId, o]));
+
+    const now = new Date();
+
+    const pendingMatches = pending.map((m: any) => {
+      const isHome = m.player1Id === playerId;
+      const oppId = isHome ? m.player2Id : m.player1Id;
+      const opp = oppMap.get(oppId);
+
+      const openedAt = m.selfSchedulingOpenedAt || tournament.startDate;
+      const windowState = evaluateSelfSchedulingWindow(openedAt, now);
+
+      return {
+        id: m.id,
+        round: m.round,
+        bracketSection: m.bracketSection,
+        isHome,
+        opponent: {
+          id: oppId,
+          name: opp
+            ? `${opp.firstName || ''} ${opp.lastName || ''}`.trim() ||
+              opp.gamerTag ||
+              opp.username
+            : 'Opponent Competitor',
+          gamerTag: opp?.gamerTag,
+          profilePicture: opp?.profilePicture,
+        },
+        openedAt,
+        phase: windowState.phase,
+        phaseStatus: m.schedulingPhase || windowState.phaseStatus,
+        timeRemainingMs: windowState.timeRemainingMs,
+        timeRemainingFormatted: windowState.timeRemainingFormatted,
+        isAutoAssignmentDue: windowState.isAutoAssignmentDue,
+        canPlayerSelectSlot:
+          windowState.canPlayerSelectSlot || !!m.emergencyTokenUsed,
+        proposedSlot: m.proposedSlot || null,
+        emergencyTokenUsed: !!m.emergencyTokenUsed,
+        schedulingExceptionReason: m.schedulingExceptionReason || null,
+      };
+    });
+
+    return {
+      tournamentId: tournament.tournamentId,
+      tournamentName: tournament.name,
+      pendingMatches,
+    };
+  }
+
+  /**
+   * 4. Get Available Timeslots Matrix for Target Match (Reservation Scheduler Step 3)
+   */
+  async getAvailableSlotsForMatch(
+    tournamentId: string,
+    matchId: string,
+    playerId: string,
+    userRole?: string,
+  ) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+      include: { venues: { include: { screens: true } } },
+    });
+    if (!tournament || tournament.isDeleted) {
+      throw new NotFoundException('Tournament not found');
+    }
+
+    const schedule = tournament.schedule as any as TournamentSchedulePayload;
+    if (!schedule?.calendar) {
+      throw new BadRequestException('Schedule calendar is not generated yet');
+    }
+
+    const targetMatch = (schedule.structure?.matches || []).find(
+      (m: any) => m.id === matchId || m.canonicalMatchId === matchId,
+    );
+    if (!targetMatch) {
+      throw new NotFoundException(`Match #${matchId} not found`);
+    }
+
+    if (
+      userRole &&
+      (userRole === Role.PLAYER ||
+        userRole === 'player' ||
+        userRole === 'PLAYER') &&
+      playerId &&
+      targetMatch.player1Id !== playerId &&
+      targetMatch.player2Id !== playerId
+    ) {
+      throw new ForbiddenException(
+        'You are not an authorized participant in this match.',
+      );
+    }
+
+    const windowState = evaluateSelfSchedulingWindow(
+      targetMatch.selfSchedulingOpenedAt || tournament.startDate,
+    );
+
+    const groupedByDate: Record<string, any> = {};
+
+    for (const v of schedule.calendar) {
+      for (const s of v.screens) {
+        for (const d of s.days) {
+          if (!groupedByDate[d.date]) {
+            groupedByDate[d.date] = {
+              date: d.date,
+              venues: {},
+            };
+          }
+
+          if (!groupedByDate[d.date].venues[v.venueId]) {
+            groupedByDate[d.date].venues[v.venueId] = {
+              id: v.venueId,
+              name: v.venueName,
+              screens: {},
+            };
+          }
+
+          if (!groupedByDate[d.date].venues[v.venueId].screens[s.screenId]) {
+            groupedByDate[d.date].venues[v.venueId].screens[s.screenId] = {
+              id: s.screenId,
+              name: s.screenName,
+              timeslots: [],
+            };
+          }
+
+          for (const slot of d.timeslots) {
+            const isBooked =
+              !!slot.canonicalMatchId && slot.canonicalMatchId !== matchId;
+            const isPeak = isPeakTimeslot(slot.time);
+
+            // Check player overlap conflict across the tournament calendar
+            let isPlayerConflict = false;
+            if (targetMatch.player1Id || targetMatch.player2Id) {
+              for (const checkV of schedule.calendar) {
+                for (const checkS of checkV.screens) {
+                  const checkDay = checkS.days.find(
+                    (cd: any) => cd.date === d.date,
+                  );
+                  if (checkDay) {
+                    const checkSlot = checkDay.timeslots.find(
+                      (cs: any) =>
+                        cs.time === slot.time &&
+                        cs.canonicalMatchId &&
+                        cs.canonicalMatchId !== matchId,
+                    );
+                    if (checkSlot?.game) {
+                      const g = checkSlot.game;
+                      if (
+                        (targetMatch.player1Id &&
+                          (g.player1Id === targetMatch.player1Id ||
+                            g.player2Id === targetMatch.player1Id)) ||
+                        (targetMatch.player2Id &&
+                          (g.player1Id === targetMatch.player2Id ||
+                            g.player2Id === targetMatch.player2Id))
+                      ) {
+                        isPlayerConflict = true;
+                        break;
+                      }
+                    }
+                  }
+                }
+                if (isPlayerConflict) break;
+              }
+            }
+
+            const proposal = targetMatch.proposedSlot;
+            const isCastedSlot =
+              proposal &&
+              proposal.venueId === v.venueId &&
+              proposal.screenId === s.screenId &&
+              proposal.date === d.date &&
+              proposal.time === slot.time;
+
+            let badge = '';
+            let isDisabled = isBooked || isPlayerConflict;
+
+            if (isBooked) {
+              badge = 'BOOKED';
+            } else if (isPlayerConflict) {
+              badge = 'CONFLICT';
+            } else if (isCastedSlot) {
+              badge = 'CASTED';
+            } else if (isPeak) {
+              badge = 'PEAK';
+            }
+
+            // Phase 3 disables player booking unless emergency token is used
+            if (windowState.phase === 3 && !targetMatch.emergencyTokenUsed) {
+              isDisabled = true;
+            }
+
+            groupedByDate[d.date].venues[v.venueId].screens[
+              s.screenId
+            ].timeslots.push({
+              time: slot.time,
+              isBooked,
+              isPlayerConflict,
+              isPeakSlot: isPeak,
+              isCastedSlot: !!isCastedSlot,
+              isDisabled,
+              badge,
+            });
+          }
+        }
+      }
+    }
+
+    const scheduleByDate = Object.values(groupedByDate)
+      .sort(
+        (a: any, b: any) =>
+          new Date(a.date).getTime() - new Date(b.date).getTime(),
+      )
+      .map((dg: any) => ({
+        date: dg.date,
+        venues: Object.values(dg.venues).map((vg: any) => ({
+          id: vg.id,
+          name: vg.name,
+          screens: Object.values(vg.screens).map((sg: any) => ({
+            id: sg.id,
+            name: sg.name,
+            timeslots: sg.timeslots.sort((a: any, b: any) =>
+              a.time.localeCompare(b.time),
+            ),
+          })),
+        })),
+      }));
+
+    return {
+      tournamentId,
+      matchId,
+      phase: windowState.phase,
+      phaseStatus: targetMatch.schedulingPhase || windowState.phaseStatus,
+      timeRemainingFormatted: windowState.timeRemainingFormatted,
+      proposedSlot: targetMatch.proposedSlot || null,
+      scheduleByDate,
+    };
+  }
+
+  /**
+   * 5. Propose / Cast a Timeslot for Match Coordination (Home or Away proposal)
+   */
+  async proposeSlot(
+    tournamentId: string,
+    matchId: string,
+    playerId: string,
+    dto: ProposeSlotDto,
+  ) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+    });
+    if (!tournament) throw new NotFoundException('Tournament not found');
+
+    const schedule = tournament.schedule as any as TournamentSchedulePayload;
+    if (!schedule?.structure?.matches) {
+      throw new BadRequestException('Schedule not generated');
+    }
+
+    const match = schedule.structure.matches.find(
+      (m: any) => m.id === matchId || m.canonicalMatchId === matchId,
+    );
+    if (!match) throw new NotFoundException(`Match #${matchId} not found`);
+
+    if (match.player1Id !== playerId && match.player2Id !== playerId) {
+      throw new ForbiddenException('You are not a participant in this match');
+    }
+
+    const venue = (schedule.calendar || []).find(
+      (v: any) => v.venueId === dto.venueId,
+    );
+    const screen = venue?.screens?.find(
+      (s: any) => s.screenId === dto.screenId,
+    );
+
+    const player = await this.prisma.player.findUnique({ where: { playerId } });
+    const playerName = player
+      ? `${player.firstName || ''} ${player.lastName || ''}`.trim() ||
+        player.gamerTag ||
+        player.username
+      : 'Competitor';
+
+    match.proposedSlot = {
+      venueId: dto.venueId,
+      venueName: venue?.venueName || 'Venue',
+      screenId: dto.screenId,
+      screenName: screen?.screenName || 'Screen',
+      date: dto.date,
+      time: dto.time,
+      proposedBy: playerId,
+      proposedByName: playerName || undefined,
+      proposedAt: new Date().toISOString(),
+    };
+
+    await this.prisma.tournament.update({
+      where: { tournamentId },
+      data: { schedule: schedule as any },
+    });
+
+    await createActivities(
+      this.prisma,
+      'Timeslot Proposed',
+      `Player #${playerId} casted proposal for match #${matchId} at ${dto.date} ${dto.time}`,
+      'TOURNAMENT',
+    );
+
+    return {
+      success: true,
+      message: 'Timeslot proposed successfully',
+      proposedSlot: match.proposedSlot,
+    };
+  }
+
+  /**
+   * 6. Emergency Token Appeal (Consumes 1/1 Token to Unlock Coordination in Phase 3)
+   */
+  async emergencyTokenAppeal(
+    tournamentId: string,
+    matchId: string,
+    playerId: string,
+    dto: EmergencyAppealDto,
+  ) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+    });
+    if (!tournament) throw new NotFoundException('Tournament not found');
+
+    const schedule = tournament.schedule as any as TournamentSchedulePayload;
+    if (!schedule?.structure?.matches) {
+      throw new BadRequestException('Schedule not generated');
+    }
+
+    const match = schedule.structure.matches.find(
+      (m: any) => m.id === matchId || m.canonicalMatchId === matchId,
+    );
+    if (!match) throw new NotFoundException(`Match #${matchId} not found`);
+
+    if (match.player1Id !== playerId && match.player2Id !== playerId) {
+      throw new ForbiddenException('You are not a participant in this match');
+    }
+
+    if (match.emergencyTokenUsed) {
+      throw new BadRequestException(
+        'Emergency token already consumed for this match.',
+      );
+    }
+
+    match.emergencyTokenUsed = true;
+    match.schedulingExceptionReason =
+      dto.reason || 'Player filed emergency token appeal';
+
+    await this.prisma.tournament.update({
+      where: { tournamentId },
+      data: { schedule: schedule as any },
+    });
+
+    await createActivities(
+      this.prisma,
+      'Emergency Token Consumed',
+      `Player #${playerId} consumed 1/1 emergency token for match #${matchId}`,
+      'TOURNAMENT',
+    );
+
+    return {
+      success: true,
+      message:
+        'Emergency appeal submitted! 1/1 Token consumed. Booking window unlocked for coordination.',
+      match,
+    };
+  }
+
+  /**
+   * 7. Escalation Window Simulator (Read-Only Pure Prediction Sandbox)
+   */
+  async simulateSelfScheduling(
+    tournamentId: string,
+    dto: SimulateSelfScheduleDto,
+  ) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+    });
+    if (!tournament) throw new NotFoundException('Tournament not found');
+
+    const schedule = tournament.schedule as any as TournamentSchedulePayload;
+    if (!schedule?.structure?.matches || !schedule?.calendar) {
+      throw new BadRequestException('Tournament schedule is not generated');
+    }
+
+    const match = schedule.structure.matches.find(
+      (m: any) => m.id === dto.matchId || m.canonicalMatchId === dto.matchId,
+    );
+    if (!match) {
+      throw new NotFoundException(`Match #${dto.matchId} not found`);
+    }
+
+    const openedAt = match.selfSchedulingOpenedAt || tournament.startDate;
+    const simTime = dto.simulatedCurrentTime
+      ? new Date(dto.simulatedCurrentTime)
+      : new Date();
+
+    const windowState = evaluateSelfSchedulingWindow(openedAt, simTime);
+
+    let predictedAction:
+      | 'AUTO_ASSIGN'
+      | 'CAPACITY_BLOCKED'
+      | 'PLAYER_SELF_BOOKING' = 'PLAYER_SELF_BOOKING';
+    let candidateSlot: CandidateSlot | null = null;
+
+    if (windowState.phase === 3) {
+      candidateSlot = findEarliestValidSlot(
+        schedule.calendar,
+        match.id,
+        match.player1Id,
+        match.player2Id,
+      );
+      predictedAction = candidateSlot ? 'AUTO_ASSIGN' : 'CAPACITY_BLOCKED';
+    }
+
+    return {
+      matchId: match.id,
+      openedAt,
+      simulatedCurrentTime: simTime.toISOString(),
+      elapsedHours: windowState.elapsedHours,
+      phase: windowState.phase,
+      phaseStatus: windowState.phaseStatus,
+      timeRemainingFormatted: windowState.timeRemainingFormatted,
+      isAutoAssignmentDue: windowState.isAutoAssignmentDue,
+      predictedAction,
+      candidateSlot,
+    };
+  }
+
+  /**
+   * 8. Process Due Auto-Assignments (Server-Side Phase 3 Auto-Assignment Engine)
+   */
+  async processDueAutoAssignments(tournamentId?: string) {
+    const whereClause: any = {
+      schedulingMode: SchedulingMode.PLAYER_SELF,
+      schedulingPaused: false,
+      isDeleted: false,
+    };
+    if (tournamentId) {
+      whereClause.tournamentId = tournamentId;
+    }
+
+    const tournaments = await this.prisma.tournament.findMany({
+      where: whereClause,
+    });
+
+    const results: any[] = [];
+    const now = new Date();
+
+    for (const tournament of tournaments) {
+      const schedule = tournament.schedule as any as TournamentSchedulePayload;
+      if (!schedule?.structure?.matches || !schedule?.calendar) continue;
+
+      const matches = schedule.structure.matches;
+      let hasUpdates = false;
+
+      for (const match of matches) {
+        const isAllocated = !!(match.date && match.time && match.venueId);
+        const isCompleted =
+          match.status === 'COMPLETED' || match.status === 'CANCELLED';
+        if (isAllocated || isCompleted || match.isAutoAdvance) continue;
+
+        const openedAt = match.selfSchedulingOpenedAt || tournament.startDate;
+        const windowState = evaluateSelfSchedulingWindow(openedAt, now);
+
+        if (windowState.phase === 3 && !match.emergencyTokenUsed) {
+          const candidate = findEarliestValidSlot(
+            schedule.calendar,
+            match.id,
+            match.player1Id,
+            match.player2Id,
+          );
+
+          if (candidate) {
+            const { updatedSchedule } =
+              this.tournamentScheduleService.allocateMatch(
+                schedule,
+                match.id,
+                candidate.venueId,
+                candidate.screenId,
+                candidate.date,
+                candidate.time,
+              );
+            match.schedulingPhase = MatchSchedulingPhase.AUTO_ASSIGNED;
+            match.status = 'SCHEDULED';
+            Object.assign(schedule, updatedSchedule);
+            hasUpdates = true;
+
+            results.push({
+              tournamentId: tournament.tournamentId,
+              matchId: match.id,
+              action: 'AUTO_ASSIGNED',
+              allocation: candidate,
+            });
+
+            await createActivities(
+              this.prisma,
+              'Auto-Assignment Completed',
+              `Match #${match.id} auto-assigned to ${candidate.venueName} screen ${candidate.screenName} on ${candidate.date} @ ${candidate.time}`,
+              'TOURNAMENT',
+            );
+          } else {
+            match.schedulingPhase = MatchSchedulingPhase.CAPACITY_BLOCKED;
+            match.schedulingExceptionReason =
+              'NO_VALID_CAPACITY: All published physical capacity occupied or conflicting';
+            hasUpdates = true;
+
+            results.push({
+              tournamentId: tournament.tournamentId,
+              matchId: match.id,
+              action: 'CAPACITY_BLOCKED',
+              reason: match.schedulingExceptionReason,
+            });
+
+            await createActivities(
+              this.prisma,
+              'Auto-Assignment Capacity Exception',
+              `Match #${match.id} reached Phase 3 but no valid capacity exists. Admin action required.`,
+              'TOURNAMENT',
+            );
+          }
+        }
+      }
+
+      if (hasUpdates) {
+        await this.prisma.tournament.update({
+          where: { tournamentId: tournament.tournamentId },
+          data: {
+            schedule: schedule as any,
+            version: { increment: 1 },
+          },
+        });
+      }
+    }
+
+    return {
+      processedAt: now.toISOString(),
+      totalProcessed: results.length,
+      results,
     };
   }
 }

@@ -137,11 +137,6 @@ export class AuthService {
     userSession: { userId: string; email: string; role: string },
     dto: ChangePasswordDto,
   ) {
-    return changePasswordUtil(
-      userSession,
-      dto,
-      this.prisma,
-      this.mailService,
-    );
+    return changePasswordUtil(userSession, dto, this.prisma, this.mailService);
   }
 }

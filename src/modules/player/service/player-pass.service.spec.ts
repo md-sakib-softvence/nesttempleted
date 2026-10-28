@@ -75,7 +75,9 @@ describe('PlayerPassService', () => {
 
   describe('getMyPasses (Tab 1: 🎟️ SECURE PASS & ID)', () => {
     it('should return mapped competitor passes with formatted tournament details, status, and QR tokens', async () => {
-      prisma.tournamentRegistration.findMany.mockResolvedValue([mockRegistration]);
+      prisma.tournamentRegistration.findMany.mockResolvedValue([
+        mockRegistration,
+      ]);
 
       const result = await service.getMyPasses('player-123');
 
@@ -114,9 +116,14 @@ describe('PlayerPassService', () => {
 
   describe('getPassByTournament (Modal: COMPETITOR SECURE CARD)', () => {
     it('should return full Competitor Secure Card license details', async () => {
-      prisma.tournamentRegistration.findFirst.mockResolvedValue(mockRegistration);
+      prisma.tournamentRegistration.findFirst.mockResolvedValue(
+        mockRegistration,
+      );
 
-      const result = await service.getPassByTournament('player-123', 'tourney-1');
+      const result = await service.getPassByTournament(
+        'player-123',
+        'tourney-1',
+      );
 
       expect(result).toBeDefined();
       expect(result.tournamentId).toBe('tourney-1');

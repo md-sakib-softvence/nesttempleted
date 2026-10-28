@@ -34,6 +34,9 @@ import { UpdateMatchDisputeDto } from '../dto/tournament/update-dispute.dto';
 import { UpdateTournamentFinancialsDto } from '../dto/tournament/update-financials.dto';
 import { QueryTournamentRegistrationDto } from '../dto/tournament/query-registration.dto';
 import { PredictMatchDto } from '../dto/tournament/predict-match.dto';
+import { ProposeSlotDto } from '../dto/tournament/propose-slot.dto';
+import { SimulateSelfScheduleDto } from '../dto/tournament/simulate-self-schedule.dto';
+import { EmergencyAppealDto } from '../dto/tournament/emergency-appeal.dto';
 import { SchedulingMode } from '@prisma/client';
 
 /**
@@ -62,18 +65,12 @@ export class TournamentService {
   ) {
     this.core =
       coreService ||
-      new TournamentCoreService(
-        this.prisma,
-        this.tournamentScheduleService,
-      );
+      new TournamentCoreService(this.prisma, this.tournamentScheduleService);
     this.registration =
       registrationService || new TournamentRegistrationService(this.prisma);
     this.matches =
       matchesService ||
-      new TournamentMatchesService(
-        this.prisma,
-        this.tournamentScheduleService,
-      );
+      new TournamentMatchesService(this.prisma, this.tournamentScheduleService);
     this.leaderboard =
       leaderboardService || new TournamentLeaderboardService(this.prisma);
     this.raffleService = raffleService || new RaffleService(this.prisma);
@@ -91,8 +88,8 @@ export class TournamentService {
     return this.core.getAllTournaments(query);
   }
 
-  async getTournamentById(id: string) {
-    return this.core.getTournamentById(id);
+  async getTournamentById(id: string, include?: string) {
+    return this.core.getTournamentById(id, include);
   }
 
   async updateTournament(id: string, updateTournamentDto: UpdateTournamentDto) {
@@ -199,6 +196,8 @@ export class TournamentService {
       venueId?: string;
       date?: string;
       isAllocated?: string | boolean;
+      page?: number | string;
+      limit?: number | string;
     },
   ) {
     return this.matches.getTournamentMatches(tournamentId, filter);
@@ -264,7 +263,10 @@ export class TournamentService {
     tournamentId: string,
     expectedVersion?: number,
   ) {
-    return this.matches.reconcileScheduleCapacity(tournamentId, expectedVersion);
+    return this.matches.reconcileScheduleCapacity(
+      tournamentId,
+      expectedVersion,
+    );
   }
 
   // ==========================================
@@ -355,8 +357,16 @@ export class TournamentService {
     return this.leaderboard.getTournamentResults(tournamentId);
   }
 
-  async getTournamentLeaderboard(tournamentId: string, filter?: string) {
-    return this.leaderboard.getTournamentLeaderboard(tournamentId, filter);
+  async getTournamentLeaderboard(
+    tournamentId: string,
+    filter?: string,
+    query?: { page?: number | string; limit?: number | string },
+  ) {
+    return this.leaderboard.getTournamentLeaderboard(
+      tournamentId,
+      filter,
+      query,
+    );
   }
 
   // ==========================================
@@ -422,7 +432,10 @@ export class TournamentService {
     }
 
     // Restriction: Predictions allowed on Live tournaments only
-    if (tournament.status !== 'IN_PROGRESS' && tournament.status !== 'UPCOMING') {
+    if (
+      tournament.status !== 'IN_PROGRESS' &&
+      tournament.status !== 'UPCOMING'
+    ) {
       throw new BadRequestException(
         'Predictions are strictly restricted to active Live tournaments only.',
       );
@@ -433,8 +446,7 @@ export class TournamentService {
     const matches: any[] =
       schedule.structure?.matches || schedule.matches || [];
     const match = matches.find(
-      (m: any) =>
-        m.id === dto.matchId || String(m.id).includes(dto.matchId),
+      (m: any) => m.id === dto.matchId || String(m.id).includes(dto.matchId),
     );
 
     if (match) {
@@ -493,5 +505,83 @@ export class TournamentService {
       timestamp: new Date().toISOString(),
     };
   }
-}
 
+  // ==========================================
+  // Player Self-Schedule & Calendar Facade Methods
+  // ==========================================
+
+  async getPlayerScheduleCalendar(
+    playerId: string,
+    optionalTournamentId?: string,
+  ) {
+    return this.matches.getPlayerScheduleCalendar(
+      playerId,
+      optionalTournamentId,
+    );
+  }
+
+  async getMatchShowdownDetails(
+    matchId: string,
+    optionalTournamentId?: string,
+  ) {
+    return this.matches.getMatchShowdownDetails(matchId, optionalTournamentId);
+  }
+
+  async getPlayerPendingSelfScheduleMatches(
+    tournamentId: string,
+    playerId: string,
+  ) {
+    return this.matches.getPlayerPendingSelfScheduleMatches(
+      tournamentId,
+      playerId,
+    );
+  }
+
+  async getAvailableSlotsForMatch(
+    tournamentId: string,
+    matchId: string,
+    playerId: string,
+    userRole?: string,
+  ) {
+    return this.matches.getAvailableSlotsForMatch(
+      tournamentId,
+      matchId,
+      playerId,
+      userRole,
+    );
+  }
+
+  async proposeSlot(
+    tournamentId: string,
+    matchId: string,
+    playerId: string,
+    dto: ProposeSlotDto,
+  ) {
+    return this.matches.proposeSlot(tournamentId, matchId, playerId, dto);
+  }
+
+  async emergencyTokenAppeal(
+    tournamentId: string,
+    matchId: string,
+    playerId: string,
+    dto: EmergencyAppealDto,
+  ) {
+    return this.matches.emergencyTokenAppeal(
+      tournamentId,
+      matchId,
+      playerId,
+      dto,
+    );
+  }
+
+  async simulateSelfScheduling(
+    tournamentId: string,
+    dto: SimulateSelfScheduleDto,
+  ) {
+    return this.matches.simulateSelfScheduling(tournamentId, dto);
+  }
+
+  async processDueAutoAssignments(tournamentId?: string) {
+    return this.matches.processDueAutoAssignments(tournamentId);
+  }
+}

@@ -40,7 +40,14 @@ interface RequestWithUser extends Request {
 @ApiBearerAuth()
 @Controller('player/wallet')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.PLAYER, 'player', Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+@Roles(
+  Role.PLAYER,
+  'player',
+  Role.ADMIN,
+  Role.SUPER_ADMIN,
+  'admin',
+  'super_admin',
+)
 export class PlayerWalletController {
   constructor(
     private readonly playerPassService: PlayerPassService,
@@ -53,17 +60,28 @@ export class PlayerWalletController {
    */
   @Get('passes')
   @ApiOperation({
-    summary: 'Get all Active Tournament Passes & Competitor Licenses for logged-in Player',
+    summary:
+      'Get all Active Tournament Passes & Competitor Licenses for logged-in Player (with pagination)',
     description:
       'Populates the "TOURNAMENT PASSES & IDS" screen in the Player Wallet with formatted tournament name, format, status, and QR tokens.',
   })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Passes retrieved successfully' })
-  async getMyPasses(@Req() req: RequestWithUser) {
+  async getMyPasses(
+    @Req() req: RequestWithUser,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
     const playerId = req.user.userId;
-    const data = await this.playerPassService.getMyPasses(playerId);
+    const data = await this.playerPassService.getMyPasses(playerId, {
+      page,
+      limit,
+    });
     return sendResponse({
       message: 'Competitor passes retrieved successfully',
       data,
+      meta: (data as any)?.meta || (data as any)?.pagination,
     });
   }
 
@@ -73,7 +91,8 @@ export class PlayerWalletController {
    */
   @Get('passes/:tournamentId')
   @ApiOperation({
-    summary: 'Get Personal Pass License & Competitor Card for a specific tournament',
+    summary:
+      'Get Personal Pass License & Competitor Card for a specific tournament',
     description:
       'Powers the "VIEW CARD" action and Competitor Secure Card modal with official logos, team selections, and gate QR code.',
   })
@@ -87,7 +106,10 @@ export class PlayerWalletController {
     @Param('tournamentId') tournamentId: string,
   ) {
     const playerId = req.user.userId;
-    const data = await this.playerPassService.getPassByTournament(playerId, tournamentId);
+    const data = await this.playerPassService.getPassByTournament(
+      playerId,
+      tournamentId,
+    );
     return sendResponse({
       message: 'Competitor secure card retrieved successfully',
       data,
@@ -100,7 +122,8 @@ export class PlayerWalletController {
    */
   @Get('balance')
   @ApiOperation({
-    summary: 'Get Player Withdrawable Ledger & Credit Balances (Header Cash Pill)',
+    summary:
+      'Get Player Withdrawable Ledger & Credit Balances (Header Cash Pill)',
     description:
       'Returns cash balance (Withdrawable Ledger), credit balance (Non-Withdrawable Credits), and escrow reserves.',
   })
@@ -119,21 +142,26 @@ export class PlayerWalletController {
    */
   @Get('ledger')
   @ApiOperation({
-    summary: 'Get Player Financial Ledger History Table',
+    summary: 'Get Player Financial Ledger History Table (with pagination)',
     description:
       'Lists debit and credit postings with types, formatted dates, amounts, and audit references.',
   })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 50 })
   async getLedgerHistory(
     @Req() req: RequestWithUser,
+    @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
     const playerId = req.user.userId;
-    const parsedLimit = limit ? Number(limit) : 50;
-    const data = await this.playerWalletService.getLedgerHistory(playerId, parsedLimit);
+    const data = await this.playerWalletService.getLedgerHistory(playerId, {
+      page,
+      limit,
+    });
     return sendResponse({
       message: 'Financial ledger history retrieved successfully',
       data,
+      meta: (data as any)?.meta || (data as any)?.pagination,
     });
   }
 
@@ -148,8 +176,14 @@ export class PlayerWalletController {
     description:
       'Validates 10-digit NUBAN card number, verifies minimum limit of ₦1,000, checks available cash, and dispatches clearing request.',
   })
-  @ApiResponse({ status: 200, description: 'Payout request dispatched successfully' })
-  @ApiResponse({ status: 400, description: 'Insufficient balance or invalid NUBAN' })
+  @ApiResponse({
+    status: 200,
+    description: 'Payout request dispatched successfully',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Insufficient balance or invalid NUBAN',
+  })
   async requestPayout(
     @Req() req: RequestWithUser,
     @Body() dto: RequestPayoutDto,
@@ -168,7 +202,8 @@ export class PlayerWalletController {
    */
   @Get('overview')
   @ApiOperation({
-    summary: 'Unified Player Wallet Hub (Balance + Passes KPI + Recent Transactions)',
+    summary:
+      'Unified Player Wallet Hub (Balance + Passes KPI + Recent Transactions)',
   })
   async getWalletOverview(@Req() req: RequestWithUser) {
     const playerId = req.user.userId;

@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 import { SeriesStatus } from '@prisma/client';
 
 export class UpdateSeriesStatusDto {
@@ -8,7 +15,10 @@ export class UpdateSeriesStatusDto {
   @IsNotEmpty()
   status: SeriesStatus;
 
-  @ApiPropertyOptional({ description: 'Expected version for optimistic locking', example: 1 })
+  @ApiPropertyOptional({
+    description: 'Expected version for optimistic locking',
+    example: 1,
+  })
   @IsOptional()
   @IsInt()
   @Min(1)

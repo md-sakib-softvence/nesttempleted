@@ -27,12 +27,16 @@ export class CreateSeriesDto {
   name: string;
 
   @ApiProperty({ example: 'TNC26' })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value))
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
   @IsString()
   @IsNotEmpty()
   code: string;
 
-  @ApiPropertyOptional({ example: 'The premier multi-city esports circuit across Nigeria.' })
+  @ApiPropertyOptional({
+    example: 'The premier multi-city esports circuit across Nigeria.',
+  })
   @IsOptional()
   @Transform(({ value }) => (value === '' ? undefined : value))
   @IsString()
@@ -93,7 +97,8 @@ export class CreateSeriesDto {
   @ApiPropertyOptional({ example: '2026-12-20' })
   @IsOptional()
   @Transform(({ value }) => {
-    if (!value || value === '' || value === 'null' || value === 'undefined') return undefined;
+    if (!value || value === '' || value === 'null' || value === 'undefined')
+      return undefined;
     if (typeof value === 'string') {
       const trimmed = value.trim();
       const parts = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
@@ -113,11 +118,16 @@ export class CreateSeriesDto {
 
   @ApiPropertyOptional({ enum: SeriesStatus, default: SeriesStatus.DRAFT })
   @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value))
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
   @IsEnum(SeriesStatus)
   status?: SeriesStatus;
 
-  @ApiPropertyOptional({ enum: SeriesParticipantType, default: SeriesParticipantType.PLAYER })
+  @ApiPropertyOptional({
+    enum: SeriesParticipantType,
+    default: SeriesParticipantType.PLAYER,
+  })
   @IsOptional()
   @Transform(({ value }) => {
     if (!value) return SeriesParticipantType.PLAYER;
@@ -141,33 +151,51 @@ export class CreateSeriesDto {
   @IsEnum(SeriesParticipantType)
   participantType?: SeriesParticipantType;
 
-  @ApiPropertyOptional({ enum: SeriesParticipationMode, default: SeriesParticipationMode.OPEN_SERIES })
+  @ApiPropertyOptional({
+    enum: SeriesParticipationMode,
+    default: SeriesParticipationMode.OPEN_SERIES,
+  })
   @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value))
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
   @IsEnum(SeriesParticipationMode)
   participationMode?: SeriesParticipationMode;
 
   @ApiPropertyOptional({ example: 2, default: 1 })
   @IsOptional()
-  @Transform(({ value }) => (value !== undefined && value !== '' ? Number(value) : 1))
+  @Transform(({ value }) =>
+    value !== undefined && value !== '' ? Number(value) : 1,
+  )
   @IsInt()
   @Min(0)
   minimumEventsRequired?: number;
 
-  @ApiPropertyOptional({ enum: SeriesScoringMethod, default: SeriesScoringMethod.CUMULATIVE })
+  @ApiPropertyOptional({
+    enum: SeriesScoringMethod,
+    default: SeriesScoringMethod.CUMULATIVE,
+  })
   @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value))
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
   @IsEnum(SeriesScoringMethod)
   scoringMethod?: SeriesScoringMethod;
 
   @ApiPropertyOptional({ example: 3, default: 0 })
   @IsOptional()
-  @Transform(({ value }) => (value !== undefined && value !== '' ? Number(value) : 0))
+  @Transform(({ value }) =>
+    value !== undefined && value !== '' ? Number(value) : 0,
+  )
   @IsInt()
   @Min(0)
   bestNResults?: number;
 
-  @ApiPropertyOptional({ type: [String], example: ['tourn-ea-fc25-lagos-01'], default: [] })
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['tourn-ea-fc25-lagos-01'],
+    default: [],
+  })
   @IsOptional()
   @Transform(({ value, obj }) => {
     const raw = value !== undefined ? value : obj?.tournaments;
@@ -177,15 +205,28 @@ export class CreateSeriesDto {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
           return parsed
-            .map((item) => (typeof item === 'object' && item ? item.id || item.tournamentId : item))
+            .map((item) =>
+              typeof item === 'object' && item
+                ? item.id || item.tournamentId
+                : item,
+            )
             .filter(Boolean);
         }
-      } catch {}
-      return raw.split(',').map((s: string) => s.trim()).filter(Boolean);
+      } catch {
+        /* ignore invalid JSON string */
+      }
+      return raw
+        .split(',')
+        .map((s: string) => s.trim())
+        .filter(Boolean);
     }
     if (Array.isArray(raw)) {
       return raw
-        .map((item) => (typeof item === 'object' && item ? item.id || item.tournamentId : item))
+        .map((item) =>
+          typeof item === 'object' && item
+            ? item.id || item.tournamentId
+            : item,
+        )
         .filter(Boolean);
     }
     return [];
@@ -195,7 +236,8 @@ export class CreateSeriesDto {
   tournamentIds?: string[];
 
   @ApiPropertyOptional({
-    description: 'Alternative alias for tournamentIds or list of selected tournaments',
+    description:
+      'Alternative alias for tournamentIds or list of selected tournaments',
   })
   @IsOptional()
   @Transform(({ value, obj }) => {
@@ -206,16 +248,29 @@ export class CreateSeriesDto {
         const parsed = JSON.parse(value);
         if (Array.isArray(parsed)) {
           list = parsed
-            .map((item) => (typeof item === 'object' && item ? item.id || item.tournamentId : item))
+            .map((item) =>
+              typeof item === 'object' && item
+                ? item.id || item.tournamentId
+                : item,
+            )
             .filter(Boolean);
         }
-      } catch {}
+      } catch {
+        /* ignore invalid JSON string */
+      }
       if (!list.length) {
-        list = value.split(',').map((s: string) => s.trim()).filter(Boolean);
+        list = value
+          .split(',')
+          .map((s: string) => s.trim())
+          .filter(Boolean);
       }
     } else if (Array.isArray(value)) {
       list = value
-        .map((item) => (typeof item === 'object' && item ? item.id || item.tournamentId : item))
+        .map((item) =>
+          typeof item === 'object' && item
+            ? item.id || item.tournamentId
+            : item,
+        )
         .filter(Boolean);
     }
     if (obj && (!obj.tournamentIds || !obj.tournamentIds.length)) {
@@ -257,7 +312,10 @@ export class CreateSeriesDto {
   @IsOptional()
   scoringConfig?: Record<string, any>;
 
-  @ApiPropertyOptional({ description: 'Publish series immediately', default: false })
+  @ApiPropertyOptional({
+    description: 'Publish series immediately',
+    default: false,
+  })
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   @IsOptional()

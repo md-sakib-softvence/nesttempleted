@@ -9,7 +9,11 @@ describe('AdminRegistrationController (Unit & Success Message Tests)', () => {
   beforeEach(async () => {
     tournamentService = {
       confirmRegistrationPayment: jest.fn().mockResolvedValue({
-        registration: { id: 'reg-1', status: 'Confirmed', paymentStatus: 'PAID' },
+        registration: {
+          id: 'reg-1',
+          status: 'Confirmed',
+          paymentStatus: 'PAID',
+        },
         assignedSlot: { slotNumber: 1, participantId: 'p1' },
       }),
       refundRegistration: jest.fn().mockResolvedValue({
@@ -22,12 +26,12 @@ describe('AdminRegistrationController (Unit & Success Message Tests)', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AdminRegistrationController],
-      providers: [
-        { provide: TournamentService, useValue: tournamentService },
-      ],
+      providers: [{ provide: TournamentService, useValue: tournamentService }],
     }).compile();
 
-    controller = module.get<AdminRegistrationController>(AdminRegistrationController);
+    controller = module.get<AdminRegistrationController>(
+      AdminRegistrationController,
+    );
   });
 
   it('confirmPayment should return success: true and proper message', async () => {
@@ -48,7 +52,9 @@ describe('AdminRegistrationController (Unit & Success Message Tests)', () => {
       reason: 'Medical withdrawal',
     });
     expect(res.success).toBe(true);
-    expect(res.message).toBe('Entry fee refunded and slot released successfully');
+    expect(res.message).toBe(
+      'Entry fee refunded and slot released successfully',
+    );
     expect(res.data!.status).toBe('Waitlisted');
   });
 });

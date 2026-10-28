@@ -52,7 +52,14 @@ interface RequestWithUser extends Request {
 @ApiBearerAuth()
 @Controller('player')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN, Role.SUPER_ADMIN, 'player', 'admin', 'super_admin', Role.PLAYER)
+@Roles(
+  Role.ADMIN,
+  Role.SUPER_ADMIN,
+  'player',
+  'admin',
+  'super_admin',
+  Role.PLAYER,
+)
 export class PlayerController {
   constructor(
     private readonly playerService: PlayerService,
@@ -70,7 +77,9 @@ export class PlayerController {
       const rawString = dto.deletedDocuments as unknown as string;
       try {
         const parsed = JSON.parse(rawString);
-        dto.deletedDocuments = Array.isArray(parsed) ? parsed : [String(parsed)];
+        dto.deletedDocuments = Array.isArray(parsed)
+          ? parsed
+          : [String(parsed)];
       } catch {
         dto.deletedDocuments = [rawString];
       }
@@ -100,7 +109,9 @@ export class PlayerController {
 
     try {
       if (files?.profilePicture?.[0]) {
-        uploadedProfilePictureKey = await uploadImageToS3(files.profilePicture[0]);
+        uploadedProfilePictureKey = await uploadImageToS3(
+          files.profilePicture[0],
+        );
       }
       if (files?.documents && files.documents.length > 0) {
         uploadedDocumentKeys = await uploadMultipleFilesToS3(files.documents);
@@ -156,24 +167,31 @@ export class PlayerController {
   @Get('matches')
   @ApiOperation({
     summary:
-      'Get all Competitor Matches categorized into upcoming, unscheduled, and completed',
+      'Get all Competitor Matches categorized into upcoming, unscheduled, and completed (with optional pagination)',
   })
   @ApiQuery({ name: 'tournamentId', required: false, type: String })
   @ApiQuery({ name: 'status', required: false, type: String })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   @Roles('player', Role.PLAYER)
   async getPlayerMatches(
     @Req() req: RequestWithUser,
     @Query('tournamentId') tournamentId?: string,
     @Query('status') status?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
   ) {
     const playerId = req.user.userId;
     const data = await this.playerService.getPlayerMatches(playerId, {
       tournamentId,
       status,
+      page,
+      limit,
     });
     return sendResponse({
       message: 'Competitor matches retrieved successfully',
       data,
+      meta: (data as any)?.meta || (data as any)?.pagination,
     });
   }
 
@@ -204,7 +222,9 @@ export class PlayerController {
 
     try {
       if (files?.profilePicture?.[0]) {
-        uploadedProfilePictureKey = await uploadImageToS3(files.profilePicture[0]);
+        uploadedProfilePictureKey = await uploadImageToS3(
+          files.profilePicture[0],
+        );
       }
       if (files?.documents && files.documents.length > 0) {
         uploadedDocumentKeys = await uploadMultipleFilesToS3(files.documents);
@@ -234,7 +254,9 @@ export class PlayerController {
   }
 
   @Post('change-password')
-  @ApiOperation({ summary: 'Change Player Password (Dedicated Security Endpoint)' })
+  @ApiOperation({
+    summary: 'Change Player Password (Dedicated Security Endpoint)',
+  })
   @Roles('player', Role.PLAYER)
   async changePassword(
     @Req() req: RequestWithUser,
@@ -276,7 +298,9 @@ export class PlayerController {
 
     try {
       if (files?.profilePicture?.[0]) {
-        uploadedProfilePictureKey = await uploadImageToS3(files.profilePicture[0]);
+        uploadedProfilePictureKey = await uploadImageToS3(
+          files.profilePicture[0],
+        );
       }
       if (files?.documents && files.documents.length > 0) {
         uploadedDocumentKeys = await uploadMultipleFilesToS3(files.documents);
@@ -325,7 +349,9 @@ export class PlayerController {
   }
 
   @Delete(':playerId/documents/:documentId')
-  @ApiOperation({ summary: 'Delete a specific Player Document (Self or Admin)' })
+  @ApiOperation({
+    summary: 'Delete a specific Player Document (Self or Admin)',
+  })
   async deleteDocument(
     @Param('playerId') playerId: string,
     @Param('documentId') documentId: string,

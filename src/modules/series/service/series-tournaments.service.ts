@@ -17,7 +17,10 @@ export class SeriesTournamentsService {
   /**
    * Lists all tournaments linked to this series in sequence order
    */
-  async getSeriesTournaments(seriesId: string) {
+  async getSeriesTournaments(
+    seriesId: string,
+    query?: { page?: number | string; limit?: number | string },
+  ) {
     const series = await this.prisma.series.findUnique({
       where: { id: seriesId },
     });
@@ -73,7 +76,28 @@ export class SeriesTournamentsService {
       };
     });
 
-    return { tournaments };
+    const total = tournaments.length;
+    let paginatedTournaments = tournaments;
+    let pagination: any = undefined;
+
+    if (query?.page !== undefined || query?.limit !== undefined) {
+      const page = Math.max(1, Number(query.page) || 1);
+      const limit = Math.max(1, Number(query.limit) || 10);
+      const skip = (page - 1) * limit;
+      paginatedTournaments = tournaments.slice(skip, skip + limit);
+      pagination = {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      };
+    }
+
+    return {
+      tournaments: paginatedTournaments,
+      pagination,
+      meta: pagination,
+    };
   }
 
   /**
@@ -129,7 +153,8 @@ export class SeriesTournamentsService {
     }
 
     const rawTournaments = (dto as any)?.tournaments;
-    const rawOrderedIds = dto?.orderedTournamentIds || (dto as any)?.tournamentIds;
+    const rawOrderedIds =
+      dto?.orderedTournamentIds || (dto as any)?.tournamentIds;
     const incoming: Array<{ tournamentId: string; stageOrder: number }> =
       Array.isArray(rawTournaments)
         ? rawTournaments

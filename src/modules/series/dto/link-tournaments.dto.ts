@@ -16,15 +16,28 @@ export class LinkTournamentsDto {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
           return parsed
-            .map((item) => (typeof item === 'object' && item ? item.id || item.tournamentId : item))
+            .map((item) =>
+              typeof item === 'object' && item
+                ? item.id || item.tournamentId
+                : item,
+            )
             .filter(Boolean);
         }
-      } catch {}
-      return raw.split(',').map((s: string) => s.trim()).filter(Boolean);
+      } catch {
+        /* ignore invalid JSON string */
+      }
+      return raw
+        .split(',')
+        .map((s: string) => s.trim())
+        .filter(Boolean);
     }
     if (Array.isArray(raw)) {
       return raw
-        .map((item) => (typeof item === 'object' && item ? item.id || item.tournamentId : item))
+        .map((item) =>
+          typeof item === 'object' && item
+            ? item.id || item.tournamentId
+            : item,
+        )
         .filter(Boolean);
     }
     return [];

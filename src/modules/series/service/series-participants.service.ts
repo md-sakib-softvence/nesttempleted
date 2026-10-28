@@ -173,7 +173,8 @@ export class SeriesParticipantsService {
               }
 
               let pts =
-                (finishPosition && placementPointsMap[String(finishPosition)]) ||
+                (finishPosition &&
+                  placementPointsMap[String(finishPosition)]) ||
                 0;
               pts += participationPoints;
               if (finishPosition === 1) pts += championBonus;
@@ -302,7 +303,9 @@ export class SeriesParticipantsService {
 
     const targetId = dto.participantId || dto.playerId;
     if (!targetId) {
-      throw new BadRequestException('Either participantId or playerId is required');
+      throw new BadRequestException(
+        'Either participantId or playerId is required',
+      );
     }
 
     let participant = await this.prisma.seriesParticipant.findFirst({
@@ -364,7 +367,10 @@ export class SeriesParticipantsService {
   /**
    * Lists audit log of all manual point adjustments
    */
-  async getPointAdjustments(seriesId: string) {
+  async getPointAdjustments(
+    seriesId: string,
+    query?: { page?: number | string; limit?: number | string },
+  ) {
     const series = await this.prisma.series.findUnique({
       where: { id: seriesId },
     });
@@ -372,9 +378,19 @@ export class SeriesParticipantsService {
       throw new NotFoundException(`Series with ID '${seriesId}' not found`);
     }
 
+    const total = await this.prisma.seriesPointAdjustment.count({
+      where: { seriesId },
+    });
+
+    const isPaginated = query?.page !== undefined || query?.limit !== undefined;
+    const page = Math.max(1, Number(query?.page) || 1);
+    const limit = Math.max(1, Number(query?.limit) || 20);
+    const skip = (page - 1) * limit;
+
     const adjustments = await this.prisma.seriesPointAdjustment.findMany({
       where: { seriesId },
       orderBy: { createdAt: 'desc' },
+      ...(isPaginated ? { skip, take: limit } : {}),
       include: {
         participant: {
           include: {
@@ -391,18 +407,30 @@ export class SeriesParticipantsService {
       },
     });
 
+    const pagination = isPaginated
+      ? {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        }
+      : undefined;
+
     return {
       adjustments: adjustments.map((a) => ({
         id: a.id,
         seriesId: a.seriesId,
         participantId: a.participantId,
-        playerName: `${a.participant.player.firstName} ${a.participant.player.lastName}`.trim(),
+        playerName:
+          `${a.participant.player.firstName} ${a.participant.player.lastName}`.trim(),
         gamerTag: a.participant.player.gamerTag,
         points: a.points,
         reason: a.reason,
         createdBy: a.createdBy,
         createdAt: a.createdAt,
       })),
+      pagination,
+      meta: pagination,
     };
   }
 }

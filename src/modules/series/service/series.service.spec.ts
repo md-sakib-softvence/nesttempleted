@@ -98,10 +98,7 @@ describe('SeriesService (Unit & Domain Logic Tests)', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        SeriesService,
-        { provide: PrismaService, useValue: prisma },
-      ],
+      providers: [SeriesService, { provide: PrismaService, useValue: prisma }],
     }).compile();
 
     service = module.get<SeriesService>(SeriesService);
@@ -224,8 +221,14 @@ describe('SeriesService (Unit & Domain Logic Tests)', () => {
                     score1: 3,
                     score2: 1,
                     status: 'COMPLETED',
-                    participant1Ref: { value: 'player-1', displayName: 'Player 1' },
-                    participant2Ref: { value: 'player-2', displayName: 'Player 2' },
+                    participant1Ref: {
+                      value: 'player-1',
+                      displayName: 'Player 1',
+                    },
+                    participant2Ref: {
+                      value: 'player-2',
+                      displayName: 'Player 2',
+                    },
                     winnerRef: { value: 'player-1', displayName: 'Player 1' },
                     loserRef: { value: 'player-2', displayName: 'Player 2' },
                     nextMatchWinnerTargetId: null,
@@ -261,7 +264,10 @@ describe('SeriesService (Unit & Domain Logic Tests)', () => {
       prisma.seriesParticipant.update.mockResolvedValue({});
       prisma.series.update.mockResolvedValue(mockSeries);
 
-      const result = await service.recalculateSeriesStandings('series-tnc-s1', true);
+      const result = await service.recalculateSeriesStandings(
+        'series-tnc-s1',
+        true,
+      );
 
       expect(result.seriesId).toBe('series-tnc-s1');
       expect(result.participantsProcessed).toBe(2);
@@ -339,12 +345,22 @@ describe('SeriesService (Unit & Domain Logic Tests)', () => {
         code: 'TLCS27',
         startDate: '2026-10-21',
         tournaments: ['tourn-1', 'tourn-2'],
-      } as any);
+      });
 
       expect(prisma.seriesTournament.createMany).toHaveBeenCalledWith({
         data: [
-          { seriesId: mockSeries.id, tournamentId: 'tourn-1', sequenceOrder: 1, weightMultiplier: 1 },
-          { seriesId: mockSeries.id, tournamentId: 'tourn-2', sequenceOrder: 2, weightMultiplier: 1 },
+          {
+            seriesId: mockSeries.id,
+            tournamentId: 'tourn-1',
+            sequenceOrder: 1,
+            weightMultiplier: 1,
+          },
+          {
+            seriesId: mockSeries.id,
+            tournamentId: 'tourn-2',
+            sequenceOrder: 2,
+            weightMultiplier: 1,
+          },
         ],
         skipDuplicates: true,
       });

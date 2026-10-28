@@ -40,6 +40,9 @@ import { QueryTournamentRegistrationDto } from '../../dto/tournament/query-regis
 import { UpdateTournamentFinancialsDto } from '../../dto/tournament/update-financials.dto';
 import { AllocateMatchDto } from '../../dto/tournament/allocate-match.dto';
 import { CreateVenueDto } from '../../dto/venue/create-venue.dto';
+import { SimulateSelfScheduleDto } from '../../dto/tournament/simulate-self-schedule.dto';
+import { ProposeSlotDto } from '../../dto/tournament/propose-slot.dto';
+import { EmergencyAppealDto } from '../../dto/tournament/emergency-appeal.dto';
 import { Role, SchedulingMode } from '@prisma/client';
 import {
   uploadTournamentFiles,
@@ -153,8 +156,16 @@ export class TournamentController {
   @Get(':id')
   @Public()
   @ApiOperation({ summary: 'Get a Tournament by ID' })
-  async findOne(@Param('id') id: string) {
-    const data = await this.tournamentService.getTournamentById(id);
+  @ApiQuery({
+    name: 'include',
+    required: false,
+    description:
+      'Comma-separated list of heavy sub-resources to include (e.g. slots, seeds, matches, groups, or all)',
+    type: String,
+    example: 'slots,seeds',
+  })
+  async findOne(@Param('id') id: string, @Query('include') include?: string) {
+    const data = await this.tournamentService.getTournamentById(id, include);
     return sendResponse({
       message: 'Tournament retrieved successfully',
       data,
@@ -300,32 +311,45 @@ export class TournamentController {
 
   @Get(':id/matches')
   @Public()
-  @ApiOperation({ summary: 'Get all canonical matches of a Tournament' })
+  @ApiOperation({
+    summary:
+      'Get all canonical matches of a Tournament (with optional pagination & filters)',
+  })
+  @ApiQuery({ name: 'round', required: false, type: String })
+  @ApiQuery({ name: 'status', required: false, type: String })
+  @ApiQuery({ name: 'isAllocated', required: false, type: String })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   async getMatches(
     @Param('id') id: string,
     @Query('round') round?: string,
     @Query('status') status?: string,
     @Query('isAllocated') isAllocated?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
   ) {
     const data = await this.tournamentService.getTournamentMatches(id, {
       round,
       status,
       isAllocated,
+      page,
+      limit,
     });
     return sendResponse({
       message: 'Tournament matches retrieved successfully',
       data,
+      meta: data.meta,
     });
   }
 
   @Post(':id/matches/:matchId/self-book')
   @Roles(
     Role.PLAYER,
-    'player' as any,
+    'player',
     Role.ADMIN,
     Role.SUPER_ADMIN,
-    'admin' as any,
-    'super_admin' as any,
+    'admin',
+    'super_admin',
   )
   @ApiOperation({
     summary: 'Player self-booking match fixture for a tournament',
@@ -350,6 +374,111 @@ export class TournamentController {
     });
   }
 
+  @Get(':id/self-schedule/pending-matches')
+  @Roles(
+    Role.PLAYER,
+    'player',
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'admin',
+    'super_admin',
+  )
+  @ApiOperation({
+    summary:
+      'Get Pending Matches for Player Self-Scheduling (Reservation Scheduler)',
+    description:
+      'Returns all active, unallocated canonical matches where player is a participant, with derived 3-stage escalation window metadata.',
+  })
+  async getPendingSelfScheduleMatches(
+    @Param('id') tournamentId: string,
+    @Req() req: any,
+  ) {
+    const data =
+      await this.tournamentService.getPlayerPendingSelfScheduleMatches(
+        tournamentId,
+        req.user.userId,
+      );
+    return sendResponse({
+      message: 'Pending self-schedule matches retrieved successfully',
+      data,
+    });
+  }
+
+  @Get(':id/self-schedule/matches/:matchId/available-slots')
+  @Roles(
+    Role.PLAYER,
+    'player',
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'admin',
+    'super_admin',
+  )
+  @ApiOperation({
+    summary: 'Get Available Arena Timeslots Grid for Match',
+    description:
+      'Returns date-grouped arena screens and timeslots with player collision prevention, peak slot flags, and opponent casted indicators.',
+  })
+  async getAvailableSlotsForMatch(
+    @Param('id') tournamentId: string,
+    @Param('matchId') matchId: string,
+    @Req() req: any,
+  ) {
+    const data = await this.tournamentService.getAvailableSlotsForMatch(
+      tournamentId,
+      matchId,
+      req.user.userId,
+      req.user.role,
+    );
+    return sendResponse({
+      message: 'Available timeslots retrieved successfully',
+      data,
+    });
+  }
+
+  @Post(':id/self-schedule/simulate')
+  @Roles(
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'admin',
+    'super_admin',
+    Role.PLAYER,
+    'player',
+  )
+  @ApiOperation({
+    summary: 'Simulate Escalation Window (Developer Sandbox Bar)',
+    description:
+      'Read-only sandbox simulation answering: If current time were X, what phase would this match enter and what slot would be assigned?',
+  })
+  async simulateSelfSchedule(
+    @Param('id') tournamentId: string,
+    @Body() body: SimulateSelfScheduleDto,
+  ) {
+    const data = await this.tournamentService.simulateSelfScheduling(
+      tournamentId,
+      body,
+    );
+    return sendResponse({
+      message: 'Self-scheduling window simulated successfully',
+      data,
+    });
+  }
+
+  @Post(':id/process-auto-assignment')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  @ApiOperation({
+    summary: 'Manually trigger Phase 3 automatic assignment evaluation',
+    description:
+      'Scans for overdue self-scheduling matches (96h+ elapsed) and deterministically assigns the earliest valid physical slot or marks CAPACITY_BLOCKED.',
+  })
+  async processAutoAssignment(@Param('id') tournamentId: string) {
+    const data =
+      await this.tournamentService.processDueAutoAssignments(tournamentId);
+    return sendResponse({
+      message: 'Auto-assignment processing completed',
+      data,
+    });
+  }
+
   @Get(':id/prediction-fixtures')
   @Public()
   @ApiOperation({
@@ -364,7 +493,7 @@ export class TournamentController {
   }
 
   @Post(':id/predict')
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.FAN, 'fan' as any, Role.PLAYER, 'player' as any)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.FAN, 'fan', Role.PLAYER, 'player')
   @ApiOperation({
     summary: 'Lock in coin prediction for a live tournament match',
   })
@@ -419,7 +548,8 @@ export class TournamentController {
   @Get(':id/standings')
   @Public()
   @ApiOperation({
-    summary: 'Get tournament standings/leaderboard with filter (table, goals, metrics)',
+    summary:
+      'Get tournament standings/leaderboard with filter (table, goals, metrics) and pagination',
   })
   @ApiQuery({
     name: 'filter',
@@ -427,30 +557,36 @@ export class TournamentController {
     enum: ['table', 'goals', 'metrics', 'all'],
     description: 'Filter standings view by table, goals, or metrics',
   })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   async getLeaderboard(
     @Param('id') id: string,
     @Query('filter') filter?: string,
     @Query('tab') tab?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
   ) {
     const activeFilter = filter || tab;
     const data = await this.tournamentService.getTournamentLeaderboard(
       id,
       activeFilter,
+      { page, limit },
     );
     return sendResponse({
       message: 'Tournament leaderboard retrieved successfully',
       data,
+      meta: (data as any)?.meta,
     });
   }
 
   @Post(':id/registrations')
   @Roles(
     Role.PLAYER,
-    'player' as any,
+    'player',
     Role.ADMIN,
     Role.SUPER_ADMIN,
-    'admin' as any,
-    'super_admin' as any,
+    'admin',
+    'super_admin',
   )
   @ApiOperation({ summary: 'Register a player for this tournament' })
   async registerPlayer(
@@ -471,13 +607,15 @@ export class TournamentController {
   @Get(':id/registrations')
   @Roles(
     Role.PLAYER,
-    'player' as any,
+    'player',
     Role.ADMIN,
     Role.SUPER_ADMIN,
-    'admin' as any,
-    'super_admin' as any,
+    'admin',
+    'super_admin',
   )
-  @ApiOperation({ summary: 'Get all tournament registrations with counts and tab filtering' })
+  @ApiOperation({
+    summary: 'Get all tournament registrations with counts and tab filtering',
+  })
   async getRegistrations(
     @Param('id') id: string,
     @Query() query: QueryTournamentRegistrationDto,
@@ -498,13 +636,20 @@ export class TournamentController {
   }
 
   @Patch(':id/registrations/:registrationId/status')
-  @ApiOperation({ summary: 'Update player registration status (Confirmed, Selected, Waitlist)' })
+  @ApiOperation({
+    summary:
+      'Update player registration status (Confirmed, Selected, Waitlist)',
+  })
   async updateRegistrationStatus(
     @Param('id') id: string,
     @Param('registrationId') registrationId: string,
     @Body() body: UpdateRegistrationStatusDto,
   ) {
-    const data = await this.tournamentService.updateRegistrationStatus(id, registrationId, body);
+    const data = await this.tournamentService.updateRegistrationStatus(
+      id,
+      registrationId,
+      body,
+    );
     return sendResponse({
       message: 'Registration status updated successfully',
       data,
@@ -512,7 +657,9 @@ export class TournamentController {
   }
 
   @Post(':id/status')
-  @ApiOperation({ summary: 'Transitions tournament lifecycle with state machine checks' })
+  @ApiOperation({
+    summary: 'Transitions tournament lifecycle with state machine checks',
+  })
   async updateStatus(
     @Param('id') id: string,
     @Body() body: UpdateTournamentStatusDto,
@@ -535,7 +682,9 @@ export class TournamentController {
   }
 
   @Delete(':id/venues/:venueId')
-  @ApiOperation({ summary: 'Deletes a venue from tournament if no matches are allocated' })
+  @ApiOperation({
+    summary: 'Deletes a venue from tournament if no matches are allocated',
+  })
   async deleteVenue(
     @Param('id') id: string,
     @Param('venueId') venueId: string,
@@ -580,7 +729,9 @@ export class TournamentController {
   }
 
   @Post(':id/reconcile-capacity')
-  @ApiOperation({ summary: 'Extends capacity windows when deficits are detected' })
+  @ApiOperation({
+    summary: 'Extends capacity windows when deficits are detected',
+  })
   async reconcileCapacity(
     @Param('id') id: string,
     @Body() body?: { expectedVersion?: number },
@@ -596,7 +747,9 @@ export class TournamentController {
   }
 
   @Get(':id/financials')
-  @ApiOperation({ summary: 'Returns complete financial ledger and cost/prize breakdown' })
+  @ApiOperation({
+    summary: 'Returns complete financial ledger and cost/prize breakdown',
+  })
   async getFinancials(@Param('id') id: string) {
     const data = await this.tournamentService.getTournamentFinancials(id);
     return sendResponse({
@@ -606,7 +759,9 @@ export class TournamentController {
   }
 
   @Patch(':id/financials')
-  @ApiOperation({ summary: 'Updates cost items, prize payouts, and rake percentage' })
+  @ApiOperation({
+    summary: 'Updates cost items, prize payouts, and rake percentage',
+  })
   async updateFinancials(
     @Param('id') id: string,
     @Body() body: UpdateTournamentFinancialsDto,

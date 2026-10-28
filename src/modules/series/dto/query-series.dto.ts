@@ -6,7 +6,9 @@ import { SeriesStatus } from '@prisma/client';
 export class QuerySeriesDto {
   @ApiPropertyOptional({ enum: SeriesStatus })
   @IsOptional()
-  @Transform(({ value }) => (!value || value === 'ALL' || value === 'all' ? undefined : value))
+  @Transform(({ value }) =>
+    !value || value === 'ALL' || value === 'all' ? undefined : value,
+  )
   @IsEnum(SeriesStatus)
   status?: SeriesStatus;
 
