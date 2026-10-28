@@ -52,7 +52,7 @@ describe('TournamentController (Success Message & Spec API Verification)', () =>
     });
     expect(res.success).toBe(true);
     expect(res.message).toBe('Tournament status updated to PAUSED successfully');
-    expect(res.data.status).toBe('PAUSED');
+    expect(res.data!.status).toBe('PAUSED');
   });
 
   it('addVenue should return venue added successfully', async () => {
@@ -74,8 +74,8 @@ describe('TournamentController (Success Message & Spec API Verification)', () =>
     const res = await controller.getRegistrations('t1', { tab: 'registered' });
     expect(res.success).toBe(true);
     expect(res.message).toBe('Tournament registrations retrieved successfully');
-    expect(res.data.counts).toBeDefined();
-    expect(res.data.counts.registered).toBe(10);
+    expect(res.data!.counts).toBeDefined();
+    expect(res.data!.counts.registered).toBe(10);
   });
 
   it('selectRegistrations should return proper success message', async () => {

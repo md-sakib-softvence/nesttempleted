@@ -39,7 +39,7 @@ describe('AdminRegistrationController (Unit & Success Message Tests)', () => {
     expect(res.message).toBe(
       'Participant payment confirmed and slot assigned successfully',
     );
-    expect(res.data.registration.status).toBe('Confirmed');
+    expect(res.data!.registration.status).toBe('Confirmed');
   });
 
   it('refund should return success: true and proper message', async () => {
@@ -49,6 +49,6 @@ describe('AdminRegistrationController (Unit & Success Message Tests)', () => {
     });
     expect(res.success).toBe(true);
     expect(res.message).toBe('Entry fee refunded and slot released successfully');
-    expect(res.data.status).toBe('Waitlisted');
+    expect(res.data!.status).toBe('Waitlisted');
   });
 });

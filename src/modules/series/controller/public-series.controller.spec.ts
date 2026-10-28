@@ -9,10 +9,9 @@ describe('PublicSeriesController (Unit & Success Message Tests)', () => {
   beforeEach(async () => {
     service = {
       getPublicSeriesBySlug: jest.fn().mockResolvedValue({
-        seriesId: 'series-1',
-        name: 'TAPE National Circuit',
-        publicSlug: 'tape-national-circuit',
-      }),
+        title: 'TAPE National Circuit',
+        slug: 'tape-national-circuit',
+      } as any),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -27,6 +26,6 @@ describe('PublicSeriesController (Unit & Success Message Tests)', () => {
     const res = await controller.getPublicSeries('tape-national-circuit');
     expect(res.success).toBe(true);
     expect(res.message).toBe('Public series details retrieved successfully');
-    expect(res.data.name).toBe('TAPE National Circuit');
+    expect(res.data?.title).toBe('TAPE National Circuit');
   });
 });
