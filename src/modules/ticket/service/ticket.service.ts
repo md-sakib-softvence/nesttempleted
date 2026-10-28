@@ -14,6 +14,7 @@ import { UpdateTierDto } from '../dto/update-tier.dto';
 import { QueryTicketDto } from '../dto/query-ticket.dto';
 import { TransferTicketDto } from '../dto/transfer-ticket.dto';
 import { TicketStatus, TicketType } from '@prisma/client';
+import { TicketScanGateway } from '../gateway/ticket-scan.gateway';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -23,6 +24,7 @@ export class TicketService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly flutterwaveService: FlutterwaveService,
+    private readonly ticketScanGateway: TicketScanGateway,
   ) {}
 
   /**
@@ -546,9 +548,64 @@ export class TicketService {
       throw new BadRequestException('QR token is required');
     }
 
-    // Look up ticket by exact qrToken or search token containing ticket ID
-    let ticket = await this.prisma.ticket.findUnique({
-      where: { qrToken: dto.qrToken },
+    const trimmedToken = dto.qrToken.trim();
+    const guardName =
+      staffUser?.name || staffUser?.fullName || staffUser?.email || 'Security Guard';
+    const guardId = staffUser?.userId || staffUser?.id || null;
+    const guardRole = staffUser?.role || 'SECURITY';
+
+    const logAndBroadcast = async (
+      status: 'VALID' | 'ALREADY_CHECKED_IN' | 'INVALID',
+      message: string,
+      ticket?: any,
+      attendeeName?: string,
+    ) => {
+      try {
+        const scanLog = await this.prisma.ticketScanLog.create({
+          data: {
+            ticketId: ticket?.ticketId || null,
+            showTicketId: ticket?.showTicketId || null,
+            qrToken: trimmedToken,
+            attendeeName: attendeeName || 'Unknown Attendee',
+            passType: ticket?.type || 'UNKNOWN',
+            status,
+            message,
+            guardId,
+            guardName,
+            guardRole,
+          },
+        });
+
+        this.ticketScanGateway.broadcastScan({
+          id: scanLog.id,
+          code: scanLog.qrToken,
+          ticketId: scanLog.showTicketId || scanLog.ticketId || scanLog.qrToken,
+          attendeeName: scanLog.attendeeName,
+          type: scanLog.passType,
+          status: scanLog.status,
+          message: scanLog.message,
+          guardName: scanLog.guardName,
+          timestamp: new Date(scanLog.createdAt).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          }),
+          createdAt: scanLog.createdAt,
+        });
+      } catch (logErr) {
+        this.logger.error('Failed to log or broadcast ticket scan', logErr);
+      }
+    };
+
+    // Look up ticket by exact qrToken, ticketId, showTicketId, or parsed token
+    let ticket = await this.prisma.ticket.findFirst({
+      where: {
+        OR: [
+          { qrToken: trimmedToken },
+          { ticketId: trimmedToken },
+          { showTicketId: trimmedToken },
+        ],
+      },
       include: {
         tournament: true,
         fan: true,
@@ -557,12 +614,17 @@ export class TicketService {
     });
 
     if (!ticket) {
-      // Try parsing if format is e.g. FAN:tournamentId:userId:ticketId
-      const parts = dto.qrToken.split(':');
+      // Try parsing if format is e.g. PREFIX:tournamentId:userId:ticketId
+      const parts = trimmedToken.split(':');
       if (parts.length >= 4) {
         const potentialTicketId = parts[3];
-        ticket = await this.prisma.ticket.findUnique({
-          where: { ticketId: potentialTicketId },
+        ticket = await this.prisma.ticket.findFirst({
+          where: {
+            OR: [
+              { ticketId: potentialTicketId },
+              { qrToken: trimmedToken },
+            ],
+          },
           include: {
             tournament: true,
             fan: true,
@@ -573,36 +635,103 @@ export class TicketService {
     }
 
     if (!ticket) {
-      throw new NotFoundException('Invalid Ticket QR code. Ticket not found.');
+      const errMsg = 'Invalid Ticket QR code. Ticket not found.';
+      await logAndBroadcast('INVALID', errMsg);
+      throw new NotFoundException(errMsg);
     }
 
-    // Validate tournament matching
+    // Resolve attendee name
+    const attendeeName = ticket.fan
+      ? `${ticket.fan.firstName} ${ticket.fan.surname || ''}`.trim()
+      : ticket.player
+        ? `${ticket.player.firstName} ${ticket.player.lastName}`.trim()
+        : 'Spectator';
+
+    // Validate tournament matching if tournamentId is specified
     if (dto.tournamentId && ticket.tournamentId !== dto.tournamentId) {
-      throw new BadRequestException(
-        `Wrong Venue/Tournament: Ticket belongs to "${ticket.tournament.name}", not the current venue tournament.`,
-      );
+      const errMsg = `Wrong Tournament: Ticket belongs to "${ticket.tournament.name}", not the current venue tournament.`;
+      await logAndBroadcast('INVALID', errMsg, ticket, attendeeName);
+      throw new BadRequestException(errMsg);
     }
 
     if (ticket.status === TicketStatus.CANCELLED) {
-      throw new BadRequestException('Ticket has been cancelled');
+      const errMsg = 'This ticket has been cancelled.';
+      await logAndBroadcast('INVALID', errMsg, ticket, attendeeName);
+      throw new BadRequestException(errMsg);
     }
 
-    if (ticket.checkedIn || ticket.status === TicketStatus.USED) {
-      throw new BadRequestException(
-        `Ticket has already been used! Checked in at ${ticket.checkedInAt?.toISOString() || 'earlier'}`,
-      );
+    const now = new Date();
+    let newStatus = ticket.status;
+
+    // 1. DAY_PASS: Single-use ever
+    if (ticket.type === TicketType.DAY_PASS) {
+      if (ticket.checkedIn || ticket.status === TicketStatus.USED) {
+        const usedTime = ticket.checkedInAt
+          ? new Date(ticket.checkedInAt).toLocaleString('en-US', {
+              dateStyle: 'medium',
+              timeStyle: 'short',
+            })
+          : 'earlier';
+        const errMsg = `This Day Pass has already been used on ${usedTime}. Duplicate entry denied.`;
+        await logAndBroadcast('ALREADY_CHECKED_IN', errMsg, ticket, attendeeName);
+        throw new BadRequestException(errMsg);
+      }
+      newStatus = TicketStatus.USED;
+    }
+    // 2. SEASON_PASS: Usable once per calendar day (automatically valid again tomorrow)
+    else if (ticket.type === TicketType.SEASON_PASS) {
+      if (ticket.lastScannedAt) {
+        const lastScan = new Date(ticket.lastScannedAt);
+        const isSameDay =
+          lastScan.getFullYear() === now.getFullYear() &&
+          lastScan.getMonth() === now.getMonth() &&
+          lastScan.getDate() === now.getDate();
+
+        if (isSameDay) {
+          const timeStr = lastScan.toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+          const errMsg = `This Season Pass was already used today at ${timeStr}. Valid again tomorrow!`;
+          await logAndBroadcast('ALREADY_CHECKED_IN', errMsg, ticket, attendeeName);
+          throw new BadRequestException(errMsg);
+        }
+      }
+      // Stays active for subsequent days
+      newStatus = TicketStatus.ACTIVE;
+    }
+    // 3. VIP: Multi-entry permitted with a 15-minute anti-passback cooldown
+    else if (ticket.type === TicketType.VIP) {
+      if (ticket.lastScannedAt) {
+        const lastScanTime = new Date(ticket.lastScannedAt).getTime();
+        const diffMs = now.getTime() - lastScanTime;
+        const cooldownMs = 15 * 60 * 1000; // 15 minutes anti-passback cooldown
+
+        if (diffMs < cooldownMs) {
+          const remainingMinutes = Math.ceil((cooldownMs - diffMs) / (60 * 1000));
+          const elapsedMinutes = Math.floor(diffMs / (60 * 1000));
+          const errMsg = `Anti-passback Cooldown Active: VIP pass was scanned ${
+            elapsedMinutes === 0 ? 'less than a minute ago' : `${elapsedMinutes}m ago`
+          }. Please wait ${remainingMinutes} more minute(s) before re-entering.`;
+          await logAndBroadcast('ALREADY_CHECKED_IN', errMsg, ticket, attendeeName);
+          throw new BadRequestException(errMsg);
+        }
+      }
+      newStatus = TicketStatus.ACTIVE;
     }
 
-    // Perform check-in
+    // Perform check-in update
     const updatedTicket = await this.prisma.ticket.update({
       where: { ticketId: ticket.ticketId },
       data: {
         checkedIn: true,
-        checkedInAt: new Date(),
-        checkedInBy: staffUser?.userId || 'STAFF',
+        checkedInAt: ticket.checkedInAt || now,
+        lastScannedAt: now,
+        totalScanCount: (ticket.totalScanCount || 0) + 1,
+        checkedInBy: staffUser?.userId || staffUser?.id || 'STAFF',
         checkedInVenue: dto.venueId || null,
         screenId: dto.screenId || null,
-        status: TicketStatus.USED,
+        status: newStatus,
       },
       include: {
         tournament: true,
@@ -611,15 +740,19 @@ export class TicketService {
       },
     });
 
-    const attendeeName = updatedTicket.fan
-      ? `${updatedTicket.fan.firstName} ${updatedTicket.fan.surname || ''}`.trim()
-      : (updatedTicket.player
-          ? `${updatedTicket.player.firstName} ${updatedTicket.player.lastName}`.trim()
-          : 'Spectator');
+    const readableType =
+      updatedTicket.type === TicketType.DAY_PASS
+        ? 'Day Pass'
+        : updatedTicket.type === TicketType.SEASON_PASS
+          ? 'Season Pass'
+          : 'VIP Pass';
+
+    const successMessage = `Access Granted: ${readableType}`;
+    await logAndBroadcast('VALID', successMessage, updatedTicket, attendeeName);
 
     return {
       success: true,
-      message: 'Access Granted: General Admission',
+      message: successMessage,
       ticket: {
         ticketId: updatedTicket.ticketId,
         showTicketId: updatedTicket.showTicketId,
@@ -628,9 +761,38 @@ export class TicketService {
         type: updatedTicket.type,
         seatNumber: updatedTicket.seatNumber,
         checkedInAt: updatedTicket.checkedInAt,
+        lastScannedAt: updatedTicket.lastScannedAt,
+        totalScanCount: updatedTicket.totalScanCount,
         tournamentName: updatedTicket.tournament.name,
       },
     };
+  }
+
+  /**
+   * 6. Get Recent Scan Logs across all security guards (for real-time dashboard)
+   */
+  async getRecentScans(limit: number = 30) {
+    const logs = await this.prisma.ticketScanLog.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(limit, 100),
+    });
+
+    return logs.map((log) => ({
+      id: log.id,
+      ticketId: log.showTicketId || log.ticketId || log.qrToken,
+      code: log.qrToken,
+      attendeeName: log.attendeeName || 'Unknown Attendee',
+      type: log.passType || 'DAY_PASS',
+      status: log.status,
+      message: log.message,
+      guardName: log.guardName || 'Security Guard',
+      timestamp: new Date(log.createdAt).toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }),
+      createdAt: log.createdAt,
+    }));
   }
 
   /**
