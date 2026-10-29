@@ -333,6 +333,23 @@ export class EmployeeController {
     });
   }
 
+  @Get('pass')
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, ...Object.values(EmployeeRole))
+  @ApiOperation({
+    summary:
+      'Get official dynamic access pass for logged in Employee/Security/Manager',
+  })
+  async getLoginEmployeePass(
+    @Req() req: Request & { user: { userId: string } },
+  ) {
+    const employeeId = req.user.userId;
+    const data = await this.employeeService.getEmployeePass(employeeId);
+    return sendResponse({
+      message: 'Official employee access pass retrieved successfully',
+      data,
+    });
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a specific Employee by ID' })
   async getEmployeeById(@Param('id') id: string) {

@@ -226,7 +226,35 @@ export class EmployeeService {
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password, ...employeeWithoutPassword } = employee;
-    return employeeWithoutPassword;
+    const dynamicQrToken = `STAFF:${employee.role}:${employee.employeeId}:${employee.showEmployeeId}`;
+    return {
+      ...employeeWithoutPassword,
+      qrToken: dynamicQrToken,
+    };
+  }
+
+  async getEmployeePass(id: string) {
+    const employee = await this.getEmployeeById(id);
+    const qrToken = `STAFF:${employee.role}:${employee.employeeId}:${employee.showEmployeeId}`;
+    const passSerial = `PASS-${employee.showEmployeeId || employee.employeeId.slice(0, 8).toUpperCase()}`;
+    return {
+      ...employee,
+      qrToken,
+      passSerial,
+      accessLevel:
+        employee.role === 'SECURITY'
+          ? 'Turnstile & Door Security Override'
+          : employee.role === 'MANAGER'
+            ? 'All-Access Venue & Operations Director'
+            : 'Event Staff & Operations Access',
+      department:
+        employee.role === 'SECURITY'
+          ? 'Arena Gate & Turnstile Security'
+          : employee.role === 'MANAGER'
+            ? 'Tournament Operations & Supervision'
+            : 'Event Logistics & Umpire Desk',
+      status: employee.state,
+    };
   }
 
   async getEmployeeMarketingData(id: string, query: QueryOptions = {}) {

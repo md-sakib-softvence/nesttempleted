@@ -778,6 +778,66 @@ export class TicketService {
         };
       }
 
+      // Check if this token belongs to an Employee (Security Guard, Manager, Event Staff)
+      let employeeLookupId = trimmedToken;
+      if (trimmedToken.startsWith('STAFF:')) {
+        const parts = trimmedToken.split(':');
+        employeeLookupId = parts.length >= 3 ? parts[2] : parts[1];
+      }
+
+      const employee = await this.prisma.employee.findFirst({
+        where: {
+          OR: [
+            { employeeId: employeeLookupId },
+            { showEmployeeId: employeeLookupId },
+            { employeeId: trimmedToken },
+            { showEmployeeId: trimmedToken },
+            { email: trimmedToken },
+            { qrCode: { has: trimmedToken } },
+          ],
+          isDeleted: false,
+        },
+      });
+
+      if (employee) {
+        if (employee.state !== 'ACTIVE') {
+          const errMsg = `Staff credential for ${employee.name} (${employee.role}) is ${employee.state}. Access Denied.`;
+          await logAndBroadcast('INVALID', errMsg, undefined, employee.name);
+          throw new BadRequestException(errMsg);
+        }
+
+        const attendeeName = `${employee.name} (${employee.role.replace('_', ' ')})`;
+        const passTitle =
+          employee.role === 'SECURITY'
+            ? 'Official Security Guard Pass'
+            : employee.role === 'MANAGER'
+              ? 'Official Venue Manager Pass'
+              : 'Official Staff Access Pass';
+
+        const successMessage = `Access Granted: ${passTitle}`;
+        await logAndBroadcast('VALID', successMessage, undefined, attendeeName);
+
+        return {
+          success: true,
+          message: successMessage,
+          ticket: {
+            ticketId: employee.employeeId,
+            showTicketId:
+              employee.showEmployeeId ||
+              `STAFF-${employee.employeeId.slice(0, 8).toUpperCase()}`,
+            purchaserName: employee.name,
+            attendeeName,
+            purchaserRole: employee.role,
+            type: `${employee.role}_PASS`,
+            seatNumber: 'All-Access Staff • Security Clearance',
+            checkedInAt: now,
+            lastScannedAt: now,
+            totalScanCount: 1,
+            tournamentName: 'Tape Arena Venue Operations',
+          },
+        };
+      }
+
       const errMsg = 'Invalid Ticket QR code. Ticket not found.';
       await logAndBroadcast('INVALID', errMsg);
       throw new NotFoundException(errMsg);
