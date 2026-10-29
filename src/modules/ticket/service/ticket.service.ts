@@ -601,7 +601,16 @@ export class TicketService {
       throw new BadRequestException('QR token is required');
     }
 
-    const trimmedToken = dto.qrToken.trim();
+    let trimmedToken = dto.qrToken.trim();
+    if (trimmedToken.includes('token=') || trimmedToken.includes('code=')) {
+      try {
+        const urlObj = new URL(trimmedToken);
+        const urlToken =
+          urlObj.searchParams.get('token') || urlObj.searchParams.get('code');
+        if (urlToken) trimmedToken = urlToken.trim();
+      } catch {}
+    }
+    const now = new Date();
     const guardName =
       staffUser?.name ||
       staffUser?.fullName ||
@@ -688,6 +697,87 @@ export class TicketService {
     }
 
     if (!ticket) {
+      // Check if this token belongs to a Competitor TournamentRegistration
+      const reg = await this.prisma.tournamentRegistration.findFirst({
+        where: {
+          OR: [
+            { qrCodeString: trimmedToken },
+            { registrationId: trimmedToken },
+          ],
+        },
+        include: {
+          tournament: true,
+          player: true,
+        },
+      });
+
+      if (reg) {
+        const attendeeName = reg.player
+          ? `${reg.player.firstName} ${reg.player.lastName} (${reg.player.gamerTag || 'Player'})`.trim()
+          : 'Player Competitor';
+
+        if (reg.checkedInVenue) {
+          const errMsg = `Competitor pass for "${reg.player?.gamerTag || 'Player'}" was already scanned and checked in. Duplicate entry denied.`;
+          await logAndBroadcast('ALREADY_CHECKED_IN', errMsg, undefined, attendeeName);
+          throw new BadRequestException(errMsg);
+        }
+
+        await this.prisma.tournamentRegistration.update({
+          where: { registrationId: reg.registrationId },
+          data: { checkedInVenue: true },
+        });
+
+        // Ensure active ticket is upserted for reporting parity
+        ticket = await this.prisma.ticket.upsert({
+          where: { qrToken: reg.qrCodeString || trimmedToken },
+          update: { checkedIn: true, checkedInAt: now },
+          create: {
+            tournamentId: reg.tournamentId,
+            playerId: reg.playerId,
+            purchasedBy: reg.playerId,
+            purchaserRole: 'PLAYER',
+            type: TicketType.DAY_PASS,
+            pricePaid: reg.tournament?.entryFee || 0,
+            currency: reg.tournament?.currency || 'NGN',
+            status: TicketStatus.USED,
+            qrToken: reg.qrCodeString || trimmedToken,
+            checkedIn: true,
+            checkedInAt: now,
+            showTicketId: `PASS-${reg.registrationId.slice(0, 8).toUpperCase()}`,
+          },
+          include: {
+            tournament: true,
+            fan: true,
+            player: true,
+          },
+        });
+
+        await logAndBroadcast(
+          'VALID',
+          `Competitor Pass verified for ${reg.tournament.name}`,
+          ticket,
+          attendeeName,
+        );
+
+        return {
+          ticket: {
+            ...ticket,
+            ticketId: reg.registrationId,
+            showTicketId: `COMP-${reg.registrationId.slice(0, 8).toUpperCase()}`,
+            type: 'COMPETITOR_PASS',
+            status: 'ACTIVE',
+            checkedIn: true,
+            tournamentName: reg.tournament.name,
+            attendeeName,
+            purchaserName: attendeeName,
+            seatNumber: 'Main Stage Competitor',
+          },
+          tournament: reg.tournament,
+          checkedInAt: now,
+          message: 'Competitor Pass verified and checked in successfully',
+        };
+      }
+
       const errMsg = 'Invalid Ticket QR code. Ticket not found.';
       await logAndBroadcast('INVALID', errMsg);
       throw new NotFoundException(errMsg);
@@ -713,7 +803,6 @@ export class TicketService {
       throw new BadRequestException(errMsg);
     }
 
-    const now = new Date();
     let newStatus = ticket.status;
 
     // 1. DAY_PASS: Single-use ever

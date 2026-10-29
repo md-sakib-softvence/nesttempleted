@@ -157,6 +157,37 @@ export class TournamentRegistrationService {
       },
     });
 
+    // Production Ticket Parity:
+    // Automatically issue an ACTIVE Gate Clearance Ticket for this competitor
+    try {
+      await this.prisma.ticket.upsert({
+        where: { qrToken: qrCodeString },
+        update: {
+          status: 'ACTIVE',
+          checkedIn: false,
+          playerId: dto.playerId,
+          purchasedBy: dto.playerId,
+        },
+        create: {
+          tournamentId,
+          playerId: dto.playerId,
+          purchasedBy: dto.playerId,
+          purchaserRole: 'PLAYER',
+          type: 'DAY_PASS',
+          pricePaid: tournament.entryFee || 0,
+          currency: tournament.currency || 'NGN',
+          status: 'ACTIVE',
+          qrToken: qrCodeString,
+          checkedIn: false,
+          showTicketId: `PASS-${created.registrationId.slice(0, 8).toUpperCase()}`,
+        },
+      });
+    } catch (ticketErr: any) {
+      this.logger.warn(
+        `Companion ticket creation notice: ${ticketErr?.message}`,
+      );
+    }
+
     return {
       ...created,
       id: created.registrationId,
