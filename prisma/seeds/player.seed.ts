@@ -4,7 +4,7 @@ import * as bcrypt from 'bcrypt';
 export async function seedPlayers(prisma: PrismaClient) {
   console.log('⚽ Seeding players...');
 
-  const defaultPassword = 'Password123!';
+  const defaultPassword = 'password123!';
   const hashedPassword = await bcrypt.hash(defaultPassword, 10);
 
   const playersData = [

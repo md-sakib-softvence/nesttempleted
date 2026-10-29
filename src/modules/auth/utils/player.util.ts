@@ -12,7 +12,7 @@ export const playerLoginUtil = async (
   jwtService: JwtService,
   configService: ConfigService,
 ) => {
-  const cleanEmail = (loginDto.email || '').trim();
+  const cleanEmail = (loginDto.email || '').trim().toLowerCase();
   const player = await prisma.player.findFirst({
     where: { email: { equals: cleanEmail, mode: 'insensitive' } },
   });
@@ -44,6 +44,7 @@ export const playerLoginUtil = async (
     loginDto.password,
     player.password,
   );
+
   if (!isPasswordValid) {
     throw new UnauthorizedException(
       'Authentication failed. Please check your credentials and try again.',
