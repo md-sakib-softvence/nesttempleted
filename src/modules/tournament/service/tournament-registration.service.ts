@@ -66,6 +66,8 @@ export class TournamentRegistrationService {
     if (
       dto.primaryTeamId &&
       dto.secondaryTeamId &&
+      dto.primaryTeamId !== "individual-competitor" &&
+      dto.primaryTeamId.trim() &&
       dto.primaryTeamId.trim() === dto.secondaryTeamId.trim()
     ) {
       throw new BadRequestException(
@@ -76,11 +78,11 @@ export class TournamentRegistrationService {
     // 4. Validate Home Venue membership
     if (dto.homeVenueId) {
       const venueExists = await this.prisma.venue.findFirst({
-        where: { venueId: dto.homeVenueId, tournamentId },
+        where: { venueId: dto.homeVenueId },
       });
       if (!venueExists) {
         throw new BadRequestException(
-          'Selected home venue is not valid or does not belong to this tournament.',
+          'Selected home venue is not valid.',
         );
       }
     }

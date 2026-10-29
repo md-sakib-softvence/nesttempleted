@@ -22,9 +22,19 @@ import { Role } from '@prisma/client';
 @ApiBearerAuth()
 @Controller('tournament/venue')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN, Role.SUPER_ADMIN)
+@Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.PLAYER, 'player', 'admin', 'super_admin')
 export class VenueController {
   constructor(private readonly venueService: VenueService) {}
+
+  @Get()
+  @ApiOperation({ summary: 'Fetch all venues' })
+  async findAll() {
+    const data = await this.venueService.findAll();
+    return sendResponse({
+      message: 'Venues retrieved successfully',
+      data,
+    });
+  }
 
   @Post()
   @ApiOperation({ summary: 'Create a new venue' })

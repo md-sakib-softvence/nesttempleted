@@ -7,6 +7,15 @@ import { UpdateVenueDto } from '../dto/venue/update-venue.dto';
 export class VenueService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async findAll() {
+    return this.prisma.venue.findMany({
+      include: {
+        screens: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
   async create(dto: CreateVenueDto) {
     const { screens, ...venueData } = dto;
 
