@@ -12,14 +12,9 @@ export const playerLoginUtil = async (
   jwtService: JwtService,
   configService: ConfigService,
 ) => {
-  const cleanQuery = (loginDto.email || '').trim();
+  const cleanEmail = (loginDto.email || '').trim();
   const player = await prisma.player.findFirst({
-    where: {
-      OR: [
-        { email: { equals: cleanQuery, mode: 'insensitive' } },
-        { gamerTag: { equals: cleanQuery, mode: 'insensitive' } },
-      ],
-    },
+    where: { email: { equals: cleanEmail, mode: 'insensitive' } },
   });
 
   if (!player) {
