@@ -1427,4 +1427,140 @@ export class TicketService {
 
     return { message: 'Ticket tier deleted successfully' };
   }
+
+  async getAllTiers(tournamentId?: string) {
+    const where: any = {};
+    if (tournamentId) {
+      where.tournamentId = tournamentId;
+    }
+    return this.prisma.ticketTier.findMany({
+      where,
+      include: {
+        tournament: {
+          select: {
+            tournamentId: true,
+            name: true,
+            currency: true,
+          },
+        },
+      },
+      orderBy: [{ tournamentId: 'asc' }, { price: 'asc' }],
+    });
+  }
+
+  async purchaseDirect(body: {
+    tournamentId: string;
+    tierId?: string;
+    type?: TicketType;
+    fanId?: string;
+    playerId?: string;
+    purchasedBy?: string;
+    purchaserRole?: string;
+    pricePaid?: number;
+    seatNumber?: string;
+  }) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId: body.tournamentId },
+      include: { ticketTiers: true },
+    });
+
+    if (!tournament) {
+      throw new NotFoundException(`Tournament #${body.tournamentId} not found`);
+    }
+
+    let tier: any = null;
+    if (body.tierId) {
+      tier = tournament.ticketTiers.find((t) => t.tierId === body.tierId);
+    } else if (tournament.ticketTiers.length > 0) {
+      tier = tournament.ticketTiers[0];
+    }
+
+    const price =
+      body.pricePaid !== undefined
+        ? body.pricePaid
+        : (tier?.price ?? tournament.entryFee ?? 0);
+    const type = body.type || tier?.type || TicketType.DAY_PASS;
+    const ticketId = crypto.randomUUID();
+    const count = await this.prisma.ticket.count({
+      where: { tournamentId: body.tournamentId },
+    });
+    const showTicketId = `TK-${count + 1}`;
+    const purchaserRole = (
+      body.purchaserRole || (body.playerId ? 'PLAYER' : 'FAN')
+    ).toUpperCase();
+    const userId =
+      body.purchasedBy ||
+      body.fanId ||
+      body.playerId ||
+      `user-${Date.now()}`;
+    const qrToken = `${purchaserRole}:${body.tournamentId}:${userId}:${ticketId}`;
+
+    const [ticket] = await this.prisma.$transaction([
+      this.prisma.ticket.create({
+        data: {
+          ticketId,
+          showTicketId,
+          tournamentId: body.tournamentId,
+          purchasedBy: userId,
+          purchaserRole,
+          fanId: body.fanId || (purchaserRole === 'FAN' ? userId : null),
+          playerId: body.playerId || (purchaserRole === 'PLAYER' ? userId : null),
+          type,
+          pricePaid: price,
+          currency: tier?.currency || tournament.currency || 'NGN',
+          status: TicketStatus.ACTIVE,
+          qrToken,
+          seatNumber:
+            body.seatNumber ||
+            (tier
+              ? `${tier.name.slice(0, 3).toUpperCase()}-${(tier.sold || 0) + 1}`
+              : null),
+          paymentReference: `DIRECT-${Date.now().toString(36).toUpperCase()}`,
+          paymentGateway: 'DIRECT',
+          paymentStatus: 'SUCCESS',
+          metadata: {
+            tierId: tier?.tierId,
+            tierName: tier?.name,
+          },
+        },
+        include: {
+          tournament: {
+            select: {
+              tournamentId: true,
+              name: true,
+              startDate: true,
+              currency: true,
+            },
+          },
+          fan: {
+            select: {
+              fanId: true,
+              firstName: true,
+              surname: true,
+              email: true,
+            },
+          },
+          player: {
+            select: {
+              playerId: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          },
+        },
+      }),
+      ...(tier
+        ? [
+            this.prisma.ticketTier.update({
+              where: { tierId: tier.tierId },
+              data: { sold: { increment: 1 } },
+            }),
+          ]
+        : []),
+    ]);
+
+    return ticket;
+  }
 }
+
