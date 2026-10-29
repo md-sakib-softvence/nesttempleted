@@ -511,11 +511,19 @@ export class TicketService {
       issuedTickets.push(ticket);
     }
 
-    // Increment tier sold count if applicable
-    if (tierId) {
+    // Increment tier sold count if applicable (with fallback matching by ticketType)
+    let targetTierId = tierId;
+    if (!targetTierId && tournament.ticketTiers?.length > 0) {
+      const matched = tournament.ticketTiers.find((t) => t.type === ticketType);
+      if (matched) {
+        targetTierId = matched.tierId;
+      }
+    }
+
+    if (targetTierId) {
       await this.prisma.ticketTier
         .update({
-          where: { tierId },
+          where: { tierId: targetTierId },
           data: {
             sold: { increment: quantity },
           },
