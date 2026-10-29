@@ -431,14 +431,25 @@ export class TicketService {
     // Perform DB issuance
     for (let i = 0; i < quantity; i++) {
       const ticketId = crypto.randomUUID();
-      const currentCount = await this.prisma.ticket.count();
-      const showTicketId = `TCK-${String(currentCount + 1 + i).padStart(5, '0')}`;
+      // Generate cryptographically unique, unguessable serial (e.g. TCK-2026-8F2A-4B9C)
+      const randomChunk1 = crypto.randomBytes(2).toString('hex').toUpperCase();
+      const randomChunk2 = crypto.randomBytes(2).toString('hex').toUpperCase();
+      const showTicketId = `TCK-2026-${randomChunk1}-${randomChunk2}`;
       const seat =
         quantity === 1 ? baseSeatNumber : `${baseSeatNumber}-${i + 1}`;
 
-      // Compatible with QRScannerModal format: FAN:tournamentId:userId:ticketId or PLAYER:tournamentId:userId:ticketId
+      // Cryptographic Anti-Clone Signature (HMAC-SHA256)
+      const hmacSecret = process.env.JWT_SECRET || 'tape_ticketing_secure_salt_2026';
+      const signature = crypto
+        .createHmac('sha256', hmacSecret)
+        .update(`${ticketId}:${tournamentId}:${userId || 'GUEST'}`)
+        .digest('hex')
+        .slice(0, 12)
+        .toUpperCase();
+
+      // Tamper-proof QR token format: FAN:tournamentId:userId:ticketId:SIGNATURE
       const prefix = userRole === 'PLAYER' ? 'PLAYER' : 'FAN';
-      const qrToken = `${prefix}:${tournamentId}:${userId || ticketId}:${ticketId}`;
+      const qrToken = `${prefix}:${tournamentId}:${userId || ticketId}:${ticketId}:${signature}`;
 
       const ticket = await this.prisma.ticket.create({
         data: {
@@ -1484,7 +1495,9 @@ export class TicketService {
     const count = await this.prisma.ticket.count({
       where: { tournamentId: body.tournamentId },
     });
-    const showTicketId = `TK-${count + 1}`;
+    const randomChunk1 = crypto.randomBytes(2).toString('hex').toUpperCase();
+    const randomChunk2 = crypto.randomBytes(2).toString('hex').toUpperCase();
+    const showTicketId = `TCK-2026-${randomChunk1}-${randomChunk2}`;
     const purchaserRole = (
       body.purchaserRole || (body.playerId ? 'PLAYER' : 'FAN')
     ).toUpperCase();
@@ -1493,7 +1506,14 @@ export class TicketService {
       body.fanId ||
       body.playerId ||
       `user-${Date.now()}`;
-    const qrToken = `${purchaserRole}:${body.tournamentId}:${userId}:${ticketId}`;
+    const hmacSecret = process.env.JWT_SECRET || 'tape_ticketing_secure_salt_2026';
+    const signature = crypto
+      .createHmac('sha256', hmacSecret)
+      .update(`${ticketId}:${body.tournamentId}:${userId}`)
+      .digest('hex')
+      .slice(0, 12)
+      .toUpperCase();
+    const qrToken = `${purchaserRole}:${body.tournamentId}:${userId}:${ticketId}:${signature}`;
 
     const [ticket] = await this.prisma.$transaction([
       this.prisma.ticket.create({
