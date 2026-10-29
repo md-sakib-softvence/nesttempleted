@@ -12,8 +12,9 @@ export const employeeLoginUtil = async (
   jwtService: JwtService,
   configService: ConfigService,
 ) => {
-  const employee = await prisma.employee.findUnique({
-    where: { email: loginDto.email },
+  const cleanEmail = (loginDto.email || '').trim();
+  const employee = await prisma.employee.findFirst({
+    where: { email: { equals: cleanEmail, mode: 'insensitive' } },
   });
 
   if (!employee) {

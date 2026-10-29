@@ -58,10 +58,9 @@ export class SelfScheduleWorkerService
           `Auto-assignment cycle completed. Processed ${outcome.totalProcessed} matches.`,
         );
       }
-    } catch (error) {
-      this.logger.error(
-        'Error during self-scheduling auto-assignment worker cycle:',
-        error,
+    } catch (error: any) {
+      this.logger.warn(
+        `Self-scheduling auto-assignment cycle delayed (will retry next interval): ${error?.message || error}`,
       );
     } finally {
       this.isProcessing = false;

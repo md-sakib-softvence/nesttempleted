@@ -18,8 +18,14 @@ export class PrismaService
     const pool = new pg.Pool({
       connectionString: process.env.DATABASE_URL,
       max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
+      idleTimeoutMillis: 120000,
+      connectionTimeoutMillis: 15000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
+    });
+    pool.on('error', (err) => {
+      // Prevent idle client terminations from raising unhandled exceptions
+      console.warn(`[PrismaService] Postgres pool client notice: ${err.message}`);
     });
     const adapter = new PrismaPg(pool);
     super({ adapter });

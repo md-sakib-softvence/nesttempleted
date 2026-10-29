@@ -12,8 +12,9 @@ export const fanLoginUtil = async (
   jwtService: JwtService,
   configService: ConfigService,
 ) => {
-  const fan = await prisma.fan.findUnique({
-    where: { email: loginDto.email },
+  const cleanEmail = (loginDto.email || '').trim();
+  const fan = await prisma.fan.findFirst({
+    where: { email: { equals: cleanEmail, mode: 'insensitive' } },
   });
 
   if (!fan) {

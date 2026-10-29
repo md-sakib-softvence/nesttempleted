@@ -1,8 +1,12 @@
+import * as dotenv from 'dotenv';
+dotenv.config({ path: './.env' });
 import { PrismaClient, Role, Status, AdminRole } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import * as bcrypt from 'bcrypt';
 import { seedTournaments } from './tournament.seed';
+import { seedPlayers } from './player.seed';
+import { seedStaffAndFans } from './staff.seed';
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -36,6 +40,12 @@ async function main() {
 
   // Seed Tournaments
   await seedTournaments(prisma);
+
+  // Seed Players
+  await seedPlayers(prisma);
+
+  // Seed Staff & Fans
+  await seedStaffAndFans(prisma);
 
   console.log('✅ Seeding complete!');
 }
