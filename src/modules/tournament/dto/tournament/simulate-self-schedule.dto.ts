@@ -18,4 +18,13 @@ export class SimulateSelfScheduleDto {
   @IsOptional()
   @IsString()
   simulatedCurrentTime?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Simulated scheduling opened timestamp (ISO 8601). Defaults to match.selfSchedulingOpenedAt if omitted.',
+    example: '2026-10-26T10:00:00Z',
+  })
+  @IsOptional()
+  @IsString()
+  simulatedOpenedAt?: string;
 }

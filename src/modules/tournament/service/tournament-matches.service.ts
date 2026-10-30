@@ -28,6 +28,8 @@ import {
   MatchSchedulingPhase,
   evaluateSelfSchedulingWindow,
   findEarliestValidSlot,
+  getEligibleSlotsForMatch,
+  countEligibleSlotsForMatch,
   isPeakTimeslot,
   CandidateSlot,
 } from '../utils/self-schedule.util';
@@ -422,17 +424,7 @@ export class TournamentMatchesService {
         );
       }
 
-      // Phase 3 deadline check (96+ hours)
-      const windowState = evaluateSelfSchedulingWindow(
-        targetMatch.selfSchedulingOpenedAt || tournament.startDate,
-      );
-      if (windowState.phase === 3 && !targetMatch.emergencyTokenUsed) {
-        throw new ForbiddenException(
-          'The 96-hour self-scheduling deadline has expired. This match is closed for manual booking and queued for system auto-assignment.',
-        );
-      }
-
-      // Ensure both competitors are resolved
+      // 2a. Ensure both competitors are resolved
       const p1 = targetMatch.player1Id;
       const p2 = targetMatch.player2Id;
       if (
@@ -445,6 +437,23 @@ export class TournamentMatchesService {
       ) {
         throw new BadRequestException(
           'Both competitors must be confirmed and resolved before booking this match.',
+        );
+      }
+
+      // 2b. Check self-scheduling window open
+      if (!targetMatch.selfSchedulingOpenedAt) {
+        throw new BadRequestException(
+          'Self-scheduling has not yet opened for this match.',
+        );
+      }
+
+      // 2c. Phase 3 deadline check (96+ hours)
+      const windowState = evaluateSelfSchedulingWindow(
+        targetMatch.selfSchedulingOpenedAt,
+      );
+      if (windowState.phase === 3 && !targetMatch.emergencyTokenUsed) {
+        throw new ForbiddenException(
+          'The 96-hour self-scheduling deadline has expired. This match is closed for manual booking and queued for system auto-assignment.',
         );
       }
 
@@ -500,6 +509,8 @@ export class TournamentMatchesService {
       match.proposedSlot = undefined;
       match.schedulingPhase = MatchSchedulingPhase.SCHEDULED;
       match.status = 'SCHEDULED';
+      match.bookedBy = currentUser.userId;
+      match.bookedAt = new Date().toISOString();
     }
 
     await this.prisma.tournament.update({
@@ -826,22 +837,33 @@ export class TournamentMatchesService {
             : undefined,
       }));
     } else {
-      const activePlayers = await this.prisma.player.findMany({
-        where: { status: 'ACTIVE', isDeleted: false },
-        take: tournament.numberOfTeams,
-      });
-      participants = activePlayers.map((p, idx) => ({
-        playerId: p.playerId,
-        name:
-          `${p.firstName} ${p.lastName}`.trim() ||
-          p.gamerTag ||
-          p.username ||
-          `Player ${idx + 1}`,
-        homeVenueId:
-          tournamentVenues.length > 0
-            ? tournamentVenues[idx % tournamentVenues.length].venueId
-            : undefined,
-      }));
+      const confirmedRegistrations =
+        await this.prisma.tournamentRegistration.findMany({
+          where: {
+            tournamentId: tournament.tournamentId,
+            status: 'CONFIRMED',
+            assignedSlot: { not: null },
+          },
+          include: { player: true },
+          orderBy: { assignedSlot: 'asc' },
+        });
+
+      if (confirmedRegistrations.length > 0) {
+        participants = confirmedRegistrations.map((r, idx) => ({
+          playerId: r.playerId,
+          name:
+            `${r.player?.firstName || ''} ${r.player?.lastName || ''}`.trim() ||
+            r.player?.gamerTag ||
+            `Player ${r.assignedSlot || idx + 1}`,
+          homeVenueId:
+            r.homeVenueId ||
+            (tournamentVenues.length > 0
+              ? tournamentVenues[idx % tournamentVenues.length].venueId
+              : undefined),
+        }));
+      } else {
+        participants = [];
+      }
     }
 
     const venueInputs: ScheduleVenueInput[] = tournamentVenues.map((v) => ({
@@ -977,10 +999,16 @@ export class TournamentMatchesService {
           }
 
           if (
+            tournament.schedulingMode === SchedulingMode.PLAYER_SELF &&
             nextWinnerMatch.player1Id &&
             nextWinnerMatch.player2Id &&
             !nextWinnerMatch.player1Id.startsWith('TBD') &&
             !nextWinnerMatch.player2Id.startsWith('TBD') &&
+            !nextWinnerMatch.player1Id.startsWith('BYE') &&
+            !nextWinnerMatch.player2Id.startsWith('BYE') &&
+            !nextWinnerMatch.isAutoAdvance &&
+            nextWinnerMatch.isSchedulable !== false &&
+            nextWinnerMatch.status !== 'COMPLETED' &&
             !nextWinnerMatch.selfSchedulingOpenedAt
           ) {
             nextWinnerMatch.selfSchedulingOpenedAt = new Date().toISOString();
@@ -1012,10 +1040,16 @@ export class TournamentMatchesService {
           }
 
           if (
+            tournament.schedulingMode === SchedulingMode.PLAYER_SELF &&
             nextLoserMatch.player1Id &&
             nextLoserMatch.player2Id &&
             !nextLoserMatch.player1Id.startsWith('TBD') &&
             !nextLoserMatch.player2Id.startsWith('TBD') &&
+            !nextLoserMatch.player1Id.startsWith('BYE') &&
+            !nextLoserMatch.player2Id.startsWith('BYE') &&
+            !nextLoserMatch.isAutoAdvance &&
+            nextLoserMatch.isSchedulable !== false &&
+            nextLoserMatch.status !== 'COMPLETED' &&
             !nextLoserMatch.selfSchedulingOpenedAt
           ) {
             nextLoserMatch.selfSchedulingOpenedAt = new Date().toISOString();
@@ -1031,7 +1065,11 @@ export class TournamentMatchesService {
           const activated =
             match.status === 'COMPLETED' && match.score2 > match.score1;
           m.isSchedulable = activated;
-          if (activated && !m.selfSchedulingOpenedAt) {
+          if (
+            activated &&
+            tournament.schedulingMode === SchedulingMode.PLAYER_SELF &&
+            !m.selfSchedulingOpenedAt
+          ) {
             m.selfSchedulingOpenedAt = new Date().toISOString();
           }
         }
@@ -1401,12 +1439,19 @@ export class TournamentMatchesService {
       });
     }
 
+    let autoAssignmentOutcome: any = null;
+    if (tournament.schedulingMode === SchedulingMode.PLAYER_SELF) {
+      autoAssignmentOutcome =
+        await this.processDueAutoAssignments(tournamentId);
+    }
+
     return {
       success: true,
       slotsAdded: 10,
       playingDaysAdded: 1,
       guaranteedDeficitBefore: 0,
       guaranteedDeficitAfter: 0,
+      autoAssignmentOutcome,
     };
   }
 
@@ -1666,7 +1711,7 @@ export class TournamentMatchesService {
       const oppId = isHome ? m.player2Id : m.player1Id;
       const opp = oppMap.get(oppId);
 
-      const openedAt = m.selfSchedulingOpenedAt || tournament.startDate;
+      const openedAt = m.selfSchedulingOpenedAt;
       const windowState = evaluateSelfSchedulingWindow(openedAt, now);
 
       return {
@@ -1684,11 +1729,19 @@ export class TournamentMatchesService {
           gamerTag: opp?.gamerTag,
           profilePicture: opp?.profilePicture,
         },
-        openedAt,
+        openedAt: m.selfSchedulingOpenedAt || null,
         phase: windowState.phase,
         phaseStatus: m.schedulingPhase || windowState.phaseStatus,
+        isEscalated: windowState.isEscalated,
+        escalationWarning: windowState.isEscalated
+          ? 'Your initial 48-hour self-scheduling period has expired. This match is now escalated. Please select a slot before the automatic assignment deadline.'
+          : null,
         timeRemainingMs: windowState.timeRemainingMs,
         timeRemainingFormatted: windowState.timeRemainingFormatted,
+        autoAssignmentDueAt: windowState.autoAssignmentDueAt,
+        timeUntilAutoAssignmentMs: windowState.timeUntilAutoAssignmentMs,
+        timeUntilAutoAssignmentFormatted:
+          windowState.timeUntilAutoAssignmentFormatted,
         isAutoAssignmentDue: windowState.isAutoAssignmentDue,
         canPlayerSelectSlot:
           windowState.canPlayerSelectSlot || !!m.emergencyTokenUsed,
@@ -1749,7 +1802,7 @@ export class TournamentMatchesService {
     }
 
     const windowState = evaluateSelfSchedulingWindow(
-      targetMatch.selfSchedulingOpenedAt || tournament.startDate,
+      targetMatch.selfSchedulingOpenedAt,
     );
 
     const groupedByDate: Record<string, any> = {};
@@ -1887,7 +1940,15 @@ export class TournamentMatchesService {
       matchId,
       phase: windowState.phase,
       phaseStatus: targetMatch.schedulingPhase || windowState.phaseStatus,
+      isEscalated: windowState.isEscalated,
       timeRemainingFormatted: windowState.timeRemainingFormatted,
+      timeUntilAutoAssignmentFormatted:
+        windowState.timeUntilAutoAssignmentFormatted,
+      timeUntilAutoAssignmentMs: windowState.timeUntilAutoAssignmentMs,
+      autoAssignmentDueAt: windowState.autoAssignmentDueAt,
+      isAutoAssignmentDue: windowState.isAutoAssignmentDue,
+      canPlayerSelectSlot:
+        windowState.canPlayerSelectSlot || !!targetMatch.emergencyTokenUsed,
       proposedSlot: targetMatch.proposedSlot || null,
       scheduleByDate,
     };
@@ -2048,38 +2109,57 @@ export class TournamentMatchesService {
       throw new NotFoundException(`Match #${dto.matchId} not found`);
     }
 
-    const openedAt = match.selfSchedulingOpenedAt || tournament.startDate;
+    const openedAt = dto.simulatedOpenedAt || match.selfSchedulingOpenedAt;
     const simTime = dto.simulatedCurrentTime
       ? new Date(dto.simulatedCurrentTime)
       : new Date();
 
     const windowState = evaluateSelfSchedulingWindow(openedAt, simTime);
 
+    const eligibleSlotsList = getEligibleSlotsForMatch(
+      schedule.calendar,
+      match.id,
+      match.player1Id,
+      match.player2Id,
+    );
+    const eligibleSlots = eligibleSlotsList.length;
+    const candidateSlot =
+      eligibleSlotsList.length > 0 ? eligibleSlotsList[0] : null;
+
     let predictedAction:
       | 'AUTO_ASSIGN'
       | 'CAPACITY_BLOCKED'
-      | 'PLAYER_SELF_BOOKING' = 'PLAYER_SELF_BOOKING';
-    let candidateSlot: CandidateSlot | null = null;
+      | 'PLAYER_SELF_BOOKING'
+      | 'ALREADY_SCHEDULED'
+      | 'NOT_OPEN' = 'PLAYER_SELF_BOOKING';
 
-    if (windowState.phase === 3) {
-      candidateSlot = findEarliestValidSlot(
-        schedule.calendar,
-        match.id,
-        match.player1Id,
-        match.player2Id,
-      );
+    const isAllocated = !!(match.date && match.time && match.venueId);
+
+    if (isAllocated) {
+      predictedAction = 'ALREADY_SCHEDULED';
+    } else if (windowState.phase === 0) {
+      predictedAction = 'NOT_OPEN';
+    } else if (windowState.phase === 3) {
       predictedAction = candidateSlot ? 'AUTO_ASSIGN' : 'CAPACITY_BLOCKED';
+    } else {
+      predictedAction = 'PLAYER_SELF_BOOKING';
     }
 
     return {
       matchId: match.id,
-      openedAt,
+      openedAt: openedAt || null,
       simulatedCurrentTime: simTime.toISOString(),
       elapsedHours: windowState.elapsedHours,
       phase: windowState.phase,
       phaseStatus: windowState.phaseStatus,
+      isEscalated: windowState.isEscalated,
       timeRemainingFormatted: windowState.timeRemainingFormatted,
+      timeUntilAutoAssignment: windowState.timeUntilAutoAssignmentFormatted,
+      timeUntilAutoAssignmentMs: windowState.timeUntilAutoAssignmentMs,
+      autoAssignmentDueAt: windowState.autoAssignmentDueAt,
+      eligibleSlots,
       isAutoAssignmentDue: windowState.isAutoAssignmentDue,
+      canPlayerSelectSlot: windowState.canPlayerSelectSlot,
       predictedAction,
       candidateSlot,
     };
@@ -2116,10 +2196,37 @@ export class TournamentMatchesService {
         const isAllocated = !!(match.date && match.time && match.venueId);
         const isCompleted =
           match.status === 'COMPLETED' || match.status === 'CANCELLED';
-        if (isAllocated || isCompleted || match.isAutoAdvance) continue;
+        if (
+          isAllocated ||
+          isCompleted ||
+          match.isAutoAdvance ||
+          match.conditional ||
+          match.isSchedulable === false
+        ) {
+          continue;
+        }
 
-        const openedAt = match.selfSchedulingOpenedAt || tournament.startDate;
-        const windowState = evaluateSelfSchedulingWindow(openedAt, now);
+        // Both participants must be resolved before scheduling clock starts or auto-assigning
+        if (
+          !match.player1Id ||
+          !match.player2Id ||
+          match.player1Id.startsWith('TBD') ||
+          match.player2Id.startsWith('TBD') ||
+          match.player1Id.startsWith('BYE') ||
+          match.player2Id.startsWith('BYE')
+        ) {
+          continue;
+        }
+
+        // Only process matches that have actually opened for self-scheduling
+        if (!match.selfSchedulingOpenedAt) {
+          continue;
+        }
+
+        const windowState = evaluateSelfSchedulingWindow(
+          match.selfSchedulingOpenedAt,
+          now,
+        );
 
         if (windowState.phase === 3 && !match.emergencyTokenUsed) {
           const candidate = findEarliestValidSlot(
@@ -2141,6 +2248,8 @@ export class TournamentMatchesService {
               );
             match.schedulingPhase = MatchSchedulingPhase.AUTO_ASSIGNED;
             match.status = 'SCHEDULED';
+            match.autoAssignedAt = now.toISOString();
+            match.schedulingExceptionReason = undefined;
             Object.assign(schedule, updatedSchedule);
             hasUpdates = true;
 
@@ -2157,6 +2266,19 @@ export class TournamentMatchesService {
               `Match #${match.id} auto-assigned to ${candidate.venueName} screen ${candidate.screenName} on ${candidate.date} @ ${candidate.time}`,
               'TOURNAMENT',
             );
+
+            for (const pId of [match.player1Id, match.player2Id]) {
+              try {
+                await this.prisma.notification.create({
+                  data: {
+                    userId: pId,
+                    title: 'Match Automatically Scheduled',
+                    description: `Your match #${match.id} was automatically scheduled for ${candidate.date} at ${candidate.time} on ${candidate.venueName} - ${candidate.screenName} following self-scheduling deadline expiration.`,
+                    status: 'INFORMATION',
+                  },
+                });
+              } catch (_) {}
+            }
           } else {
             match.schedulingPhase = MatchSchedulingPhase.CAPACITY_BLOCKED;
             match.schedulingExceptionReason =

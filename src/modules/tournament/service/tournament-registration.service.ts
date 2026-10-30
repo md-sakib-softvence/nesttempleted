@@ -263,16 +263,63 @@ export class TournamentRegistrationService {
       throw new NotFoundException(`Registration #${registrationId} not found`);
     }
 
-    return this.prisma.tournamentRegistration.update({
+    let assignedSlot = registration.assignedSlot;
+
+    // If promoting to CONFIRMED and has no slot yet
+    if (
+      dto.status === TournamentRegistrationStatus.CONFIRMED &&
+      !assignedSlot
+    ) {
+      const existingConfirmed = await this.prisma.tournamentRegistration.findMany({
+        where: {
+          tournamentId,
+          status: TournamentRegistrationStatus.CONFIRMED,
+          assignedSlot: { not: null },
+        },
+        select: { assignedSlot: true },
+      });
+
+      const occupiedSlots = new Set(
+        existingConfirmed.map((c) => c.assignedSlot!),
+      );
+      assignedSlot = 1;
+      while (occupiedSlots.has(assignedSlot)) {
+        assignedSlot++;
+      }
+    } else if (
+      dto.status !== TournamentRegistrationStatus.CONFIRMED &&
+      registration.status === TournamentRegistrationStatus.CONFIRMED &&
+      assignedSlot
+    ) {
+      await this.removeParticipantFromTournamentSchedule(tournamentId, assignedSlot);
+      assignedSlot = null;
+    }
+
+    const updated = await this.prisma.tournamentRegistration.update({
       where: { registrationId },
       data: {
         status: dto.status,
         ...(dto.paymentStatus ? { paymentStatus: dto.paymentStatus } : {}),
+        assignedSlot,
       },
       include: {
         player: true,
       },
     });
+
+    if (
+      dto.status === TournamentRegistrationStatus.CONFIRMED &&
+      updated.assignedSlot &&
+      updated.player
+    ) {
+      await this.syncParticipantToTournamentSchedule(
+        tournamentId,
+        updated.assignedSlot,
+        updated.player,
+      );
+    }
+
+    return updated;
   }
 
   /**
@@ -641,7 +688,18 @@ export class TournamentRegistrationService {
         assignedSlot,
         version: { increment: 1 },
       },
+      include: {
+        player: true,
+      },
     });
+
+    if (updated.player && updated.assignedSlot) {
+      await this.syncParticipantToTournamentSchedule(
+        reg.tournamentId,
+        updated.assignedSlot,
+        updated.player,
+      );
+    }
 
     return {
       registration: {
@@ -692,6 +750,13 @@ export class TournamentRegistrationService {
       },
     });
 
+    if (releasedSlotNumber) {
+      await this.removeParticipantFromTournamentSchedule(
+        reg.tournamentId,
+        releasedSlotNumber,
+      );
+    }
+
     return {
       registrationId: updated.registrationId,
       status: updated.status,
@@ -699,5 +764,189 @@ export class TournamentRegistrationService {
       releasedSlotNumber,
       reason,
     };
+  }
+
+  /**
+   * Synchronize confirmed participant into tournament schedule (slots, seeds, canonical matches).
+   */
+  async syncParticipantToTournamentSchedule(
+    tournamentId: string,
+    assignedSlot: number,
+    player: {
+      playerId: string;
+      firstName?: string | null;
+      lastName?: string | null;
+      gamerTag?: string | null;
+      username?: string | null;
+    },
+  ) {
+    try {
+      const tournament = await this.prisma.tournament.findUnique({
+        where: { tournamentId },
+        select: { schedule: true, schedulingMode: true },
+      });
+
+      if (!tournament || !tournament.schedule) {
+        return;
+      }
+
+      const schedule = tournament.schedule as any;
+      const structure = schedule.structure || schedule;
+      const slots: any[] = structure.slots || schedule.slots || [];
+      const seeds: any[] = structure.seeds || schedule.seeds || [];
+      const matches: any[] = structure.matches || schedule.matches || [];
+
+      const playerName =
+        `${player.firstName || ''} ${player.lastName || ''}`.trim() ||
+        player.gamerTag ||
+        player.username ||
+        `Player ${assignedSlot}`;
+
+      // 1. Update matching slot
+      const targetSlot = slots.find((s) => s.slotNumber === assignedSlot);
+      if (targetSlot) {
+        targetSlot.status = 'ASSIGNED';
+        targetSlot.participantId = player.playerId;
+        targetSlot.participantName = playerName;
+      }
+
+      // 2. Update matching seed
+      const targetSeed = seeds.find(
+        (s) => s.slotNumber === assignedSlot || s.seedNumber === assignedSlot,
+      );
+      if (targetSeed) {
+        targetSeed.participantId = player.playerId;
+      }
+
+      // 3. Update initial round matches that reference this slot or seed
+      for (const m of matches) {
+        if (
+          (m.participant1Ref?.type === 'TOURNAMENT_SLOT' &&
+            parseInt(m.participant1Ref.value, 10) === assignedSlot) ||
+          (m.participant1Ref?.type === 'SEED' &&
+            parseInt(m.participant1Ref.value, 10) === assignedSlot)
+        ) {
+          m.player1Id = player.playerId;
+          m.player1Name = playerName;
+        }
+
+        if (
+          (m.participant2Ref?.type === 'TOURNAMENT_SLOT' &&
+            parseInt(m.participant2Ref.value, 10) === assignedSlot) ||
+          (m.participant2Ref?.type === 'SEED' &&
+            parseInt(m.participant2Ref.value, 10) === assignedSlot)
+        ) {
+          m.player2Id = player.playerId;
+          m.player2Name = playerName;
+        }
+
+        // Initialize self-scheduling clock when both participants are resolved on schedulable matches
+        if (
+          m.player1Id &&
+          m.player2Id &&
+          !m.player1Id.startsWith('TBD') &&
+          !m.player2Id.startsWith('TBD') &&
+          !m.player1Id.startsWith('BYE') &&
+          !m.player2Id.startsWith('BYE') &&
+          !m.isAutoAdvance &&
+          !m.conditional &&
+          m.isSchedulable !== false &&
+          m.status !== 'COMPLETED'
+        ) {
+          if (
+            tournament.schedulingMode === 'PLAYER_SELF' &&
+            !m.selfSchedulingOpenedAt
+          ) {
+            m.selfSchedulingOpenedAt = new Date().toISOString();
+          }
+        }
+      }
+
+      await this.prisma.tournament.update({
+        where: { tournamentId },
+        data: { schedule },
+      });
+    } catch (err: any) {
+      this.logger.warn(
+        `Failed to sync participant to schedule: ${err?.message}`,
+      );
+    }
+  }
+
+  /**
+   * Release participant from tournament schedule (slots, seeds, canonical matches).
+   */
+  async removeParticipantFromTournamentSchedule(
+    tournamentId: string,
+    releasedSlotNumber: number,
+  ) {
+    try {
+      const tournament = await this.prisma.tournament.findUnique({
+        where: { tournamentId },
+        select: { schedule: true },
+      });
+
+      if (!tournament || !tournament.schedule) {
+        return;
+      }
+
+      const schedule = tournament.schedule as any;
+      const structure = schedule.structure || schedule;
+      const slots: any[] = structure.slots || schedule.slots || [];
+      const seeds: any[] = structure.seeds || schedule.seeds || [];
+      const matches: any[] = structure.matches || schedule.matches || [];
+
+      // 1. Release slot
+      const targetSlot = slots.find((s) => s.slotNumber === releasedSlotNumber);
+      if (targetSlot) {
+        targetSlot.status = 'UNASSIGNED';
+        delete targetSlot.participantId;
+        delete targetSlot.participantName;
+      }
+
+      // 2. Release seed
+      const targetSeed = seeds.find(
+        (s) =>
+          s.slotNumber === releasedSlotNumber ||
+          s.seedNumber === releasedSlotNumber,
+      );
+      if (targetSeed) {
+        delete targetSeed.participantId;
+      }
+
+      // 3. Clear from matches
+      for (const m of matches) {
+        if (
+          (m.participant1Ref?.type === 'TOURNAMENT_SLOT' &&
+            parseInt(m.participant1Ref.value, 10) === releasedSlotNumber) ||
+          (m.participant1Ref?.type === 'SEED' &&
+            parseInt(m.participant1Ref.value, 10) === releasedSlotNumber)
+        ) {
+          delete m.player1Id;
+          delete m.player1Name;
+          delete m.selfSchedulingOpenedAt;
+        }
+
+        if (
+          (m.participant2Ref?.type === 'TOURNAMENT_SLOT' &&
+            parseInt(m.participant2Ref.value, 10) === releasedSlotNumber) ||
+          (m.participant2Ref?.type === 'SEED' &&
+            parseInt(m.participant2Ref.value, 10) === releasedSlotNumber)
+        ) {
+          delete m.player2Id;
+          delete m.player2Name;
+          delete m.selfSchedulingOpenedAt;
+        }
+      }
+
+      await this.prisma.tournament.update({
+        where: { tournamentId },
+        data: { schedule },
+      });
+    } catch (err: any) {
+      this.logger.warn(
+        `Failed to remove participant from schedule: ${err?.message}`,
+      );
+    }
   }
 }

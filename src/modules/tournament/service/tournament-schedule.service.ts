@@ -314,11 +314,42 @@ export class TournamentScheduleService {
       schedulingMode === SchedulingMode.MANUAL ||
       schedulingMode === SchedulingMode.PLAYER_SELF
     ) {
+      if (schedulingMode === SchedulingMode.PLAYER_SELF) {
+        const nowIso = new Date().toISOString();
+        for (const m of structure.matches) {
+          if (
+            m.player1Id &&
+            m.player2Id &&
+            !m.player1Id.startsWith('TBD') &&
+            !m.player2Id.startsWith('TBD') &&
+            !m.player1Id.startsWith('BYE') &&
+            !m.player2Id.startsWith('BYE') &&
+            !m.isAutoAdvance &&
+            !m.conditional &&
+            m.isSchedulable !== false &&
+            m.status !== 'COMPLETED'
+          ) {
+            m.selfSchedulingOpenedAt = m.selfSchedulingOpenedAt || nowIso;
+          } else {
+            delete m.selfSchedulingOpenedAt;
+          }
+        }
+      } else {
+        for (const m of structure.matches) {
+          delete m.selfSchedulingOpenedAt;
+        }
+      }
+
       return {
         capacity: { ...capacity, eventDates },
         structure,
         calendar,
       };
+    }
+
+    // For other modes, clear self-scheduling timestamp
+    for (const m of structure.matches) {
+      delete m.selfSchedulingOpenedAt;
     }
 
     // 6. AUTO_HOME_VENUE or AUTO_RANDOM: allocate schedulable matches
