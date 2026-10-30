@@ -64,6 +64,7 @@ export class TournamentController {
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'canvasImage', maxCount: 1 },
+      { name: 'fanPassArtUrl', maxCount: 1 },
       { name: 'playerOrgUrl', maxCount: 1 },
       { name: 'organizerLogo', maxCount: 1 },
       { name: 'prOrgUrl', maxCount: 1 },
@@ -72,6 +73,7 @@ export class TournamentController {
       { name: 'tournamentLogo', maxCount: 1 },
       { name: 'logo', maxCount: 1 },
       { name: 'rules', maxCount: 10 },
+      { name: 'termsAndConditions', maxCount: 10 },
       { name: 'tsAndTc', maxCount: 10 },
     ]),
   )
@@ -80,6 +82,7 @@ export class TournamentController {
     @UploadedFiles()
     files: {
       canvasImage?: Express.Multer.File[];
+      fanPassArtUrl?: Express.Multer.File[];
       playerOrgUrl?: Express.Multer.File[];
       organizerLogo?: Express.Multer.File[];
       prOrgUrl?: Express.Multer.File[];
@@ -88,6 +91,7 @@ export class TournamentController {
       tournamentLogo?: Express.Multer.File[];
       logo?: Express.Multer.File[];
       rules?: Express.Multer.File[];
+      termsAndConditions?: Express.Multer.File[];
       tsAndTc?: Express.Multer.File[];
     },
   ) {
@@ -95,6 +99,7 @@ export class TournamentController {
 
     if (uploadedFiles.canvasImage) {
       createDto.canvasImage = uploadedFiles.canvasImage;
+      createDto.fanPassArtUrl = uploadedFiles.canvasImage;
     }
 
     if (uploadedFiles.playerOrgUrl) {
@@ -117,9 +122,13 @@ export class TournamentController {
     }
 
     if (uploadedFiles.tsAndTc.length > 0) {
+      createDto.termsAndConditions = uploadedFiles.tsAndTc;
       createDto.tsAndTc = uploadedFiles.tsAndTc;
     } else {
-      createDto.tsAndTc = normalizeStringArray(createDto.tsAndTc);
+      createDto.termsAndConditions = normalizeStringArray(
+        createDto.termsAndConditions || createDto.tsAndTc,
+      );
+      createDto.tsAndTc = createDto.termsAndConditions;
     }
 
     try {
@@ -178,6 +187,7 @@ export class TournamentController {
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'canvasImage', maxCount: 1 },
+      { name: 'fanPassArtUrl', maxCount: 1 },
       { name: 'playerOrgUrl', maxCount: 1 },
       { name: 'organizerLogo', maxCount: 1 },
       { name: 'prOrgUrl', maxCount: 1 },
@@ -186,6 +196,7 @@ export class TournamentController {
       { name: 'tournamentLogo', maxCount: 1 },
       { name: 'logo', maxCount: 1 },
       { name: 'rules', maxCount: 10 },
+      { name: 'termsAndConditions', maxCount: 10 },
       { name: 'tsAndTc', maxCount: 10 },
     ]),
   )
@@ -195,6 +206,7 @@ export class TournamentController {
     @UploadedFiles()
     files: {
       canvasImage?: Express.Multer.File[];
+      fanPassArtUrl?: Express.Multer.File[];
       playerOrgUrl?: Express.Multer.File[];
       organizerLogo?: Express.Multer.File[];
       prOrgUrl?: Express.Multer.File[];
@@ -203,6 +215,7 @@ export class TournamentController {
       tournamentLogo?: Express.Multer.File[];
       logo?: Express.Multer.File[];
       rules?: Express.Multer.File[];
+      termsAndConditions?: Express.Multer.File[];
       tsAndTc?: Express.Multer.File[];
     },
   ) {
@@ -210,6 +223,7 @@ export class TournamentController {
 
     if (uploadedFiles.canvasImage) {
       updateDto.canvasImage = uploadedFiles.canvasImage;
+      updateDto.fanPassArtUrl = uploadedFiles.canvasImage;
     }
 
     if (uploadedFiles.playerOrgUrl) {
@@ -232,9 +246,16 @@ export class TournamentController {
     }
 
     if (uploadedFiles.tsAndTc.length > 0) {
+      updateDto.termsAndConditions = uploadedFiles.tsAndTc;
       updateDto.tsAndTc = uploadedFiles.tsAndTc;
-    } else if (updateDto.tsAndTc !== undefined) {
-      updateDto.tsAndTc = normalizeStringArray(updateDto.tsAndTc);
+    } else if (
+      updateDto.termsAndConditions !== undefined ||
+      updateDto.tsAndTc !== undefined
+    ) {
+      updateDto.termsAndConditions = normalizeStringArray(
+        updateDto.termsAndConditions || updateDto.tsAndTc,
+      );
+      updateDto.tsAndTc = updateDto.termsAndConditions;
     }
 
     try {

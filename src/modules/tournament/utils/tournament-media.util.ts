@@ -136,6 +136,7 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
   formatted.rulesUrl = (formatted.rules && formatted.rules[0]) || '';
   formatted.termsAndConditionsUrl =
     (formatted.tsAndTc && formatted.tsAndTc[0]) || '';
+  formatted.termsAndConditions = formatted.tsAndTc || [];
   formatted.seriesId =
     formatted.seriesTournaments?.[0]?.seriesId || formatted.seriesId || null;
 
