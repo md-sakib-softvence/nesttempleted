@@ -7,7 +7,6 @@ import {
   calculateTournamentExpectedMatches,
   calculateCapacity,
   calculateDayTimeslots,
-  generatePlayingDates,
   generateCanonicalStructure,
 } from './tournament-calculation.util';
 
@@ -335,6 +334,39 @@ describe('Tournament Calculations (tape eSports Calculation.docx specifications)
       expect(timeslots[7]).toBe('13:30');
       expect(timeslots[8]).toBe('15:00');
       expect(timeslots[17]).toBe('19:30');
+    });
+  });
+
+  describe('Clean Unassigned Slots & Participants Resolution', () => {
+    it('leaves all slots and seeds UNASSIGNED when tournament has no registered participants', () => {
+      const struct = generateCanonicalStructure(
+        't-empty',
+        TournamentFormat.SINGLE_ELIMINATION,
+        8,
+        undefined,
+        [],
+        false,
+      );
+
+      expect(struct.slots.length).toBe(8);
+      struct.slots.forEach((slot, index) => {
+        expect(slot.status).toBe('UNASSIGNED');
+        expect(slot.participantId).toBeUndefined();
+        expect(slot.participantName).toBeUndefined();
+        expect(slot.slotNumber).toBe(index + 1);
+      });
+
+      expect(struct.seeds.length).toBe(8);
+      struct.seeds.forEach((seed) => {
+        expect(seed.participantId).toBeUndefined();
+      });
+
+      // Matches should not have fake/dummy player IDs
+      struct.matches.forEach((m) => {
+        expect(m.player1Id).toBeUndefined();
+        expect(m.player2Id).toBeUndefined();
+        expect(m.selfSchedulingOpenedAt).toBeUndefined();
+      });
     });
   });
 });

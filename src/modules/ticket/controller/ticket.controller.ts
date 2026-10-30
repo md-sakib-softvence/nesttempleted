@@ -261,7 +261,9 @@ export class TicketController {
    */
   @Post('purchase-direct')
   @Public()
-  @ApiOperation({ summary: 'Direct purchase / issue ticket without 3rd party checkout' })
+  @ApiOperation({
+    summary: 'Direct purchase / issue ticket without 3rd party checkout',
+  })
   async purchaseDirect(@Body() body: any) {
     const data = await this.ticketService.purchaseDirect(body);
     return sendResponse({

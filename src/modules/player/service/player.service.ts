@@ -27,6 +27,7 @@ import { DocumentStatus, Role } from '@prisma/client';
 import { PlayerDocumentService } from './player-document.service';
 import { PlayerPassService } from './player-pass.service';
 import { PlayerWalletService } from './player-wallet.service';
+import { evaluateSelfSchedulingWindow } from '../../tournament/utils/self-schedule.util';
 
 @Injectable()
 export class PlayerService {
@@ -626,7 +627,11 @@ export class PlayerService {
               canSelfSchedule:
                 tourney.schedulingMode === 'PLAYER_SELF' &&
                 !tourney.schedulingPaused &&
-                (tourney as any).schedulingWindowOpen !== false,
+                (tourney as any).schedulingWindowOpen !== false &&
+                !hasSchedule &&
+                (!m.selfSchedulingOpenedAt ||
+                  evaluateSelfSchedulingWindow(m.selfSchedulingOpenedAt)
+                    .canPlayerSelectSlot),
             });
           }
         }
@@ -837,7 +842,10 @@ export class PlayerService {
               canSelfSchedule:
                 tourney.schedulingMode === 'PLAYER_SELF' &&
                 !tourney.schedulingPaused &&
-                (tourney as any).schedulingWindowOpen !== false,
+                (tourney as any).schedulingWindowOpen !== false &&
+                (!m.selfSchedulingOpenedAt ||
+                  evaluateSelfSchedulingWindow(m.selfSchedulingOpenedAt)
+                    .canPlayerSelectSlot),
             });
           }
         }

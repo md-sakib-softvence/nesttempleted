@@ -90,6 +90,9 @@ export interface TournamentMatchEntity {
   time?: string;
   selfSchedulingOpenedAt?: string;
   schedulingPhase?: string;
+  bookedBy?: string;
+  bookedAt?: string;
+  autoAssignedAt?: string;
   proposedSlot?: {
     venueId: string;
     venueName?: string;
@@ -894,16 +897,6 @@ export function resolveParticipants(
     });
   }
 
-  const remaining = numberOfTeams - list.length;
-  for (let i = 0; i < remaining; i++) {
-    const idx = list.length + 1;
-    list.push({
-      playerId: `player-${idx}`,
-      name: `Player ${idx}`,
-      homeVenueId: venues[i % Math.max(1, venues.length)]?.venueId,
-    });
-  }
-
   return list;
 }
 
@@ -967,7 +960,7 @@ export function populateParticipantDetails(
       }
     }
 
-    // Initialize self-scheduling clock when both participants are resolved
+    // Initialize self-scheduling clock when both participants are resolved on schedulable matches
     if (
       m.player1Id &&
       m.player2Id &&
@@ -975,6 +968,10 @@ export function populateParticipantDetails(
       !m.player2Id.startsWith('TBD') &&
       !m.player1Id.startsWith('BYE') &&
       !m.player2Id.startsWith('BYE') &&
+      !m.isAutoAdvance &&
+      !m.conditional &&
+      m.isSchedulable !== false &&
+      m.status !== 'COMPLETED' &&
       !m.selfSchedulingOpenedAt
     ) {
       m.selfSchedulingOpenedAt = new Date().toISOString();
@@ -1027,6 +1024,11 @@ export function normalizeMatchSemantics(
       delete result.screenId;
       delete result.date;
       delete result.time;
+      delete result.selfSchedulingOpenedAt;
+    }
+
+    if (result.conditional && !result.isSchedulable) {
+      delete result.selfSchedulingOpenedAt;
     }
 
     visiting.delete(match.id);

@@ -439,7 +439,8 @@ export class TicketService {
         quantity === 1 ? baseSeatNumber : `${baseSeatNumber}-${i + 1}`;
 
       // Cryptographic Anti-Clone Signature (HMAC-SHA256)
-      const hmacSecret = process.env.JWT_SECRET || 'tape_ticketing_secure_salt_2026';
+      const hmacSecret =
+        process.env.JWT_SECRET || 'tape_ticketing_secure_salt_2026';
       const signature = crypto
         .createHmac('sha256', hmacSecret)
         .update(`${ticketId}:${tournamentId}:${userId || 'GUEST'}`)
@@ -608,7 +609,9 @@ export class TicketService {
         const urlToken =
           urlObj.searchParams.get('token') || urlObj.searchParams.get('code');
         if (urlToken) trimmedToken = urlToken.trim();
-      } catch {}
+      } catch {
+        // Fallback to raw string if token is not a URL
+      }
     }
     const now = new Date();
     const guardName =
@@ -718,7 +721,12 @@ export class TicketService {
 
         if (reg.checkedInVenue) {
           const errMsg = `Competitor pass for "${reg.player?.gamerTag || 'Player'}" was already scanned and checked in. Duplicate entry denied.`;
-          await logAndBroadcast('ALREADY_CHECKED_IN', errMsg, undefined, attendeeName);
+          await logAndBroadcast(
+            'ALREADY_CHECKED_IN',
+            errMsg,
+            undefined,
+            attendeeName,
+          );
           throw new BadRequestException(errMsg);
         }
 
@@ -1659,11 +1667,9 @@ export class TicketService {
       body.purchaserRole || (body.playerId ? 'PLAYER' : 'FAN')
     ).toUpperCase();
     const userId =
-      body.purchasedBy ||
-      body.fanId ||
-      body.playerId ||
-      `user-${Date.now()}`;
-    const hmacSecret = process.env.JWT_SECRET || 'tape_ticketing_secure_salt_2026';
+      body.purchasedBy || body.fanId || body.playerId || `user-${Date.now()}`;
+    const hmacSecret =
+      process.env.JWT_SECRET || 'tape_ticketing_secure_salt_2026';
     const signature = crypto
       .createHmac('sha256', hmacSecret)
       .update(`${ticketId}:${body.tournamentId}:${userId}`)
@@ -1681,7 +1687,8 @@ export class TicketService {
           purchasedBy: userId,
           purchaserRole,
           fanId: body.fanId || (purchaserRole === 'FAN' ? userId : null),
-          playerId: body.playerId || (purchaserRole === 'PLAYER' ? userId : null),
+          playerId:
+            body.playerId || (purchaserRole === 'PLAYER' ? userId : null),
           type,
           pricePaid: price,
           currency: tier?.currency || tournament.currency || 'NGN',
@@ -1740,4 +1747,3 @@ export class TicketService {
     return ticket;
   }
 }
-

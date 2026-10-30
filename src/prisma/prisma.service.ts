@@ -25,7 +25,9 @@ export class PrismaService
     });
     pool.on('error', (err) => {
       // Prevent idle client terminations from raising unhandled exceptions
-      console.warn(`[PrismaService] Postgres pool client notice: ${err.message}`);
+      console.warn(
+        `[PrismaService] Postgres pool client notice: ${err.message}`,
+      );
     });
     const adapter = new PrismaPg(pool);
     super({ adapter });

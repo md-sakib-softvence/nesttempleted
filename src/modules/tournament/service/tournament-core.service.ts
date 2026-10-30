@@ -333,22 +333,7 @@ export class TournamentCoreService {
             : undefined,
       }));
     } else {
-      const activePlayers = await this.prisma.player.findMany({
-        where: { status: 'ACTIVE', isDeleted: false },
-        take: tournament.numberOfTeams,
-      });
-      participants = activePlayers.map((p, idx) => ({
-        playerId: p.playerId,
-        name:
-          `${p.firstName} ${p.lastName}`.trim() ||
-          p.gamerTag ||
-          p.username ||
-          `Player ${idx + 1}`,
-        homeVenueId:
-          tournamentVenues.length > 0
-            ? tournamentVenues[idx % tournamentVenues.length].venueId
-            : undefined,
-      }));
+      participants = [];
     }
 
     const venueInputs: ScheduleVenueInput[] = tournamentVenues.map((v) => ({
