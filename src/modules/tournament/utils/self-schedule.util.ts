@@ -1,8 +1,4 @@
-import {
-  VenueSchedule,
-  TournamentMatchEntity,
-  TournamentSchedulePayload,
-} from './tournament-calculation.util';
+import { VenueSchedule } from './tournament-calculation.util';
 
 export enum MatchSchedulingPhase {
   NOT_OPEN = 'NOT_OPEN',
@@ -260,7 +256,9 @@ export function validateSlotForMatch(
   if (player1Id || player2Id) {
     for (const v of calendar) {
       for (const s of v.screens || []) {
-        const d = (s.days || []).find((dayItem) => dayItem.date === target.date);
+        const d = (s.days || []).find(
+          (dayItem) => dayItem.date === target.date,
+        );
         if (d) {
           const checkSlot = (d.timeslots || []).find(
             (ts) =>
@@ -406,10 +404,6 @@ export function countEligibleSlotsForMatch(
   player1Id?: string,
   player2Id?: string,
 ): number {
-  return getEligibleSlotsForMatch(
-    calendar,
-    targetMatchId,
-    player1Id,
-    player2Id,
-  ).length;
+  return getEligibleSlotsForMatch(calendar, targetMatchId, player1Id, player2Id)
+    .length;
 }

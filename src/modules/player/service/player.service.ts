@@ -630,7 +630,8 @@ export class PlayerService {
                 (tourney as any).schedulingWindowOpen !== false &&
                 !hasSchedule &&
                 (!m.selfSchedulingOpenedAt ||
-                  evaluateSelfSchedulingWindow(m.selfSchedulingOpenedAt).canPlayerSelectSlot),
+                  evaluateSelfSchedulingWindow(m.selfSchedulingOpenedAt)
+                    .canPlayerSelectSlot),
             });
           }
         }
@@ -843,7 +844,8 @@ export class PlayerService {
                 !tourney.schedulingPaused &&
                 (tourney as any).schedulingWindowOpen !== false &&
                 (!m.selfSchedulingOpenedAt ||
-                  evaluateSelfSchedulingWindow(m.selfSchedulingOpenedAt).canPlayerSelectSlot),
+                  evaluateSelfSchedulingWindow(m.selfSchedulingOpenedAt)
+                    .canPlayerSelectSlot),
             });
           }
         }

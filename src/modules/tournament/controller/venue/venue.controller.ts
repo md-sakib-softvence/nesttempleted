@@ -22,7 +22,14 @@ import { Role } from '@prisma/client';
 @ApiBearerAuth()
 @Controller('tournament/venue')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.PLAYER, 'player', 'admin', 'super_admin')
+@Roles(
+  Role.ADMIN,
+  Role.SUPER_ADMIN,
+  Role.PLAYER,
+  'player',
+  'admin',
+  'super_admin',
+)
 export class VenueController {
   constructor(private readonly venueService: VenueService) {}
 

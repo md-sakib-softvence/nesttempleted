@@ -66,7 +66,7 @@ export class TournamentRegistrationService {
     if (
       dto.primaryTeamId &&
       dto.secondaryTeamId &&
-      dto.primaryTeamId !== "individual-competitor" &&
+      dto.primaryTeamId !== 'individual-competitor' &&
       dto.primaryTeamId.trim() &&
       dto.primaryTeamId.trim() === dto.secondaryTeamId.trim()
     ) {
@@ -81,9 +81,7 @@ export class TournamentRegistrationService {
         where: { venueId: dto.homeVenueId },
       });
       if (!venueExists) {
-        throw new BadRequestException(
-          'Selected home venue is not valid.',
-        );
+        throw new BadRequestException('Selected home venue is not valid.');
       }
     }
 
@@ -270,14 +268,15 @@ export class TournamentRegistrationService {
       dto.status === TournamentRegistrationStatus.CONFIRMED &&
       !assignedSlot
     ) {
-      const existingConfirmed = await this.prisma.tournamentRegistration.findMany({
-        where: {
-          tournamentId,
-          status: TournamentRegistrationStatus.CONFIRMED,
-          assignedSlot: { not: null },
-        },
-        select: { assignedSlot: true },
-      });
+      const existingConfirmed =
+        await this.prisma.tournamentRegistration.findMany({
+          where: {
+            tournamentId,
+            status: TournamentRegistrationStatus.CONFIRMED,
+            assignedSlot: { not: null },
+          },
+          select: { assignedSlot: true },
+        });
 
       const occupiedSlots = new Set(
         existingConfirmed.map((c) => c.assignedSlot!),
@@ -291,7 +290,10 @@ export class TournamentRegistrationService {
       registration.status === TournamentRegistrationStatus.CONFIRMED &&
       assignedSlot
     ) {
-      await this.removeParticipantFromTournamentSchedule(tournamentId, assignedSlot);
+      await this.removeParticipantFromTournamentSchedule(
+        tournamentId,
+        assignedSlot,
+      );
       assignedSlot = null;
     }
 
@@ -822,9 +824,9 @@ export class TournamentRegistrationService {
       for (const m of matches) {
         if (
           (m.participant1Ref?.type === 'TOURNAMENT_SLOT' &&
-            parseInt(m.participant1Ref.value, 10) === assignedSlot) ||
+            parseInt(String(m.participant1Ref.value), 10) === assignedSlot) ||
           (m.participant1Ref?.type === 'SEED' &&
-            parseInt(m.participant1Ref.value, 10) === assignedSlot)
+            parseInt(String(m.participant1Ref.value), 10) === assignedSlot)
         ) {
           m.player1Id = player.playerId;
           m.player1Name = playerName;
@@ -832,9 +834,9 @@ export class TournamentRegistrationService {
 
         if (
           (m.participant2Ref?.type === 'TOURNAMENT_SLOT' &&
-            parseInt(m.participant2Ref.value, 10) === assignedSlot) ||
+            parseInt(String(m.participant2Ref.value), 10) === assignedSlot) ||
           (m.participant2Ref?.type === 'SEED' &&
-            parseInt(m.participant2Ref.value, 10) === assignedSlot)
+            parseInt(String(m.participant2Ref.value), 10) === assignedSlot)
         ) {
           m.player2Id = player.playerId;
           m.player2Name = playerName;
@@ -918,9 +920,11 @@ export class TournamentRegistrationService {
       for (const m of matches) {
         if (
           (m.participant1Ref?.type === 'TOURNAMENT_SLOT' &&
-            parseInt(m.participant1Ref.value, 10) === releasedSlotNumber) ||
+            parseInt(String(m.participant1Ref.value), 10) ===
+              releasedSlotNumber) ||
           (m.participant1Ref?.type === 'SEED' &&
-            parseInt(m.participant1Ref.value, 10) === releasedSlotNumber)
+            parseInt(String(m.participant1Ref.value), 10) ===
+              releasedSlotNumber)
         ) {
           delete m.player1Id;
           delete m.player1Name;
@@ -929,9 +933,11 @@ export class TournamentRegistrationService {
 
         if (
           (m.participant2Ref?.type === 'TOURNAMENT_SLOT' &&
-            parseInt(m.participant2Ref.value, 10) === releasedSlotNumber) ||
+            parseInt(String(m.participant2Ref.value), 10) ===
+              releasedSlotNumber) ||
           (m.participant2Ref?.type === 'SEED' &&
-            parseInt(m.participant2Ref.value, 10) === releasedSlotNumber)
+            parseInt(String(m.participant2Ref.value), 10) ===
+              releasedSlotNumber)
         ) {
           delete m.player2Id;
           delete m.player2Name;

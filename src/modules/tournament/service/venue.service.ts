@@ -12,7 +12,7 @@ export class VenueService {
       include: {
         screens: true,
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: 'desc' },
     });
   }
 

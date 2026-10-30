@@ -29,9 +29,7 @@ import {
   evaluateSelfSchedulingWindow,
   findEarliestValidSlot,
   getEligibleSlotsForMatch,
-  countEligibleSlotsForMatch,
   isPeakTimeslot,
-  CandidateSlot,
 } from '../utils/self-schedule.util';
 import { SchedulingMode, Prisma, Role } from '@prisma/client';
 import { presignTournamentMedia } from '../utils/tournament-media.util';
@@ -2277,7 +2275,9 @@ export class TournamentMatchesService {
                     status: 'INFORMATION',
                   },
                 });
-              } catch (_) {}
+              } catch {
+                // Ignore notification failure if player cannot be notified
+              }
             }
           } else {
             match.schedulingPhase = MatchSchedulingPhase.CAPACITY_BLOCKED;

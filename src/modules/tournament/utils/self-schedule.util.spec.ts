@@ -2,7 +2,6 @@ import {
   evaluateSelfSchedulingWindow,
   formatRemainingHoursMinutes,
   validateSlotForMatch,
-  getEligibleSlotsForMatch,
   findEarliestValidSlot,
   countEligibleSlotsForMatch,
   MatchSchedulingPhase,

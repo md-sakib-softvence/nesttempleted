@@ -7,7 +7,6 @@ import {
   calculateTournamentExpectedMatches,
   calculateCapacity,
   calculateDayTimeslots,
-  generatePlayingDates,
   generateCanonicalStructure,
 } from './tournament-calculation.util';
 
