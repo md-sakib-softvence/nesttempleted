@@ -3,6 +3,7 @@ import { uploadImageToS3, deleteImageFromS3 } from '../../utils/s3.util';
 
 export async function uploadTournamentFiles(files: {
   canvasImage?: Express.Multer.File[];
+  fanPassArtUrl?: Express.Multer.File[];
   playerOrgUrl?: Express.Multer.File[];
   organizerLogo?: Express.Multer.File[];
   prOrgUrl?: Express.Multer.File[];
@@ -11,13 +12,16 @@ export async function uploadTournamentFiles(files: {
   tournamentLogo?: Express.Multer.File[];
   logo?: Express.Multer.File[];
   rules?: Express.Multer.File[];
+  termsAndConditions?: Express.Multer.File[];
   tsAndTc?: Express.Multer.File[];
 }): Promise<{
   canvasImage: string | null;
+  fanPassArtUrl: string | null;
   playerOrgUrl: string | null;
   prOrgUrl: string | null;
   tournamentLogoUrl: string | null;
   rules: string[];
+  termsAndConditions: string[];
   tsAndTc: string[];
 }> {
   let s3CanvasImage: string | null = null;
@@ -28,8 +32,9 @@ export async function uploadTournamentFiles(files: {
   const s3TsAndTcFilenames: string[] = [];
 
   try {
-    if (files?.canvasImage?.[0]) {
-      s3CanvasImage = await uploadImageToS3(files.canvasImage[0]);
+    const canvasFile = files?.canvasImage?.[0] || files?.fanPassArtUrl?.[0];
+    if (canvasFile) {
+      s3CanvasImage = await uploadImageToS3(canvasFile);
     }
 
     const playerOrgFile = files?.playerOrgUrl?.[0] || files?.organizerLogo?.[0];
@@ -58,8 +63,9 @@ export async function uploadTournamentFiles(files: {
       }
     }
 
-    if (files?.tsAndTc?.length) {
-      for (const file of files.tsAndTc) {
+    const termsFiles = files?.termsAndConditions || files?.tsAndTc;
+    if (termsFiles?.length) {
+      for (const file of termsFiles) {
         const s3Filename = await uploadImageToS3(file);
         s3TsAndTcFilenames.push(s3Filename);
       }
@@ -67,10 +73,12 @@ export async function uploadTournamentFiles(files: {
   } catch {
     await rollbackTournamentFiles({
       canvasImage: s3CanvasImage,
+      fanPassArtUrl: s3CanvasImage,
       playerOrgUrl: s3PlayerOrgUrl,
       prOrgUrl: s3PrOrgUrl,
       tournamentLogoUrl: s3TournamentLogoUrl,
       rules: s3RulesFilenames,
+      termsAndConditions: s3TsAndTcFilenames,
       tsAndTc: s3TsAndTcFilenames,
     });
     throw new BadRequestException(
@@ -80,24 +88,29 @@ export async function uploadTournamentFiles(files: {
 
   return {
     canvasImage: s3CanvasImage,
+    fanPassArtUrl: s3CanvasImage,
     playerOrgUrl: s3PlayerOrgUrl,
     prOrgUrl: s3PrOrgUrl,
     tournamentLogoUrl: s3TournamentLogoUrl,
     rules: s3RulesFilenames,
+    termsAndConditions: s3TsAndTcFilenames,
     tsAndTc: s3TsAndTcFilenames,
   };
 }
 
 export async function rollbackTournamentFiles(files: {
   canvasImage?: string | null;
+  fanPassArtUrl?: string | null;
   playerOrgUrl?: string | null;
   prOrgUrl?: string | null;
   tournamentLogoUrl?: string | null;
   rules?: string[];
+  termsAndConditions?: string[];
   tsAndTc?: string[];
 }) {
-  if (files.canvasImage) {
-    await deleteImageFromS3(files.canvasImage);
+  const canvasImg = files.canvasImage || files.fanPassArtUrl;
+  if (canvasImg) {
+    await deleteImageFromS3(canvasImg);
   }
   if (files.playerOrgUrl) {
     await deleteImageFromS3(files.playerOrgUrl);
@@ -113,8 +126,9 @@ export async function rollbackTournamentFiles(files: {
       await deleteImageFromS3(filename);
     }
   }
-  if (files.tsAndTc?.length) {
-    for (const filename of files.tsAndTc) {
+  const terms = files.termsAndConditions || files.tsAndTc;
+  if (terms?.length) {
+    for (const filename of terms) {
       await deleteImageFromS3(filename);
     }
   }

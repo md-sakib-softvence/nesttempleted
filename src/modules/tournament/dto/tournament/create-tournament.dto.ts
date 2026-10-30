@@ -1,4 +1,8 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  ApiHideProperty,
+} from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
@@ -235,12 +239,8 @@ export class CreateTournamentDto {
   @IsOptional()
   prizePoolConfig?: any;
 
-  // Backend Prisma prizeRule
-  @ApiPropertyOptional({
-    description: 'Prize pool rule',
-    enum: PrizeRule,
-    default: PrizeRule.PERCENTAGE,
-  })
+  // Backend Prisma prizeRule (Hidden from Swagger Payload)
+  @ApiHideProperty()
   @Transform(({ value, obj }) => {
     if (value) return mapPrizeRule(value);
     if (obj?.prizePoolConfig?.type)
@@ -251,12 +251,8 @@ export class CreateTournamentDto {
   @IsOptional()
   prizeRule?: PrizeRule;
 
-  // Backend Prisma percentage
-  @ApiPropertyOptional({
-    description: 'Prize pool percentage',
-    example: 70,
-    default: 70,
-  })
+  // Backend Prisma percentage (Hidden from Swagger Payload)
+  @ApiHideProperty()
   @Transform(({ value, obj }) => {
     if (value !== undefined && value !== '') return Number(value);
     if (obj?.prizePoolConfig?.value !== undefined)
@@ -269,20 +265,13 @@ export class CreateTournamentDto {
   @IsOptional()
   percentage?: number;
 
-  // Frontend canonical houseRakePercent
-  @ApiPropertyOptional({
-    description: 'House rake percentage (Frontend Canonical)',
-    example: 30,
-  })
+  // Frontend canonical houseRakePercent (Hidden from Swagger Payload)
+  @ApiHideProperty()
   @IsOptional()
   houseRakePercent?: number;
 
-  // Backend Prisma houseRake
-  @ApiPropertyOptional({
-    description: 'House rake percentage (Prisma)',
-    example: 30,
-    default: 30,
-  })
+  // Backend Prisma houseRake (Hidden from Swagger Payload)
+  @ApiHideProperty()
   @Transform(({ value, obj }) => {
     if (value !== undefined && value !== '') return Number(value);
     if (obj?.houseRakePercent !== undefined)
@@ -691,14 +680,20 @@ export class CreateTournamentDto {
   })
   @Transform(({ value }) => normalizeStringArray(value))
   @IsOptional()
+  termsAndConditions?: any;
+
+  // Backward compatibility alias (hidden from Swagger)
+  @ApiHideProperty()
+  @Transform(({ value }) => normalizeStringArray(value))
+  @IsOptional()
   tsAndTc?: any;
 
-  // Frontend aliases for rules and terms URLs
-  @ApiPropertyOptional({ description: 'Direct rules URL' })
+  // Direct URLs removed from Swagger Payload
+  @ApiHideProperty()
   @IsOptional()
   rulesUrl?: string;
 
-  @ApiPropertyOptional({ description: 'Direct terms & conditions URL' })
+  @ApiHideProperty()
   @IsOptional()
   termsAndConditionsUrl?: string;
 
@@ -727,9 +722,13 @@ export class CreateTournamentDto {
   @IsOptional()
   secondaryOrganizerLogo?: any;
 
-  @ApiPropertyOptional({ description: 'Fan pass art URL' })
+  @ApiPropertyOptional({
+    type: 'string',
+    format: 'binary',
+    description: 'Fan pass art image file (choose file)',
+  })
   @IsOptional()
-  fanPassArtUrl?: string;
+  fanPassArtUrl?: any;
 
   @ApiPropertyOptional({
     description: 'Venues with screens',

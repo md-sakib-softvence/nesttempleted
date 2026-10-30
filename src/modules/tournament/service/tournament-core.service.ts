@@ -175,7 +175,9 @@ export class TournamentCoreService {
     const schedulingMode =
       createTournamentDto.schedulingMode || SchedulingMode.MANUAL;
     const rules = normalizeStringArray(createTournamentDto.rules);
-    const tsAndTc = normalizeStringArray(createTournamentDto.tsAndTc);
+    const tsAndTc = normalizeStringArray(
+      createTournamentDto.termsAndConditions || createTournamentDto.tsAndTc,
+    );
     const frequencyArray = normalizeStringArray(
       createTournamentDto.frequencyArray,
     );
@@ -526,6 +528,7 @@ export class TournamentCoreService {
     delete updateData.prizePayouts;
     delete updateData.rulesUrl;
     delete updateData.termsAndConditionsUrl;
+    delete updateData.termsAndConditions;
     delete updateData.logo;
     delete updateData.organizerLogo;
     delete updateData.secondaryOrganizerLogo;
@@ -626,8 +629,12 @@ export class TournamentCoreService {
     if (rest.rules !== undefined) {
       updateData.rules = normalizeStringArray(rest.rules);
     }
-    if (rest.tsAndTc !== undefined) {
-      updateData.tsAndTc = normalizeStringArray(rest.tsAndTc);
+    const terms =
+      updateTournamentDto.termsAndConditions !== undefined
+        ? updateTournamentDto.termsAndConditions
+        : rest.tsAndTc;
+    if (terms !== undefined) {
+      updateData.tsAndTc = normalizeStringArray(terms);
     }
     if (rest.frequencyArray !== undefined) {
       updateData.frequencyArray = normalizeStringArray(rest.frequencyArray);
