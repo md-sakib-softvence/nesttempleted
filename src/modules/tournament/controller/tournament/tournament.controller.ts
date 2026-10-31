@@ -26,6 +26,7 @@ import { UpdateTournamentDto } from '../../dto/tournament/update-tournament.dto'
 import { GenerateCalendarDto } from '../../dto/tournament/generate-calendar.dto';
 import { AutoAllocationDto } from '../../dto/tournament/auto-allocation.dto';
 import { CreateTournamentRegistrationDto } from '../../dto/tournament/create-registration.dto';
+import { OpenRegistrationDto } from '../../dto/tournament/open-registration.dto';
 import { UpdateRegistrationStatusDto } from '../../dto/tournament/update-registration-status.dto';
 import { PredictMatchDto } from '../../dto/tournament/predict-match.dto';
 import { sendResponse } from '../../../utils/response.util';
@@ -597,6 +598,34 @@ export class TournamentController {
       message: 'Tournament leaderboard retrieved successfully',
       data,
       meta: (data as any)?.meta,
+    });
+  }
+
+  @Post(':id/open-registration')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  @ApiOperation({
+    summary:
+      'Open tournament registration with cutoff mode, capacity, and deadline',
+  })
+  async openRegistration(
+    @Param('id') id: string,
+    @Body() dto: OpenRegistrationDto,
+  ) {
+    const data = await this.tournamentService.openRegistration(id, dto);
+    return sendResponse({
+      message: 'Tournament registration opened successfully',
+      data,
+    });
+  }
+
+  @Post(':id/close-registration')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Close tournament registration' })
+  async closeRegistration(@Param('id') id: string) {
+    const data = await this.tournamentService.closeRegistration(id);
+    return sendResponse({
+      message: 'Tournament registration closed successfully',
+      data,
     });
   }
 
