@@ -646,34 +646,76 @@ export class FollowerService {
    */
   async getFollowedUpcomingMatches(userId: string) {
     const follows = await this.prisma.follower.findMany({
-      where: { fanId: userId },
-      select: { targetPlayerId: true, gamerTag: true },
+      where: {
+        OR: [{ fanId: userId }, { playerId: userId }],
+      },
+      select: {
+        targetPlayerId: true,
+        gamerTag: true,
+        targetPlayer: {
+          select: {
+            playerId: true,
+            gamerTag: true,
+            firstName: true,
+            lastName: true,
+            profilePicture: true,
+          },
+        },
+      },
     });
 
     const targetPlayerIds = follows
       .map((f) => f.targetPlayerId)
       .filter(Boolean) as string[];
 
-    const gamerTags = follows.map((f) => f.gamerTag).filter(Boolean);
+    const gamerTags = follows
+      .map((f) => f.gamerTag)
+      .filter(Boolean) as string[];
+
     if (gamerTags.length > 0) {
       const tagPlayers = await this.prisma.player.findMany({
-        where: { gamerTag: { in: gamerTags } },
-        select: { playerId: true },
+        where: { gamerTag: { in: gamerTags }, isDeleted: false },
+        select: {
+          playerId: true,
+          gamerTag: true,
+          firstName: true,
+          lastName: true,
+          profilePicture: true,
+        },
       });
       targetPlayerIds.push(...tagPlayers.map((p) => p.playerId));
     }
 
     const uniquePlayerIds = [...new Set(targetPlayerIds)];
 
+    // If fan does not follow any players, return empty list immediately
+    if (uniquePlayerIds.length === 0) {
+      return {
+        totalFollowedPlayers: 0,
+        totalMatches: 0,
+        matches: [],
+      };
+    }
+
+    // Fetch active/upcoming tournaments with venues and screens
     const tournaments = await this.prisma.tournament.findMany({
       where: {
         isDeleted: false,
         status: {
-          in: ['IN_PROGRESS', 'UPCOMING', 'REGISTRATION_OPEN', 'ACTIVE'] as any,
+          in: [
+            'IN_PROGRESS',
+            'ONGOING',
+            'UPCOMING',
+            'REGISTRATION_OPEN',
+          ],
         },
       },
       include: {
-        venues: true,
+        venues: {
+          include: {
+            screens: true,
+          },
+        },
       },
       orderBy: { startDate: 'asc' },
     });
@@ -681,13 +723,57 @@ export class FollowerService {
     const results: any[] = [];
     const seenMatches = new Set<string>();
 
+    // Helper to safely extract matches from all known tournament schedule shapes
     for (const t of tournaments) {
       const schedule = (t.schedule as any) || {};
-      const matches: any[] =
-        schedule.structure?.matches || schedule.matches || [];
       const venues = t.venues || [];
 
-      for (const m of matches) {
+      // 1. Direct matches array in structure or root
+      const rawMatches: any[] =
+        schedule.structure?.matches || schedule.matches || [];
+
+      // 2. Calendar / venue-based schedule array
+      const calendarList: any[] = Array.isArray(schedule)
+        ? schedule
+        : Array.isArray(schedule.calendar)
+          ? schedule.calendar
+          : [];
+
+      for (const vs of calendarList) {
+        const venueObj = venues.find(
+          (v) => v.venueId === vs.venueId || v.name === vs.venueName,
+        );
+        const venueName =
+          venueObj?.name || vs.venueName || 'Main Arena';
+
+        const screens: any[] = vs.screens || [];
+        for (const ss of screens) {
+          const screenObj = venueObj?.screens?.find(
+            (s) => s.screenId === ss.screenId || s.screenName === ss.screenName,
+          );
+          const screenName =
+            screenObj?.screenName || ss.screenName || 'Screen A';
+
+          const days: any[] = ss.days || [];
+          for (const d of days) {
+            const timeslots: any[] = d.timeslots || [];
+            for (const ts of timeslots) {
+              const game = ts.game || ts.match;
+              if (game) {
+                rawMatches.push({
+                  ...game,
+                  time: ts.time || game.time || '16:30',
+                  date: d.date || game.date || t.startDate,
+                  venueName,
+                  screenName,
+                });
+              }
+            }
+          }
+        }
+      }
+
+      for (const m of rawMatches) {
         if (!m || m.status === 'COMPLETED') continue;
 
         const p1Id = m.player1Id || m.participant1Ref?.id;
@@ -696,36 +782,63 @@ export class FollowerService {
         const p1Followed = uniquePlayerIds.includes(p1Id);
         const p2Followed = uniquePlayerIds.includes(p2Id);
 
-        if (uniquePlayerIds.length === 0 || p1Followed || p2Followed) {
+        // Only include match if one of the followed players is competing
+        if (p1Followed || p2Followed) {
           const matchKey = m.id || `${t.tournamentId}-${m.time}`;
           if (seenMatches.has(matchKey)) continue;
           seenMatches.add(matchKey);
 
+          const defaultVenue = venues[0]?.name || 'Main Arena';
+          const defaultScreen =
+            venues[0]?.screens?.[0]?.screenName || 'Screen A';
+
+          const p1Gamertag =
+            m.player1Name ||
+            m.participant1Ref?.name ||
+            m.player1?.gamertag ||
+            'Player 1';
+          const p2Gamertag =
+            m.player2Name ||
+            m.participant2Ref?.name ||
+            m.player2?.gamertag ||
+            'Player 2';
+
+          const p1Obj = {
+            id: p1Id || 'p-1',
+            gamertag: p1Gamertag,
+            name: p1Gamertag,
+            isFollowed: p1Followed,
+          };
+          const p2Obj = {
+            id: p2Id || 'p-2',
+            gamertag: p2Gamertag,
+            name: p2Gamertag,
+            isFollowed: p2Followed,
+          };
+
           results.push({
             id: matchKey,
+            matchId: matchKey,
             tournamentId: t.tournamentId,
             tournamentName: t.name,
-            time: m.time || '11:10',
+            time: m.time || '16:30',
             date: m.date || t.startDate,
-            player1: {
-              id: p1Id,
-              gamertag: m.player1Name || m.participant1Ref?.name || 'FIFA_GOD',
-              isFollowed: p1Followed,
-            },
-            player2: {
-              id: p2Id,
-              gamertag:
-                m.player2Name || m.participant2Ref?.name || 'GAMERTAG83',
-              isFollowed: p2Followed,
-            },
-            venueName: m.venueName || venues[0]?.name || 'Main Arena',
-            screenName: m.screenName || 'Screen A',
+            player1: p1Obj,
+            player2: p2Obj,
+            followedPlayer: p1Followed ? p1Obj : p2Obj,
+            opponent: p1Followed ? p2Obj : p1Obj,
+            venueName: m.venueName || defaultVenue,
+            screenName: m.screenName || defaultScreen,
             status: m.status || 'SCHEDULED',
           });
         }
       }
     }
 
-    return results;
+    return {
+      totalFollowedPlayers: uniquePlayerIds.length,
+      totalMatches: results.length,
+      matches: results,
+    };
   }
 }
