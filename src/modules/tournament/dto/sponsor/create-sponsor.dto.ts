@@ -6,14 +6,18 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Min,
 } from 'class-validator';
 import { SponsorStatus } from '@prisma/client';
 
+export type SponsorPriorityType = 'GOLD' | 'SILVER' | 'BRONZE' | 'TEAL';
+
 export enum SponsorPriority {
-  PRIMARY = 'PRIMARY',
-  SECONDARY = 'SECONDARY',
-  THIRD = 'THIRD',
+  GOLD = 'GOLD',
+  SILVER = 'SILVER',
+  BRONZE = 'BRONZE',
+  TEAL = 'TEAL',
 }
 
 export class CreateSponsorDto {
@@ -44,12 +48,15 @@ export class CreateSponsorDto {
   @ApiPropertyOptional({
     description: 'Sponsorship priority level',
     enum: SponsorPriority,
-    example: SponsorPriority.PRIMARY,
+    example: SponsorPriority.GOLD,
   })
   @Transform(({ value }) => {
     if (typeof value === 'string') {
       const upper = value.toUpperCase();
-      if (upper === 'TERTIARY') return SponsorPriority.THIRD;
+      if (upper === 'PRIMARY') return SponsorPriority.GOLD;
+      if (upper === 'SECONDARY') return SponsorPriority.SILVER;
+      if (upper === 'THIRD' || upper === 'TERTIARY')
+        return SponsorPriority.BRONZE;
       return upper as SponsorPriority;
     }
     return value;
@@ -84,4 +91,12 @@ export class CreateSponsorDto {
   @IsEnum(SponsorStatus)
   @IsOptional()
   status?: SponsorStatus;
+
+  @ApiPropertyOptional({
+    description: 'Tournament ID associated with this sponsor (optional)',
+    example: 'b7c25e8e-8a1a-4279-8dc6-8c467a840e71',
+  })
+  @IsUUID('4', { message: 'tournamentId must be a valid UUID' })
+  @IsOptional()
+  tournamentId?: string;
 }

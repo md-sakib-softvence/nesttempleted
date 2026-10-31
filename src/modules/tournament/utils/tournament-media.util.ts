@@ -211,14 +211,26 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
 
   // Normalized Sponsors
   if (formatted.sponsors && Array.isArray(formatted.sponsors)) {
-    formatted.sponsors = formatted.sponsors.map((s: any) => ({
-      id: s.sponsorId || s.id,
-      name: s.name,
-      logoUrl: s.logo || s.logoUrl,
-      website: s.website,
-      priorityOrder: s.priority === 'PRIMARY' ? 1 : 2,
-      contractValue: Number(s.value) || 0,
-    }));
+    formatted.sponsors = formatted.sponsors.map((s: any) => {
+      let priorityOrder = 2;
+      const prio =
+        typeof s.priority === 'string' ? s.priority.toUpperCase() : '';
+      if (prio === 'GOLD' || prio === 'PRIMARY') priorityOrder = 1;
+      else if (prio === 'SILVER' || prio === 'SECONDARY') priorityOrder = 2;
+      else if (prio === 'BRONZE' || prio === 'THIRD' || prio === 'TERTIARY')
+        priorityOrder = 3;
+      else if (prio === 'TEAL') priorityOrder = 4;
+
+      return {
+        id: s.sponsorId || s.id,
+        name: s.name,
+        logoUrl: s.logo || s.logoUrl,
+        website: s.website,
+        priority: s.priority,
+        priorityOrder: s.priorityOrder ?? priorityOrder,
+        contractValue: Number(s.value) || 0,
+      };
+    });
   }
 
   // Matches, Slots, Seeds, Groups from Schedule Payload

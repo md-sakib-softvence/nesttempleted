@@ -791,7 +791,7 @@ export class CreateTournamentDto {
               ? Number(item.contractValue)
               : undefined,
         priority:
-          item.priority || (item.priorityOrder === 1 ? 'PRIMARY' : 'SECONDARY'),
+          item.priority || (item.priorityOrder === 1 ? 'GOLD' : 'SILVER'),
       };
     });
   })
@@ -927,11 +927,19 @@ export class CreateTournamentDto {
   groupId?: string;
 
   @ApiPropertyOptional({ description: 'Scheduling window open flag' })
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') return undefined;
+    return value === 'true' || value === true;
+  })
   @IsOptional()
   @IsBoolean()
   schedulingWindowOpen?: boolean;
 
   @ApiPropertyOptional({ description: 'Registration open flag' })
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') return undefined;
+    return value === 'true' || value === true;
+  })
   @IsOptional()
   @IsBoolean()
   registrationOpen?: boolean;
@@ -945,6 +953,10 @@ export class CreateTournamentDto {
   seedingMode?: string;
 
   @ApiPropertyOptional({ description: 'Structure locked flag' })
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') return undefined;
+    return value === 'true' || value === true;
+  })
   @IsOptional()
   @IsBoolean()
   isStructureLocked?: boolean;

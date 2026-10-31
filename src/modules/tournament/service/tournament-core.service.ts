@@ -236,6 +236,13 @@ export class TournamentCoreService {
           (createTournamentDto.isDraft
             ? TournamentStatus.DRAFT
             : TournamentStatus.REGISTRATION_OPEN),
+        registrationOpen:
+          createTournamentDto.registrationOpen !== undefined
+            ? createTournamentDto.registrationOpen
+            : !createTournamentDto.isDraft &&
+              (!createTournamentDto.status ||
+                createTournamentDto.status ===
+                  TournamentStatus.REGISTRATION_OPEN),
         requireJerseySize: createTournamentDto.requireJerseySize ?? false,
         ...(resolvedCostIds.length > 0 && {
           manageEventCosts: {

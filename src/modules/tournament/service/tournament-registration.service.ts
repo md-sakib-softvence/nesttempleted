@@ -14,7 +14,11 @@ import {
   SelectionMode,
 } from '../dto/tournament/registration-selection.dto';
 import { QueryTournamentRegistrationDto } from '../dto/tournament/query-registration.dto';
-import { TournamentRegistrationStatus, Prisma } from '@prisma/client';
+import {
+  TournamentRegistrationStatus,
+  TournamentStatus,
+  Prisma,
+} from '@prisma/client';
 import { uploadBase64ToS3 } from '../../utils/s3.util';
 
 @Injectable()
@@ -42,7 +46,11 @@ export class TournamentRegistrationService {
     }
 
     // 1. Guard against registration on closed or non-active tournaments
-    if (!tournament.registrationOpen) {
+    const isRegistrationOpen =
+      tournament.registrationOpen ||
+      tournament.status === TournamentStatus.REGISTRATION_OPEN;
+
+    if (!isRegistrationOpen) {
       throw new BadRequestException(
         'Registration is closed for this tournament.',
       );
@@ -339,6 +347,7 @@ export class TournamentRegistrationService {
       where: { tournamentId },
       data: {
         registrationOpen: true,
+        status: TournamentStatus.REGISTRATION_OPEN,
         registrationCutOffMode: dto.mode,
         ...(dto.capacity !== undefined ? { capacity: dto.capacity } : {}),
         ...(dto.deadline ? { deadline: new Date(dto.deadline) } : {}),
@@ -362,7 +371,12 @@ export class TournamentRegistrationService {
 
     return this.prisma.tournament.update({
       where: { tournamentId },
-      data: { registrationOpen: false },
+      data: {
+        registrationOpen: false,
+        ...(tournament.status === TournamentStatus.REGISTRATION_OPEN
+          ? { status: TournamentStatus.UPCOMING }
+          : {}),
+      },
     });
   }
 
