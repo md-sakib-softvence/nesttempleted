@@ -4,6 +4,7 @@ import {
   Patch,
   Param,
   Body,
+  Query,
   UseGuards,
   UseInterceptors,
   UploadedFiles,
@@ -33,6 +34,10 @@ import {
   UpdateRulesTabDto,
   UpdateTermsTabDto,
   UpdateSettingsTabDto,
+  QueryTabRegistrationsDto,
+  QueryTabScheduleDto,
+  QueryTabLeaderboardsDto,
+  QueryTabRafflesDto,
 } from '../../dto/tournament-tabs/tournament-tabs.dto';
 import {
   uploadTournamentFiles,
@@ -86,13 +91,17 @@ export class TournamentTabsController {
   @Get(':id/tabs/registrations')
   @ApiOperation({
     summary:
-      'Get Tournament Registrations tab (Counts and segmented lists: Registered, Selected Unpaid, Confirmed, Waitlist)',
+      'Get Tournament Registrations tab (Counts and segmented lists: Registered, Selected Unpaid, Confirmed, Waitlist, with pagination and search)',
   })
-  async getRegistrationsTab(@Param('id') id: string) {
-    const data = await this.tabsService.getRegistrationsTab(id);
+  async getRegistrationsTab(
+    @Param('id') id: string,
+    @Query() query: QueryTabRegistrationsDto,
+  ) {
+    const data = await this.tabsService.getRegistrationsTab(id, query);
     return sendResponse({
       message: 'Tournament Registrations tab retrieved successfully',
       data,
+      meta: data.pagination,
     });
   }
 
@@ -121,13 +130,17 @@ export class TournamentTabsController {
   @Get(':id/tabs/schedule')
   @ApiOperation({
     summary:
-      'Get Tournament Schedule & Results tab (Scheduling mode, settings, matches, calendar, groups)',
+      'Get Tournament Schedule & Results tab (Scheduling mode, settings, matches with pagination, calendar, groups)',
   })
-  async getScheduleTab(@Param('id') id: string) {
-    const data = await this.tabsService.getScheduleTab(id);
+  async getScheduleTab(
+    @Param('id') id: string,
+    @Query() query: QueryTabScheduleDto,
+  ) {
+    const data = await this.tabsService.getScheduleTab(id, query);
     return sendResponse({
       message: 'Tournament Schedule tab retrieved successfully',
       data,
+      meta: data.pagination,
     });
   }
 
@@ -156,13 +169,17 @@ export class TournamentTabsController {
   @Get([':id/tabs/leaderboards', ':id/tabs/leaderboard'])
   @ApiOperation({
     summary:
-      'Get Tournament Leaderboards tab (Standings table, series leaderboard if linked)',
+      'Get Tournament Leaderboards tab (Standings table with pagination, series leaderboard if linked)',
   })
-  async getLeaderboardsTab(@Param('id') id: string) {
-    const data = await this.tabsService.getLeaderboardsTab(id);
+  async getLeaderboardsTab(
+    @Param('id') id: string,
+    @Query() query: QueryTabLeaderboardsDto,
+  ) {
+    const data = await this.tabsService.getLeaderboardsTab(id, query);
     return sendResponse({
       message: 'Tournament Leaderboards tab retrieved successfully',
       data,
+      meta: data.pagination,
     });
   }
 
@@ -187,13 +204,17 @@ export class TournamentTabsController {
   @Public()
   @Get(':id/tabs/raffles')
   @ApiOperation({
-    summary: 'Get Tournament Raffles tab (List of raffles, status, dates, winners)',
+    summary: 'Get Tournament Raffles tab (List of raffles with pagination, status, dates, winners)',
   })
-  async getRafflesTab(@Param('id') id: string) {
-    const data = await this.tabsService.getRafflesTab(id);
+  async getRafflesTab(
+    @Param('id') id: string,
+    @Query() query: QueryTabRafflesDto,
+  ) {
+    const data = await this.tabsService.getRafflesTab(id, query);
     return sendResponse({
       message: 'Tournament Raffles tab retrieved successfully',
       data,
+      meta: data.pagination,
     });
   }
 
@@ -513,11 +534,13 @@ export class TournamentTabsController {
   async getTabByName(
     @Param('id') id: string,
     @Param('tabName') tabName: string,
+    @Query() query?: any,
   ) {
-    const data = await this.tabsService.getTab(id, tabName);
+    const data = await this.tabsService.getTab(id, tabName, query);
     return sendResponse({
       message: `Tournament ${tabName} tab retrieved successfully`,
       data,
+      meta: (data as any)?.pagination,
     });
   }
 

@@ -16,6 +16,10 @@ import {
   UpdateRulesTabDto,
   UpdateTermsTabDto,
   UpdateSettingsTabDto,
+  QueryTabRegistrationsDto,
+  QueryTabScheduleDto,
+  QueryTabLeaderboardsDto,
+  QueryTabRafflesDto,
 } from '../dto/tournament-tabs/tournament-tabs.dto';
 import {
   TournamentRegistrationStatus,
@@ -24,6 +28,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { presignTournamentMedia } from '../utils/tournament-media.util';
+import { calculatePaginationMeta } from '../../utils/query.util';
 import { TournamentLeaderboardService } from './tournament-leaderboard.service';
 import { TournamentRegistrationService } from './tournament-registration.service';
 import { TournamentScheduleService } from './tournament-schedule.service';
@@ -195,38 +200,99 @@ export class TournamentTabsService {
   // TAB 2: REGISTRATIONS
   // ==========================================
 
-  async getRegistrationsTab(tournamentId: string) {
+  async getRegistrationsTab(
+    tournamentId: string,
+    query?: QueryTabRegistrationsDto,
+  ) {
     const tournament = await this.findTournamentOrThrow(tournamentId);
 
-    const registrations = await this.prisma.tournamentRegistration.findMany({
-      where: { tournamentId },
-      include: {
+    const [regCount, selectedCount, confirmedCount, waitlistCount] =
+      await Promise.all([
+        this.prisma.tournamentRegistration.count({
+          where: {
+            tournamentId,
+            status: TournamentRegistrationStatus.REGISTERED,
+          },
+        }),
+        this.prisma.tournamentRegistration.count({
+          where: {
+            tournamentId,
+            status: TournamentRegistrationStatus.SELECTED_UNPAID,
+          },
+        }),
+        this.prisma.tournamentRegistration.count({
+          where: {
+            tournamentId,
+            status: TournamentRegistrationStatus.CONFIRMED,
+          },
+        }),
+        this.prisma.tournamentRegistration.count({
+          where: {
+            tournamentId,
+            status: TournamentRegistrationStatus.WAITLISTED,
+          },
+        }),
+      ]);
+
+    const totalCount =
+      regCount + selectedCount + confirmedCount + waitlistCount;
+
+    const page = Number(query?.page) || 1;
+    const limit = Number(query?.limit) || 25;
+    const skip = (page - 1) * limit;
+
+    let statusFilter: TournamentRegistrationStatus | undefined = query?.status;
+    if (query?.tab === 'registered') {
+      statusFilter = TournamentRegistrationStatus.REGISTERED;
+    } else if (query?.tab === 'selected') {
+      statusFilter = TournamentRegistrationStatus.SELECTED_UNPAID;
+    } else if (query?.tab === 'confirmed') {
+      statusFilter = TournamentRegistrationStatus.CONFIRMED;
+    } else if (query?.tab === 'waitlist') {
+      statusFilter = TournamentRegistrationStatus.WAITLISTED;
+    }
+
+    const where: Prisma.TournamentRegistrationWhereInput = {
+      tournamentId,
+      ...(statusFilter && { status: statusFilter }),
+      ...(query?.paymentStatus && {
+        paymentStatus: { equals: query.paymentStatus, mode: 'insensitive' },
+      }),
+      ...(query?.search && {
         player: {
-          select: {
-            playerId: true,
-            firstName: true,
-            lastName: true,
-            gamerTag: true,
-            email: true,
-            phoneNumber: true,
+          OR: [
+            { gamerTag: { contains: query.search, mode: 'insensitive' } },
+            { firstName: { contains: query.search, mode: 'insensitive' } },
+            { lastName: { contains: query.search, mode: 'insensitive' } },
+            { email: { contains: query.search, mode: 'insensitive' } },
+          ],
+        },
+      }),
+    };
+
+    const [tabFilteredCount, paginatedItems] = await Promise.all([
+      this.prisma.tournamentRegistration.count({ where }),
+      this.prisma.tournamentRegistration.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          player: {
+            select: {
+              playerId: true,
+              firstName: true,
+              lastName: true,
+              gamerTag: true,
+              email: true,
+              phoneNumber: true,
+            },
           },
         },
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+      }),
+    ]);
 
-    const registered = registrations.filter(
-      (r) => r.status === TournamentRegistrationStatus.REGISTERED,
-    );
-    const selectedUnpaid = registrations.filter(
-      (r) => r.status === TournamentRegistrationStatus.SELECTED_UNPAID,
-    );
-    const confirmed = registrations.filter(
-      (r) => r.status === TournamentRegistrationStatus.CONFIRMED,
-    );
-    const waitlist = registrations.filter(
-      (r) => r.status === TournamentRegistrationStatus.WAITLISTED,
-    );
+    const pagination = calculatePaginationMeta(tabFilteredCount, page, limit);
 
     return {
       tournamentId: tournament.tournamentId,
@@ -238,18 +304,14 @@ export class TournamentTabsService {
         status: tournament.status,
       },
       counts: {
-        registered: registered.length,
-        selectedUnpaid: selectedUnpaid.length,
-        confirmed: confirmed.length,
-        waitlist: waitlist.length,
-        total: registrations.length,
+        registered: regCount,
+        selectedUnpaid: selectedCount,
+        confirmed: confirmedCount,
+        waitlist: waitlistCount,
+        total: totalCount,
       },
-      lists: {
-        registered,
-        selected: selectedUnpaid,
-        confirmed,
-        waitlist,
-      },
+      items: paginatedItems,
+      pagination,
     };
   }
 
@@ -306,7 +368,7 @@ export class TournamentTabsService {
   // TAB 3: SCHEDULE & RESULTS
   // ==========================================
 
-  async getScheduleTab(tournamentId: string) {
+  async getScheduleTab(tournamentId: string, query?: QueryTabScheduleDto) {
     const tournament = await this.prisma.tournament.findUnique({
       where: { tournamentId },
       include: {
@@ -323,6 +385,33 @@ export class TournamentTabsService {
     const schedule = (tournament.schedule as any) || {};
     const matches: any[] =
       schedule.structure?.matches || schedule.matches || [];
+
+    let filteredMatches = matches;
+    if (query?.round) {
+      filteredMatches = filteredMatches.filter(
+        (m: any) => String(m.round) === String(query.round),
+      );
+    }
+    if (query?.status) {
+      filteredMatches = filteredMatches.filter(
+        (m: any) => m.status === query.status,
+      );
+    }
+    if (query?.isAllocated !== undefined) {
+      const isAlloc = query.isAllocated === 'true';
+      filteredMatches = filteredMatches.filter((m: any) =>
+        isAlloc ? !!(m.time || m.slot) : !(m.time || m.slot),
+      );
+    }
+
+    const page = Number(query?.page) || 1;
+    const limit = Number(query?.limit) || 25;
+    const total = filteredMatches.length;
+    const paginatedMatches = filteredMatches.slice(
+      (page - 1) * limit,
+      page * limit,
+    );
+    const pagination = calculatePaginationMeta(total, page, limit);
 
     return {
       tournamentId: tournament.tournamentId,
@@ -341,10 +430,12 @@ export class TournamentTabsService {
         frequencyStatus: tournament.frequencyStatus,
         frequencyArray: tournament.frequencyArray,
       },
-      canonicalMatches: matches,
+      canonicalMatches: paginatedMatches,
+      totalMatches: total,
       groups: schedule.groups || schedule.structure?.groups || [],
       calendar: schedule.calendar || null,
       venues: tournament.venues,
+      pagination,
     };
   }
 
@@ -392,7 +483,10 @@ export class TournamentTabsService {
   // TAB 4: LEADERBOARDS
   // ==========================================
 
-  async getLeaderboardsTab(tournamentId: string) {
+  async getLeaderboardsTab(
+    tournamentId: string,
+    query?: QueryTabLeaderboardsDto,
+  ) {
     const tournament = await this.prisma.tournament.findUnique({
       where: { tournamentId },
       include: {
@@ -406,9 +500,13 @@ export class TournamentTabsService {
       throw new NotFoundException(`Tournament #${tournamentId} not found`);
     }
 
+    const page = Number(query?.page) || 1;
+    const limit = Number(query?.limit) || 25;
+
     const leaderboard = await this.leaderboardService.getTournamentLeaderboard(
       tournamentId,
       'table',
+      { page, limit },
     );
 
     const tournamentGroup = tournament.seriesTournaments?.[0]?.series
@@ -419,16 +517,22 @@ export class TournamentTabsService {
         }
       : null;
 
+    const standings =
+      (leaderboard as any).data ||
+      (leaderboard as any).standings ||
+      leaderboard;
+
+    const total = Array.isArray(standings) ? standings.length : 0;
+    const pagination = calculatePaginationMeta(total, page, limit);
+
     return {
       tournamentId: tournament.tournamentId,
       tournamentName: tournament.name,
       tournamentFormat: tournament.tournamentFormat,
-      tournamentLeaderboard:
-        (leaderboard as any).data ||
-        (leaderboard as any).standings ||
-        leaderboard,
+      tournamentLeaderboard: standings,
       tournamentGroup,
       seriesLeaderboard: [],
+      pagination,
     };
   }
 
@@ -437,7 +541,6 @@ export class TournamentTabsService {
     dto: UpdateLeaderboardsTabDto,
   ) {
     await this.findTournamentOrThrow(tournamentId);
-    // Can support manual point overrides or recalculation triggers
     return this.getLeaderboardsTab(tournamentId);
   }
 
@@ -445,17 +548,29 @@ export class TournamentTabsService {
   // TAB 5: RAFFLES
   // ==========================================
 
-  async getRafflesTab(tournamentId: string) {
+  async getRafflesTab(tournamentId: string, query?: QueryTabRafflesDto) {
     await this.findTournamentOrThrow(tournamentId);
 
-    const raffles = await this.prisma.raffle.findMany({
-      where: { tournamentId },
-      orderBy: { createdAt: 'desc' },
-    });
+    const page = Number(query?.page) || 1;
+    const limit = Number(query?.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const [total, raffles] = await Promise.all([
+      this.prisma.raffle.count({ where: { tournamentId } }),
+      this.prisma.raffle.findMany({
+        where: { tournamentId },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const pagination = calculatePaginationMeta(total, page, limit);
 
     return {
       tournamentId,
       raffles,
+      pagination,
     };
   }
 
@@ -980,24 +1095,24 @@ export class TournamentTabsService {
   // DYNAMIC TAB DISPATCHER
   // ==========================================
 
-  async getTab(tournamentId: string, tabName: string) {
+  async getTab(tournamentId: string, tabName: string, query?: any) {
     const normalized = tabName.toLowerCase().replace(/[-_&]/g, '');
     switch (normalized) {
       case 'details':
         return this.getDetailsTab(tournamentId);
       case 'registrations':
       case 'registration':
-        return this.getRegistrationsTab(tournamentId);
+        return this.getRegistrationsTab(tournamentId, query);
       case 'schedule':
       case 'scheduleresults':
       case 'scheduleresult':
-        return this.getScheduleTab(tournamentId);
+        return this.getScheduleTab(tournamentId, query);
       case 'leaderboard':
       case 'leaderboards':
-        return this.getLeaderboardsTab(tournamentId);
+        return this.getLeaderboardsTab(tournamentId, query);
       case 'raffles':
       case 'raffle':
-        return this.getRafflesTab(tournamentId);
+        return this.getRafflesTab(tournamentId, query);
       case 'playercardtemplate':
       case 'playercard':
         return this.getPlayerCardTemplateTab(tournamentId);

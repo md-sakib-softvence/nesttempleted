@@ -1,4 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsOptional,
   IsString,
@@ -16,6 +17,7 @@ import {
   TournamentStatus,
   SchedulingMode,
   RaffleStatus,
+  TournamentRegistrationStatus,
 } from '@prisma/client';
 
 export class UpdateDetailsTabDto {
@@ -440,3 +442,104 @@ export class UpdateSettingsTabDto {
   @IsArray()
   prizePayouts?: any[];
 }
+
+export class QueryTabRegistrationsDto {
+  @ApiPropertyOptional({ default: 1, example: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  page?: number = 1;
+
+  @ApiPropertyOptional({ default: 25, example: 25 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  limit?: number = 25;
+
+  @ApiPropertyOptional({
+    enum: ['registered', 'selected', 'confirmed', 'waitlist'],
+  })
+  @IsOptional()
+  @IsString()
+  tab?: 'registered' | 'selected' | 'confirmed' | 'waitlist';
+
+  @ApiPropertyOptional({ enum: TournamentRegistrationStatus })
+  @IsOptional()
+  @IsEnum(TournamentRegistrationStatus)
+  status?: TournamentRegistrationStatus;
+
+  @ApiPropertyOptional({ description: 'Filter by payment status' })
+  @IsOptional()
+  @IsString()
+  paymentStatus?: string;
+
+  @ApiPropertyOptional({ description: 'Search gamerTag, name or email' })
+  @IsOptional()
+  @IsString()
+  search?: string;
+}
+
+export class QueryTabScheduleDto {
+  @ApiPropertyOptional({ default: 1, example: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  page?: number = 1;
+
+  @ApiPropertyOptional({ default: 25, example: 25 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  limit?: number = 25;
+
+  @ApiPropertyOptional({ description: 'Filter by round' })
+  @IsOptional()
+  @IsString()
+  round?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by match status' })
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by allocated status (true/false)',
+  })
+  @IsOptional()
+  @IsString()
+  isAllocated?: string;
+}
+
+export class QueryTabLeaderboardsDto {
+  @ApiPropertyOptional({ default: 1, example: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  page?: number = 1;
+
+  @ApiPropertyOptional({ default: 25, example: 25 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  limit?: number = 25;
+
+  @ApiPropertyOptional({ description: 'Search player gamertag or name' })
+  @IsOptional()
+  @IsString()
+  search?: string;
+}
+
+export class QueryTabRafflesDto {
+  @ApiPropertyOptional({ default: 1, example: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  page?: number = 1;
+
+  @ApiPropertyOptional({ default: 10, example: 10 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  limit?: number = 10;
+}
+

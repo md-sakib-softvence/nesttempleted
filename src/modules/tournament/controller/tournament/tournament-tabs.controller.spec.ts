@@ -128,27 +128,31 @@ describe('TournamentTabsController', () => {
     expect(res.data.basicInformation.name).toBe('Winter Cup Updated');
   });
 
-  it('should get registrations tab', async () => {
-    const res = await controller.getRegistrationsTab('t-1');
-    expect(tabsService.getRegistrationsTab).toHaveBeenCalledWith('t-1');
+  it('should get registrations tab with pagination', async () => {
+    const query = { page: 1, limit: 25, tab: 'registered' as const };
+    const res = await controller.getRegistrationsTab('t-1', query);
+    expect(tabsService.getRegistrationsTab).toHaveBeenCalledWith('t-1', query);
     expect(res.data.counts.total).toBe(10);
   });
 
-  it('should get schedule tab', async () => {
-    const res = await controller.getScheduleTab('t-1');
-    expect(tabsService.getScheduleTab).toHaveBeenCalledWith('t-1');
+  it('should get schedule tab with pagination', async () => {
+    const query = { page: 1, limit: 10, round: '1' };
+    const res = await controller.getScheduleTab('t-1', query);
+    expect(tabsService.getScheduleTab).toHaveBeenCalledWith('t-1', query);
     expect(res.data.schedulingMode).toBe('MANUAL');
   });
 
-  it('should get leaderboards tab', async () => {
-    const res = await controller.getLeaderboardsTab('t-1');
-    expect(tabsService.getLeaderboardsTab).toHaveBeenCalledWith('t-1');
+  it('should get leaderboards tab with pagination', async () => {
+    const query = { page: 1, limit: 20 };
+    const res = await controller.getLeaderboardsTab('t-1', query);
+    expect(tabsService.getLeaderboardsTab).toHaveBeenCalledWith('t-1', query);
     expect(res.data.tournamentId).toBe('t-1');
   });
 
-  it('should get and patch raffles tab', async () => {
-    await controller.getRafflesTab('t-1');
-    expect(tabsService.getRafflesTab).toHaveBeenCalledWith('t-1');
+  it('should get and patch raffles tab with pagination', async () => {
+    const query = { page: 1, limit: 5 };
+    await controller.getRafflesTab('t-1', query);
+    expect(tabsService.getRafflesTab).toHaveBeenCalledWith('t-1', query);
 
     await controller.patchRafflesTab('t-1', { name: 'Raffle 1' });
     expect(tabsService.patchRafflesTab).toHaveBeenCalledWith('t-1', { name: 'Raffle 1' });
@@ -196,7 +200,7 @@ describe('TournamentTabsController', () => {
 
   it('should dynamically get and patch tab by name', async () => {
     await controller.getTabByName('t-1', 'details');
-    expect(tabsService.getTab).toHaveBeenCalledWith('t-1', 'details');
+    expect(tabsService.getTab).toHaveBeenCalledWith('t-1', 'details', undefined);
 
     await controller.patchTabByName('t-1', 'details', { name: 'Winter Cup' });
     expect(tabsService.patchTab).toHaveBeenCalledWith('t-1', 'details', { name: 'Winter Cup' });
