@@ -24,10 +24,14 @@ import { TournamentMatchesService } from './service/tournament-matches.service';
 import { TournamentLeaderboardService } from './service/tournament-leaderboard.service';
 import { SelfScheduleWorkerService } from './service/self-schedule-worker.service';
 
+import { TournamentTabsController } from './controller/tournament/tournament-tabs.controller';
+import { TournamentTabsService } from './service/tournament-tabs.service';
+
 @Module({
   controllers: [
     RaffleController,
     TournamentController,
+    TournamentTabsController,
     AdminMatchController,
     AdminDisputeController,
     AdminRegistrationController,
@@ -38,6 +42,7 @@ import { SelfScheduleWorkerService } from './service/self-schedule-worker.servic
   ],
   providers: [
     TournamentService,
+    TournamentTabsService,
     TournamentCoreService,
     TournamentRegistrationService,
     TournamentMatchesService,
@@ -52,6 +57,7 @@ import { SelfScheduleWorkerService } from './service/self-schedule-worker.servic
   ],
   exports: [
     TournamentService,
+    TournamentTabsService,
     TournamentCoreService,
     TournamentRegistrationService,
     TournamentMatchesService,
