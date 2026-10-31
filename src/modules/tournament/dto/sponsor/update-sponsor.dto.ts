@@ -39,12 +39,15 @@ export class UpdateSponsorDto {
   @ApiPropertyOptional({
     description: 'Sponsorship priority level',
     enum: SponsorPriority,
-    example: SponsorPriority.SECONDARY,
+    example: SponsorPriority.SILVER,
   })
   @Transform(({ value }) => {
     if (typeof value === 'string') {
       const upper = value.toUpperCase();
-      if (upper === 'TERTIARY') return SponsorPriority.THIRD;
+      if (upper === 'PRIMARY') return SponsorPriority.GOLD;
+      if (upper === 'SECONDARY') return SponsorPriority.SILVER;
+      if (upper === 'THIRD' || upper === 'TERTIARY')
+        return SponsorPriority.BRONZE;
       return upper as SponsorPriority;
     }
     return value;
