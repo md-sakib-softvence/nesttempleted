@@ -6,11 +6,14 @@ import { FanFollowController } from './controller/fan.follow.controller';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { MailModule } from '../mail/mail.module';
 import { AuthModule } from '../auth/auth.module';
+import { FlutterwaveModule } from '../flutterwave/flutterwave.module';
+import { TournamentModule } from '../tournament/tournament.module';
+import { FanPlayerRegistrationService } from './service/fan-player-registration.service';
 
 @Module({
-  imports: [PrismaModule, MailModule, AuthModule],
+  imports: [PrismaModule, MailModule, AuthModule, FlutterwaveModule, TournamentModule],
   controllers: [FanFollowController, FanController],
-  providers: [FanService, FollowerService],
-  exports: [FanService, FollowerService],
+  providers: [FanService, FollowerService, FanPlayerRegistrationService],
+  exports: [FanService, FollowerService, FanPlayerRegistrationService],
 })
 export class FanModule {}

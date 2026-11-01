@@ -19,12 +19,13 @@ model Fan {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  marketingData MarketingDataCollection?
-  schedules     Schedule[]
-  followers     Follower[]               @relation("FanFollowing")
-  followedBy    Follower[]               @relation("FanFollowed")
-  tickets       Ticket[]
-  wallet        Wallet?
+  marketingData          MarketingDataCollection?
+  schedules              Schedule[]
+  followers              Follower[]                 @relation("FanFollowing")
+  followedBy             Follower[]                 @relation("FanFollowed")
+  tickets                Ticket[]
+  wallet                 Wallet?
+  tournamentApplications FanTournamentApplication[]
 
   @@index([gamerTag])
 }

@@ -2,6 +2,7 @@ model Tournament {
   tournamentId           String                  @id @default(uuid())
   name                   String
   gameTitle              String
+  gameType               TournamentGameType        @default(OTHER)
   tournamentFormat       TournamentFormat
   numberOfTeams          Int
   entryFee               Float
@@ -52,6 +53,7 @@ model Tournament {
   seriesTournaments SeriesTournament[]
   tickets           Ticket[]
   ticketTiers       TicketTier[]
+  fanApplications   FanTournamentApplication[]
 }
 
 model ManageEventCost {
@@ -75,14 +77,15 @@ model ManageEventPrize {
 }
 
 model Venue {
-  venueId      String      @id @default(uuid())
-  name         String
-  address      String
-  tournamentId String?
-  tournament   Tournament? @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
-  screens      Screen[]
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  venueId         String                     @id @default(uuid())
+  name            String
+  address         String
+  tournamentId    String?
+  tournament      Tournament?                @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+  screens         Screen[]
+  fanApplications FanTournamentApplication[]
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
 }
 
 model Screen {
@@ -179,27 +182,87 @@ enum SchedulingMode {
 }
 
 model TournamentRegistration {
-  registrationId  String                       @id @default(uuid())
-  tournamentId    String
-  tournament      Tournament                   @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
-  playerId        String
-  player          Player                       @relation(fields: [playerId], references: [playerId], onDelete: Cascade)
-  homeVenueId     String?
-  primaryTeamId   String?
-  secondaryTeamId String?
-  status          TournamentRegistrationStatus @default(REGISTERED)
-  paymentStatus   String                       @default("PENDING")
-  paymentDeadline DateTime?
-  assignedSlot    Int?
-  jerseySize      String?
-  playerPhotoUrl  String?
-  qrCodeString    String?
-  checkedInVenue  Boolean                      @default(false)
-  version         Int                          @default(1)
-  createdAt       DateTime                     @default(now())
-  updatedAt       DateTime                     @updatedAt
+  registrationId   String                       @id @default(uuid())
+  tournamentId     String
+  tournament       Tournament                   @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+  playerId         String
+  player           Player                       @relation(fields: [playerId], references: [playerId], onDelete: Cascade)
+  fanApplicationId String?                      @unique
+  fanApplication   FanTournamentApplication?    @relation(fields: [fanApplicationId], references: [id], onDelete: SetNull)
+  homeVenueId      String?
+  primaryTeamId    String?
+  secondaryTeamId  String?
+  status           TournamentRegistrationStatus @default(REGISTERED)
+  paymentStatus    String                       @default("PENDING")
+  paymentDeadline  DateTime?
+  assignedSlot     Int?
+  jerseySize       String?
+  playerPhotoUrl   String?
+  qrCodeString     String?
+  checkedInVenue   Boolean                      @default(false)
+  version          Int                          @default(1)
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
 
   @@unique([tournamentId, playerId])
+}
+
+model FanTournamentApplication {
+  id               String                         @id @default(uuid())
+  fanId            String
+  fan              Fan                            @relation(fields: [fanId], references: [fanId], onDelete: Restrict)
+  tournamentId     String
+  tournament       Tournament                     @relation(fields: [tournamentId], references: [tournamentId], onDelete: Restrict)
+  homeVenueId      String?
+  homeVenue        Venue?                         @relation(fields: [homeVenueId], references: [venueId], onDelete: SetNull)
+  primaryTeamId    String?
+  secondaryTeamId  String?
+  jerseySize       String?
+  status           FanTournamentApplicationStatus @default(PENDING_PAYMENT)
+  playerId         String?
+  player           Player?                        @relation(fields: [playerId], references: [playerId], onDelete: SetNull)
+  payments         Payment[]
+  registration     TournamentRegistration?
+  createdAt        DateTime                       @default(now())
+  updatedAt        DateTime                       @updatedAt
+
+  @@unique([fanId, tournamentId])
+  @@index([tournamentId, status, paymentStatus])
+  @@index([fanId, status])
+}
+
+enum FanTournamentApplicationStatus {
+  PENDING_PAYMENT
+  PAYMENT_CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+enum TournamentGameType {
+  FOOTBALL
+  OTHER
+}
+
+model Payment {
+  id               String                   @id @default(uuid())
+  applicationId    String
+  application      FanTournamentApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  gateway          String
+  status           String                   @default("PENDING")
+  amount           Float
+  currency         Currency
+  txRef            String?                  @unique
+  flwTransactionId String?                  @unique
+  checkoutUrl      String?
+  paidAmount       Float?
+  paidCurrency     Currency?
+  paidAt           DateTime?
+  providerDetails  Json?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  @@index([applicationId, status])
+  @@index([gateway, status])
 }
 
 enum TournamentRegistrationStatus {
@@ -211,19 +274,19 @@ enum TournamentRegistrationStatus {
 }
 
 model Raffle {
-  raffleId              String        @id @default(uuid())
+  raffleId              String       @id @default(uuid())
   tournamentId          String
-  tournament            Tournament    @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+  tournament            Tournament   @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
   name                  String
   prizeDescription      String
-  numberOfWinners       Int           @default(1)
-  status                RaffleStatus  @default(OPEN)
+  numberOfWinners       Int          @default(1)
+  status                RaffleStatus @default(OPEN)
   drawDate              DateTime?
   registrationCloseDate DateTime?
-  entries               Json?         @default("[]")
-  winners               Json?         @default("[]")
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime      @updatedAt
+  entries               Json?        @default("[]")
+  winners               Json?        @default("[]")
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
 }
 
 enum RaffleStatus {
