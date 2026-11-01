@@ -668,9 +668,7 @@ export class FollowerService {
       .map((f) => f.targetPlayerId)
       .filter(Boolean) as string[];
 
-    const gamerTags = follows
-      .map((f) => f.gamerTag)
-      .filter(Boolean) as string[];
+    const gamerTags = follows.map((f) => f.gamerTag).filter(Boolean);
 
     if (gamerTags.length > 0) {
       const tagPlayers = await this.prisma.player.findMany({
@@ -702,12 +700,7 @@ export class FollowerService {
       where: {
         isDeleted: false,
         status: {
-          in: [
-            'IN_PROGRESS',
-            'ONGOING',
-            'UPCOMING',
-            'REGISTRATION_OPEN',
-          ],
+          in: ['IN_PROGRESS', 'ONGOING', 'UPCOMING', 'REGISTRATION_OPEN'],
         },
       },
       include: {
@@ -743,8 +736,7 @@ export class FollowerService {
         const venueObj = venues.find(
           (v) => v.venueId === vs.venueId || v.name === vs.venueName,
         );
-        const venueName =
-          venueObj?.name || vs.venueName || 'Main Arena';
+        const venueName = venueObj?.name || vs.venueName || 'Main Arena';
 
         const screens: any[] = vs.screens || [];
         for (const ss of screens) {

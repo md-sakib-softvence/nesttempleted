@@ -542,4 +542,3 @@ export class QueryTabRafflesDto {
   @IsNumber()
   limit?: number = 10;
 }
-

@@ -204,7 +204,8 @@ export class TournamentTabsController {
   @Public()
   @Get(':id/tabs/raffles')
   @ApiOperation({
-    summary: 'Get Tournament Raffles tab (List of raffles with pagination, status, dates, winners)',
+    summary:
+      'Get Tournament Raffles tab (List of raffles with pagination, status, dates, winners)',
   })
   async getRafflesTab(
     @Param('id') id: string,
@@ -286,7 +287,8 @@ export class TournamentTabsController {
     let uploadedFiles: any = null;
     if (files && Object.keys(files).length > 0) {
       uploadedFiles = await uploadTournamentFiles(files);
-      if (uploadedFiles.canvasImage) dto.canvasImage = uploadedFiles.canvasImage;
+      if (uploadedFiles.canvasImage)
+        dto.canvasImage = uploadedFiles.canvasImage;
       if (uploadedFiles.playerOrgUrl)
         dto.playerOrgUrl = uploadedFiles.playerOrgUrl;
       if (uploadedFiles.prOrgUrl) dto.prOrgUrl = uploadedFiles.prOrgUrl;
@@ -389,7 +391,9 @@ export class TournamentTabsController {
 
   @Public()
   @Get(':id/tabs/rules')
-  @ApiOperation({ summary: 'Get Tournament Rules tab (Rules list and document URL)' })
+  @ApiOperation({
+    summary: 'Get Tournament Rules tab (Rules list and document URL)',
+  })
   async getRulesTab(@Param('id') id: string) {
     const data = await this.tabsService.getRulesTab(id);
     return sendResponse({

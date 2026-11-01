@@ -15,6 +15,25 @@ describe('TournamentController (Success Message & Spec API Verification)', () =>
         data: [{ tournamentId: 't1' }],
         meta: { total: 1, page: 1, limit: 10 },
       }),
+      getActiveUpcomingTournaments: jest.fn().mockResolvedValue({
+        data: [
+          {
+            id: 't1',
+            tournamentId: 't1',
+            name: 'Live Verification Tourney 2026',
+            gameTitle: 'EAFC 26',
+            status: 'REGISTRATION_OPEN',
+            roster: '0 / 8',
+            currentRoster: 0,
+            maxRoster: 8,
+            progress: 0,
+            progressPercentage: '0%',
+            startDate: new Date('2026-11-20T00:00:00.000Z'),
+            formattedStartDate: 'Nov 20, 2026',
+          },
+        ],
+        meta: { total: 1, page: 1, limit: 10, totalPages: 1 },
+      }),
       getTournamentById: jest.fn().mockResolvedValue({ tournamentId: 't1' }),
       updateTournament: jest
         .fn()
@@ -143,5 +162,29 @@ describe('TournamentController (Success Message & Spec API Verification)', () =>
     const res = await controller.getFinancials('t1');
     expect(res.success).toBe(true);
     expect(res.message).toBe('Tournament financials retrieved successfully');
+  });
+
+  it('getActiveUpcomingTournaments should return active & upcoming tournaments for table view with pagination', async () => {
+    const res = await controller.getActiveUpcomingTournaments({
+      page: 1,
+      limit: 10,
+    });
+    expect(res.success).toBe(true);
+    expect(res.message).toBe(
+      'Active and upcoming tournaments retrieved successfully',
+    );
+    expect(res.data).toBeDefined();
+    expect(res.data!.length).toBe(1);
+    expect(res.data![0].name).toBe('Live Verification Tourney 2026');
+    expect(res.data![0].gameTitle).toBe('EAFC 26');
+    expect(res.data![0].roster).toBe('0 / 8');
+    expect(res.data![0].progress).toBe(0);
+    expect(res.data![0].formattedStartDate).toBe('Nov 20, 2026');
+    expect(res.meta).toBeDefined();
+    expect(res.meta!.total).toBe(1);
+    expect(service.getActiveUpcomingTournaments).toHaveBeenCalledWith({
+      page: 1,
+      limit: 10,
+    });
   });
 });

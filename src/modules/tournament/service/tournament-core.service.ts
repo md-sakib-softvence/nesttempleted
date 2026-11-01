@@ -459,6 +459,121 @@ export class TournamentCoreService {
     return { data: formattedData, meta };
   }
 
+  async getActiveUpcomingTournaments(query: QueryOptions = {}) {
+    const { where, skip, take, orderBy, page, limit } = buildPrismaQuery(
+      query,
+      ['name', 'gameTitle', 'tournamentId'],
+    );
+
+    where.isDeleted = false;
+
+    if (where.id) {
+      where.tournamentId = where.id;
+      delete where.id;
+    }
+
+    // Filter out status if 'ALL' or 'all'
+    if (where.status === 'ALL' || where.status === 'all') {
+      delete where.status;
+    } else if (!where.status) {
+      // Default to Active & Upcoming statuses
+      where.status = {
+        in: [
+          TournamentStatus.REGISTRATION_OPEN,
+          TournamentStatus.UPCOMING,
+          TournamentStatus.ONGOING,
+          TournamentStatus.IN_PROGRESS,
+        ],
+      };
+    }
+
+    if (where.gameTitle === 'ALL' || where.gameTitle === 'all') {
+      delete where.gameTitle;
+    }
+
+    // Default sorting: if no custom sortBy provided, order by startDate asc
+    const customOrderBy = query.sortBy
+      ? orderBy
+      : { startDate: (query.sortOrder as 'asc' | 'desc') || 'asc' };
+
+    const [data, total] = await Promise.all([
+      this.prisma.tournament.findMany({
+        where,
+        skip,
+        take,
+        orderBy: customOrderBy,
+        select: {
+          tournamentId: true,
+          name: true,
+          gameTitle: true,
+          status: true,
+          numberOfTeams: true,
+          capacity: true,
+          startDate: true,
+          schedule: true,
+          registrations: {
+            where: {
+              status: { not: TournamentRegistrationStatus.CANCELLED },
+            },
+            select: {
+              status: true,
+            },
+          },
+        },
+      }),
+      this.prisma.tournament.count({ where }),
+    ]);
+
+    const formattedData = data.map((t) => {
+      // Roster counts
+      const activeRegistrations = t.registrations || [];
+      const currentRoster = activeRegistrations.length;
+      const maxRoster = t.numberOfTeams || t.capacity || 0;
+      const roster = `${currentRoster} / ${maxRoster}`;
+
+      // Progress calculations from schedule
+      const schedule = (t.schedule as any) || {};
+      const matches: any[] =
+        schedule.structure?.matches || schedule.matches || [];
+      const totalMatches = matches.length;
+      const playedMatches = matches.filter(
+        (m: any) => m.status === 'COMPLETED' || m.status === 'NO_SHOW',
+      ).length;
+      const progress =
+        totalMatches > 0 ? Math.round((playedMatches / totalMatches) * 100) : 0;
+      const progressPercentage = `${progress}%`;
+
+      // Start Date formatting: e.g. "Nov 20, 2026"
+      const formattedStartDate = t.startDate
+        ? new Intl.DateTimeFormat('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            timeZone: 'UTC',
+          }).format(new Date(t.startDate))
+        : '';
+
+      return {
+        id: t.tournamentId,
+        tournamentId: t.tournamentId,
+        name: t.name,
+        gameTitle: t.gameTitle,
+        status: t.status,
+        roster,
+        currentRoster,
+        maxRoster,
+        progress,
+        progressPercentage,
+        startDate: t.startDate,
+        formattedStartDate,
+      };
+    });
+
+    const meta = calculatePaginationMeta(total, page, limit);
+
+    return { data: formattedData, meta };
+  }
+
   async getTournamentById(id: string, include?: string) {
     const tournament = await this.prisma.tournament.findUnique({
       where: { tournamentId: id },

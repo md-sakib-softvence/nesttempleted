@@ -88,6 +88,10 @@ export class TournamentService {
     return this.core.getAllTournaments(query);
   }
 
+  async getActiveUpcomingTournaments(query: QueryOptions = {}) {
+    return this.core.getActiveUpcomingTournaments(query);
+  }
+
   async getTournamentById(id: string, include?: string) {
     return this.core.getTournamentById(id, include);
   }

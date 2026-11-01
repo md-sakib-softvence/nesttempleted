@@ -59,6 +59,7 @@ describe('TournamentService (Admin Invariants & Concurrency Tests)', () => {
       tournament: {
         findUnique: jest.fn(),
         findMany: jest.fn(),
+        count: jest.fn(),
         update: jest.fn(),
       },
       tournamentRegistration: {
@@ -219,6 +220,55 @@ describe('TournamentService (Admin Invariants & Concurrency Tests)', () => {
       expect(res.totalCosts).toBe(10000);
       expect(res.totalPrizes).toBe(50000);
       expect(res.netProfitLoss).toBe(5000 - 10000 - 50000);
+    });
+  });
+
+  describe('getActiveUpcomingTournaments', () => {
+    it('should return paginated active and upcoming tournaments with calculated roster and progress', async () => {
+      prisma.tournament.findMany.mockResolvedValue([
+        {
+          tournamentId: 't1',
+          name: 'Live Verification Tourney 2026',
+          gameTitle: 'EAFC 26',
+          status: TournamentStatus.REGISTRATION_OPEN,
+          numberOfTeams: 8,
+          capacity: 16,
+          startDate: new Date('2026-11-20T00:00:00.000Z'),
+          schedule: {
+            matches: [
+              { id: 'm1', status: 'COMPLETED' },
+              { id: 'm2', status: 'SCHEDULED' },
+            ],
+          },
+          registrations: [{ status: TournamentRegistrationStatus.REGISTERED }],
+        },
+      ]);
+      prisma.tournament.count.mockResolvedValue(1);
+
+      const res = await service.getActiveUpcomingTournaments({
+        page: 1,
+        limit: 10,
+      });
+
+      expect(res.data).toHaveLength(1);
+      const item = res.data[0];
+      expect(item.id).toBe('t1');
+      expect(item.tournamentId).toBe('t1');
+      expect(item.name).toBe('Live Verification Tourney 2026');
+      expect(item.gameTitle).toBe('EAFC 26');
+      expect(item.status).toBe(TournamentStatus.REGISTRATION_OPEN);
+      expect(item.roster).toBe('1 / 8');
+      expect(item.currentRoster).toBe(1);
+      expect(item.maxRoster).toBe(8);
+      expect(item.progress).toBe(50);
+      expect(item.progressPercentage).toBe('50%');
+      expect(item.formattedStartDate).toBe('Nov 20, 2026');
+      expect(res.meta).toEqual({
+        total: 1,
+        page: 1,
+        limit: 10,
+        totalPages: 1,
+      });
     });
   });
 });

@@ -44,7 +44,8 @@ import { CreateVenueDto } from '../../dto/venue/create-venue.dto';
 import { SimulateSelfScheduleDto } from '../../dto/tournament/simulate-self-schedule.dto';
 import { ProposeSlotDto } from '../../dto/tournament/propose-slot.dto';
 import { EmergencyAppealDto } from '../../dto/tournament/emergency-appeal.dto';
-import { Role, SchedulingMode } from '@prisma/client';
+import { QueryActiveUpcomingTournamentDto } from '../../dto/tournament/query-active-upcoming-tournament.dto';
+import { Role, SchedulingMode, TournamentStatus } from '@prisma/client';
 import {
   uploadTournamentFiles,
   rollbackTournamentFiles,
@@ -158,6 +159,36 @@ export class TournamentController {
       await this.tournamentService.getAllTournaments(query);
     return sendResponse({
       message: 'Tournaments retrieved successfully',
+      data,
+      meta,
+    });
+  }
+
+  @Get('active-upcoming')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Get active and upcoming tournaments for dashboard table with pagination and search',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
+  @ApiQuery({ name: 'searchTerm', required: false, type: String })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: TournamentStatus,
+    description:
+      'Optional status filter (e.g. REGISTRATION_OPEN, UPCOMING, ONGOING, IN_PROGRESS). Pass ALL to return all statuses.',
+  })
+  @ApiQuery({ name: 'sortBy', required: false, type: String })
+  @ApiQuery({ name: 'sortOrder', required: false, enum: ['asc', 'desc'] })
+  async getActiveUpcomingTournaments(
+    @Query() query: QueryActiveUpcomingTournamentDto,
+  ) {
+    const { data, meta } =
+      await this.tournamentService.getActiveUpcomingTournaments(query);
+    return sendResponse({
+      message: 'Active and upcoming tournaments retrieved successfully',
       data,
       meta,
     });

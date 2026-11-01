@@ -172,8 +172,7 @@ export class TournamentTabsService {
     if (dto.tournamentFormat !== undefined)
       data.tournamentFormat = dto.tournamentFormat;
     if (dto.capacity !== undefined) data.capacity = dto.capacity;
-    if (dto.numberOfTeams !== undefined)
-      data.numberOfTeams = dto.numberOfTeams;
+    if (dto.numberOfTeams !== undefined) data.numberOfTeams = dto.numberOfTeams;
     if (dto.registrationCutOffMode !== undefined)
       data.registrationCutOffMode = dto.registrationCutOffMode;
     if (dto.entryFee !== undefined) data.entryFee = dto.entryFee;
@@ -181,8 +180,7 @@ export class TournamentTabsService {
     if (dto.prizeRule !== undefined) data.prizeRule = dto.prizeRule;
     if (dto.percentage !== undefined) data.percentage = dto.percentage;
     if (dto.houseRake !== undefined) data.houseRake = dto.houseRake;
-    if (dto.paymentWindow !== undefined)
-      data.paymentWindow = dto.paymentWindow;
+    if (dto.paymentWindow !== undefined) data.paymentWindow = dto.paymentWindow;
     if (dto.startDate !== undefined) data.startDate = new Date(dto.startDate);
     if (dto.deadline !== undefined) data.deadline = new Date(dto.deadline);
 
@@ -332,7 +330,7 @@ export class TournamentTabsService {
           .then((t) => t?.registrationCutOffMode)) ||
         'CAPACITY';
       await this.registrationService.openRegistration(tournamentId, {
-        mode: mode as any,
+        mode: mode,
         capacity: dto.capacity,
       });
     } else if (dto.action === 'close') {
@@ -449,15 +447,13 @@ export class TournamentTabsService {
       data.schedulingPaused = dto.schedulingPaused;
     if (dto.dailyStart !== undefined) data.dailyStart = dto.dailyStart;
     if (dto.dailyEnd !== undefined) data.dailyEnd = dto.dailyEnd;
-    if (dto.matchDuration !== undefined)
-      data.matchDuration = dto.matchDuration;
+    if (dto.matchDuration !== undefined) data.matchDuration = dto.matchDuration;
     if (dto.turnoverDuration !== undefined)
       data.turnoverDuration = dto.turnoverDuration;
     if (dto.buffer !== undefined) data.buffer = dto.buffer;
     if (dto.lunchBreakTime !== undefined)
       data.lunchBreakTime = dto.lunchBreakTime;
-    if (dto.lunchDuration !== undefined)
-      data.lunchDuration = dto.lunchDuration;
+    if (dto.lunchDuration !== undefined) data.lunchDuration = dto.lunchDuration;
     if (dto.frequencyStatus !== undefined)
       data.frequencyStatus = dto.frequencyStatus;
     if (dto.frequencyArray !== undefined)
@@ -842,8 +838,7 @@ export class TournamentTabsService {
     return {
       tournamentId: tournament.tournamentId,
       rules: presigned.rules || tournament.rules || [],
-      rulesUrl:
-        presigned.rules?.[0] || tournament.rules?.[0] || null,
+      rulesUrl: presigned.rules?.[0] || tournament.rules?.[0] || null,
     };
   }
 
@@ -972,8 +967,7 @@ export class TournamentTabsService {
     }
     if (dto.deadlineDate !== undefined)
       data.deadline = new Date(dto.deadlineDate);
-    if (dto.startDate !== undefined)
-      data.startDate = new Date(dto.startDate);
+    if (dto.startDate !== undefined) data.startDate = new Date(dto.startDate);
     if (dto.schedulingMode !== undefined)
       data.schedulingMode = dto.schedulingMode;
     if (dto.status !== undefined) data.status = dto.status;
@@ -1047,7 +1041,12 @@ export class TournamentTabsService {
     // Costs sync if provided
     if (Array.isArray(dto.eventCosts)) {
       for (const c of dto.eventCosts) {
-        if (typeof c === 'object' && c !== null && c.category && c.amount !== undefined) {
+        if (
+          typeof c === 'object' &&
+          c !== null &&
+          c.category &&
+          c.amount !== undefined
+        ) {
           if (c.id || c.manageEventCostId) {
             await this.prisma.manageEventCost.update({
               where: { manageEventCostId: c.id || c.manageEventCostId },
@@ -1069,7 +1068,12 @@ export class TournamentTabsService {
     // Prizes sync if provided
     if (Array.isArray(dto.prizePayouts)) {
       for (const p of dto.prizePayouts) {
-        if (typeof p === 'object' && p !== null && p.category && p.amount !== undefined) {
+        if (
+          typeof p === 'object' &&
+          p !== null &&
+          p.category &&
+          p.amount !== undefined
+        ) {
           if (p.id || p.manageEventPrizeId) {
             await this.prisma.manageEventPrize.update({
               where: { manageEventPrizeId: p.id || p.manageEventPrizeId },

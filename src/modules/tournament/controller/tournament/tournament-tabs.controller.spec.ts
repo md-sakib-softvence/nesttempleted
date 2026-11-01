@@ -123,8 +123,12 @@ describe('TournamentTabsController', () => {
   });
 
   it('should patch details tab', async () => {
-    const res = await controller.patchDetailsTab('t-1', { name: 'Winter Cup Updated' });
-    expect(tabsService.patchDetailsTab).toHaveBeenCalledWith('t-1', { name: 'Winter Cup Updated' });
+    const res = await controller.patchDetailsTab('t-1', {
+      name: 'Winter Cup Updated',
+    });
+    expect(tabsService.patchDetailsTab).toHaveBeenCalledWith('t-1', {
+      name: 'Winter Cup Updated',
+    });
     expect(res.data.basicInformation.name).toBe('Winter Cup Updated');
   });
 
@@ -155,23 +159,33 @@ describe('TournamentTabsController', () => {
     expect(tabsService.getRafflesTab).toHaveBeenCalledWith('t-1', query);
 
     await controller.patchRafflesTab('t-1', { name: 'Raffle 1' });
-    expect(tabsService.patchRafflesTab).toHaveBeenCalledWith('t-1', { name: 'Raffle 1' });
+    expect(tabsService.patchRafflesTab).toHaveBeenCalledWith('t-1', {
+      name: 'Raffle 1',
+    });
   });
 
   it('should get and patch player card template tab', async () => {
     await controller.getPlayerCardTemplateTab('t-1');
     expect(tabsService.getPlayerCardTemplateTab).toHaveBeenCalledWith('t-1');
 
-    await controller.patchPlayerCardTemplateTab('t-1', { organizerLogo: 'new-logo.png' });
-    expect(tabsService.patchPlayerCardTemplateTab).toHaveBeenCalledWith('t-1', { organizerLogo: 'new-logo.png' });
+    await controller.patchPlayerCardTemplateTab('t-1', {
+      organizerLogo: 'new-logo.png',
+    });
+    expect(tabsService.patchPlayerCardTemplateTab).toHaveBeenCalledWith('t-1', {
+      organizerLogo: 'new-logo.png',
+    });
   });
 
   it('should get and patch fan pass template tab', async () => {
     await controller.getFanPassTemplateTab('t-1');
     expect(tabsService.getFanPassTemplateTab).toHaveBeenCalledWith('t-1');
 
-    await controller.patchFanPassTemplateTab('t-1', { fanPassArtUrl: 'new-art.png' });
-    expect(tabsService.patchFanPassTemplateTab).toHaveBeenCalledWith('t-1', { fanPassArtUrl: 'new-art.png' });
+    await controller.patchFanPassTemplateTab('t-1', {
+      fanPassArtUrl: 'new-art.png',
+    });
+    expect(tabsService.patchFanPassTemplateTab).toHaveBeenCalledWith('t-1', {
+      fanPassArtUrl: 'new-art.png',
+    });
   });
 
   it('should get and patch rules tab', async () => {
@@ -179,7 +193,9 @@ describe('TournamentTabsController', () => {
     expect(tabsService.getRulesTab).toHaveBeenCalledWith('t-1');
 
     await controller.patchRulesTab('t-1', { rules: ['Rule 1 updated'] });
-    expect(tabsService.patchRulesTab).toHaveBeenCalledWith('t-1', { rules: ['Rule 1 updated'] });
+    expect(tabsService.patchRulesTab).toHaveBeenCalledWith('t-1', {
+      rules: ['Rule 1 updated'],
+    });
   });
 
   it('should get and patch terms tab', async () => {
@@ -187,7 +203,9 @@ describe('TournamentTabsController', () => {
     expect(tabsService.getTermsTab).toHaveBeenCalledWith('t-1');
 
     await controller.patchTermsTab('t-1', { tsAndTc: ['Term 1 updated'] });
-    expect(tabsService.patchTermsTab).toHaveBeenCalledWith('t-1', { tsAndTc: ['Term 1 updated'] });
+    expect(tabsService.patchTermsTab).toHaveBeenCalledWith('t-1', {
+      tsAndTc: ['Term 1 updated'],
+    });
   });
 
   it('should get and patch settings tab', async () => {
@@ -195,14 +213,22 @@ describe('TournamentTabsController', () => {
     expect(tabsService.getSettingsTab).toHaveBeenCalledWith('t-1');
 
     await controller.patchSettingsTab('t-1', { name: 'Winter Cup Saved' });
-    expect(tabsService.patchSettingsTab).toHaveBeenCalledWith('t-1', { name: 'Winter Cup Saved' });
+    expect(tabsService.patchSettingsTab).toHaveBeenCalledWith('t-1', {
+      name: 'Winter Cup Saved',
+    });
   });
 
   it('should dynamically get and patch tab by name', async () => {
     await controller.getTabByName('t-1', 'details');
-    expect(tabsService.getTab).toHaveBeenCalledWith('t-1', 'details', undefined);
+    expect(tabsService.getTab).toHaveBeenCalledWith(
+      't-1',
+      'details',
+      undefined,
+    );
 
     await controller.patchTabByName('t-1', 'details', { name: 'Winter Cup' });
-    expect(tabsService.patchTab).toHaveBeenCalledWith('t-1', 'details', { name: 'Winter Cup' });
+    expect(tabsService.patchTab).toHaveBeenCalledWith('t-1', 'details', {
+      name: 'Winter Cup',
+    });
   });
 });
