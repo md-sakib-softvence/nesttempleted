@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   UnauthorizedException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -223,6 +224,39 @@ export class TicketService {
 
     const quantity = dto.quantity && dto.quantity > 0 ? dto.quantity : 1;
 
+    if (quantity !== 1) {
+      throw new BadRequestException(
+        'Only one ticket may be purchased per fan for a tournament.',
+      );
+    }
+
+    const purchaser = await this.resolvePurchaser(
+      currentUser.userId,
+      currentUser.role,
+    );
+
+    // Check ownership before capacity/pricing so a duplicate always receives
+    // the correct message instead of a misleading seats or tier error.
+    const ownerFilters: Array<Record<string, string>> = [
+      { purchasedBy: currentUser.userId },
+    ];
+    if (purchaser.fanId) ownerFilters.push({ fanId: purchaser.fanId });
+    if (purchaser.playerId) ownerFilters.push({ playerId: purchaser.playerId });
+
+    const existingTicket = await this.prisma.ticket.findFirst({
+      where: {
+        tournamentId: dto.tournamentId,
+        status: { in: [TicketStatus.ACTIVE, TicketStatus.USED] },
+        OR: ownerFilters,
+      },
+      select: { showTicketId: true, type: true, status: true },
+    });
+    if (existingTicket) {
+      throw new ConflictException(
+        `You already have a ticket for "${tournament.name}". One ticket per fan is allowed.`,
+      );
+    }
+
     // Check overall tournament capacity. If the tournament-level capacity is
     // unset, the active tier capacities are the source of truth.
     const tierCapacity = tournament.ticketTiers
@@ -287,10 +321,6 @@ export class TicketService {
     }
 
     const totalAmount = unitPrice * quantity;
-    const purchaser = await this.resolvePurchaser(
-      currentUser.userId,
-      currentUser.role,
-    );
 
     if (!purchaser.email) {
       throw new BadRequestException(
@@ -401,7 +431,7 @@ export class TicketService {
       purchaserName: customerName,
       tournamentName: tournament.name,
       oneTicketOneTimeOnly: true,
-      canBuyMultipleTimes: true,
+      canBuyMultipleTimes: false,
     };
   }
 
@@ -508,6 +538,16 @@ export class TicketService {
     const userId = meta.userId || null;
     const userRole = meta.userRole || 'FAN';
 
+    if (quantity !== 1) {
+      await this.prisma.payment.updateMany({
+        where: { txRef },
+        data: { status: 'DUPLICATE_TICKET' },
+      });
+      throw new ConflictException(
+        'Only one ticket may be issued to a fan for a tournament.',
+      );
+    }
+
     const selectedTier = tierId
       ? tournament.ticketTiers.find((tier) => tier.tierId === tierId)
       : undefined;
@@ -522,6 +562,26 @@ export class TicketService {
       throw new BadRequestException(
         `Payment amount mismatch. Expected ${expectedAmount}, received ${chargedAmount}.`,
       );
+    }
+
+    if (userId) {
+      const existingTicket = await this.prisma.ticket.findFirst({
+        where: {
+          tournamentId,
+          status: { in: [TicketStatus.ACTIVE, TicketStatus.USED] },
+          OR: [{ purchasedBy: userId }, { fanId: userId }, { playerId: userId }],
+        },
+        select: { showTicketId: true },
+      });
+      if (existingTicket) {
+        await this.prisma.payment.updateMany({
+          where: { txRef },
+          data: { status: 'DUPLICATE_TICKET' },
+        });
+        throw new ConflictException(
+          `A ticket for this tournament already exists for this account.`,
+        );
+      }
     }
 
     const tierCapacity = tournament.ticketTiers
@@ -1805,6 +1865,29 @@ export class TicketService {
     ).toUpperCase();
     const userId =
       body.purchasedBy || body.fanId || body.playerId || `user-${Date.now()}`;
+
+    if (body.fanId || body.playerId || body.purchasedBy) {
+      const ownerFilters: Array<Record<string, string>> = [
+        { purchasedBy: userId },
+      ];
+      if (body.fanId) ownerFilters.push({ fanId: body.fanId });
+      if (body.playerId) ownerFilters.push({ playerId: body.playerId });
+
+      const existingTicket = await this.prisma.ticket.findFirst({
+        where: {
+          tournamentId: body.tournamentId,
+          status: { in: [TicketStatus.ACTIVE, TicketStatus.USED] },
+          OR: ownerFilters,
+        },
+        select: { showTicketId: true },
+      });
+      if (existingTicket) {
+        throw new ConflictException(
+          `You already have a ticket for "${tournament.name}". One ticket per fan is allowed.`,
+        );
+      }
+    }
+
     const hmacSecret =
       process.env.JWT_SECRET || 'tape_ticketing_secure_salt_2026';
     const signature = crypto

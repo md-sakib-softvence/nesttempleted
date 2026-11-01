@@ -922,9 +922,11 @@ export class TournamentMatchesService {
     matchId: string,
     dto: UpdateMatchScoreDto,
   ) {
-    const tournament = await this.prisma.tournament.findUnique({
-      where: { tournamentId },
-    });
+    const tournament = tournamentId
+      ? await this.prisma.tournament.findUnique({
+          where: { tournamentId },
+        })
+      : await this.resolveTournamentForMatch(undefined, matchId);
 
     if (!tournament) {
       throw new NotFoundException(`Tournament #${tournamentId} not found`);
@@ -1104,7 +1106,7 @@ export class TournamentMatchesService {
     }
 
     await this.prisma.tournament.update({
-      where: { tournamentId },
+      where: { tournamentId: tournament.tournamentId },
       data: { schedule: schedule },
     });
 

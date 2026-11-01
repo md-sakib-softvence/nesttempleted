@@ -55,6 +55,54 @@ model Tournament {
   ticketTiers       TicketTier[]
   payments          Payment[]
   fanApplications   FanTournamentApplication[]
+  guidelines        TournamentGuideline[]
+}
+
+/// Structured rules, terms, and policy content for a tournament.
+/// The legacy Tournament.rules and Tournament.tsAndTc arrays remain temporarily
+/// for backwards compatibility and can be removed after data migration.
+model TournamentGuideline {
+  id                    String                       @id @default(uuid())
+  tournamentId          String
+  tournament            Tournament                   @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+  key                   String
+  section               TournamentGuidelineSection
+  type                  TournamentGuidelineType
+  audience              TournamentGuidelineAudience @default(ALL)
+  title                 String
+  content               String?
+  storageKey            String?
+  externalUrl           String?
+  fileName              String?
+  mimeType              String?
+  sortOrder             Int                          @default(0)
+  version               Int                          @default(1)
+  effectiveAt           DateTime?
+  requiresAcceptance    Boolean                      @default(false)
+  isPublished            Boolean                      @default(true)
+  createdAt             DateTime                     @default(now())
+  updatedAt             DateTime                     @updatedAt
+
+  @@unique([tournamentId, section, key])
+  @@index([tournamentId, section, isPublished, sortOrder])
+}
+
+enum TournamentGuidelineSection {
+  RULES
+  TERMS
+  POLICY
+}
+
+enum TournamentGuidelineType {
+  TEXT
+  FILE
+  LINK
+}
+
+enum TournamentGuidelineAudience {
+  PLAYER
+  SPECTATOR
+  ALL
 }
 
 model ManageEventCost {

@@ -663,6 +663,15 @@ export class QueryTabLeaderboardsDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @ApiPropertyOptional({
+    enum: ['table', 'goals', 'metrics'],
+    default: 'table',
+    description: 'Leaderboard projection to return',
+  })
+  @IsOptional()
+  @IsString()
+  filter?: 'table' | 'goals' | 'metrics' = 'table';
 }
 
 export class QueryTabRafflesDto {

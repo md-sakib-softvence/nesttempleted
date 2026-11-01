@@ -5,6 +5,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import * as bcrypt from 'bcrypt';
 import { seedTournaments } from './tournament.seed';
+import { seedTournamentGuidelines } from './guideline.seed';
 import { seedPlayers } from './player.seed';
 import { seedStaffAndFans } from './staff.seed';
 
@@ -40,6 +41,7 @@ async function main() {
 
   // Seed Tournaments
   await seedTournaments(prisma);
+  await seedTournamentGuidelines(prisma);
 
   // Seed Players
   await seedPlayers(prisma);

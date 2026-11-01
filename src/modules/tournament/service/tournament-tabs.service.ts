@@ -173,6 +173,7 @@ export class TournamentTabsService {
         capacity: tournament.capacity,
         numberOfTeams: tournament.numberOfTeams,
         registrationMode: tournament.registrationCutOffMode,
+        registrationOpen: tournament.registrationOpen,
         linkedGroup,
         possibleMatchCount,
         playedCount,
@@ -199,6 +200,11 @@ export class TournamentTabsService {
         prizePoolAmount,
         platformFeeAmount,
         netEarningsPercent,
+        prizePayouts: tournament.manageEventPrizes.map((prize) => ({
+          id: prize.manageEventPrizeId,
+          category: prize.prizeCategory,
+          amount: prize.amount,
+        })),
       },
       venueUtilization: {
         venues: tournament.venues.map((v) => ({
@@ -739,7 +745,7 @@ export class TournamentTabsService {
 
     const leaderboard = await this.leaderboardService.getTournamentLeaderboard(
       tournamentId,
-      'table',
+      query?.filter || 'table',
       { page, limit },
     );
 
@@ -776,6 +782,26 @@ export class TournamentTabsService {
 
     const schedule = (tournament.schedule as any) || {};
     const rulesConfig = schedule.leaderboardRules || {};
+
+    // The leaderboard service also exposes goal and analytics projections.
+    // Return those projections without forcing the public client to rebuild
+    // them from the schedule JSON.
+    if (query?.filter && query.filter !== 'table') {
+      return {
+        tournamentId: tournament.tournamentId,
+        tournamentName: tournament.name,
+        tournamentFormat: tournament.tournamentFormat,
+        rulesVersion: rulesConfig.rulesVersion || 1,
+        tieBreakerRule: rulesConfig.tieBreakerRule || 'GOAL_DIFFERENCE',
+        pointAdjustments: rulesConfig.pointAdjustments || {
+          win: 3,
+          draw: 1,
+          loss: 0,
+        },
+        tournamentGroup,
+        ...(leaderboard as any),
+      };
+    }
 
     return {
       tournamentId: tournament.tournamentId,
