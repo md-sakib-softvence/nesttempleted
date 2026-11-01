@@ -20,7 +20,7 @@ export class CompleteFanTournamentApplicationDto {
   @MaxLength(80)
   favoriteTeam?: string;
 
-  @ApiPropertyOptional({ description: 'Player avatar URL or a small base64 image' })
+  @ApiPropertyOptional({ description: 'Base64 JPEG, PNG, GIF or WebP image; uploaded to AWS S3' })
   @IsOptional()
   @IsString()
   @MaxLength(100000)

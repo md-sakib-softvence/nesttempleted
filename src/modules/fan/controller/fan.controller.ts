@@ -74,6 +74,51 @@ export class FanController {
     });
   }
 
+  @Get('tournaments/:id/registrations/me')
+  @Roles(Role.FAN, 'fan')
+  @ApiOperation({ summary: 'Resume the authenticated fan tournament application' })
+  async getMyTournamentApplication(
+    @Param('id') tournamentId: string,
+    @Req() req: Request & { user: { userId: string } },
+  ) {
+    const data = await this.fanPlayerRegistrationService.getMyTournamentApplication(
+      req.user.userId,
+      tournamentId,
+    );
+    return sendResponse({ message: 'Tournament application retrieved', data });
+  }
+
+  @Get('tournament-payment-return-context')
+  @Roles(Role.FAN, 'fan')
+  @ApiOperation({
+    summary: 'Find the tournament associated with a returning fan payment',
+  })
+  @ApiQuery({ name: 'txRef', required: true, type: String })
+  async getTournamentForPaymentReturn(
+    @Query('txRef') txRef: string,
+    @Req() req: Request & { user: { userId: string } },
+  ) {
+    const data = await this.fanPlayerRegistrationService.getTournamentForPaymentReturn(
+      req.user.userId,
+      txRef,
+    );
+    return sendResponse({
+      message: 'Tournament payment return context retrieved',
+      data,
+    });
+  }
+
+  @Get('player-gamertag-availability')
+  @Roles(Role.FAN, 'fan')
+  @ApiOperation({ summary: 'Check whether a player Gamer Tag is available' })
+  @ApiQuery({ name: 'gamerTag', required: true, type: String })
+  async checkPlayerGamerTagAvailability(@Query('gamerTag') gamerTag: string) {
+    const data = await this.fanPlayerRegistrationService.checkGamerTagAvailability(
+      gamerTag,
+    );
+    return sendResponse({ message: 'Gamer Tag availability checked', data });
+  }
+
   @Post('tournaments/:id/registrations/:applicationId/verify-payment')
   @Roles(Role.FAN, 'fan')
   @ApiOperation({

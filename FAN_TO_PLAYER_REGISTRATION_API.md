@@ -9,13 +9,13 @@ Routes use the configured API prefix (default `/api/v1`). All three endpoints re
 ```json
 {
   "homeVenueId": "venue-id",
-  "primaryTeamId": "team-id",
-  "secondaryTeamId": "backup-team-id",
+  "primaryTeamId": "France",
+  "secondaryTeamId": "Spain",
   "jerseySize": "M"
 }
 ```
 
-The venue is checked against the selected tournament. Primary and secondary teams are required and must differ for football tournaments; they are ignored for other games. The response contains `data.application`, `data.requiresPayment`, and, for paid tournaments, `data.checkout` with the Flutterwave link and transaction reference. The application is linked to the Fan and Tournament in the database before checkout. Free tournaments are marked paid by the server and skip Flutterwave.
+The venue is checked against the selected tournament. Primary and secondary national teams are required for tournaments whose `gameType` is `FOOTBALL`; the choices are France, Spain, Portugal, England, Brazil, Germany, Netherlands, Argentina, Italy, Belgium, Sweden, Morocco, Senegal, Croatia, Norway, Türkiye, Colombia, Uruguay, and Côte d'Ivoire. Other-game tournaments do not accept team choices. The response contains `data.application`, a separate `data.payment` ledger record, `data.requiresPayment`, and, for paid tournaments, `data.checkout`. The application only stores tournament/application details; all fee, gateway, Flutterwave reference, transaction ID, and payment status fields live in `Payment`.
 
 ## 2. Verify Flutterwave payment
 
@@ -27,7 +27,7 @@ The venue is checked against the selected tournament. Primary and secondary team
 }
 ```
 
-The backend verifies the reference with Flutterwave, checks transaction status, amount, currency, Fan, Tournament, and application metadata, then stores the Flutterwave transaction ID and paid amount/currency on the application. The client must not treat a redirect or browser callback as proof of payment.
+The backend verifies the reference with Flutterwave, checks transaction status, amount, currency, Fan, Tournament, and application metadata, then updates the matching `Payment` row with Flutterwave's transaction ID, paid amount/currency, provider response, and paid time. The client must not treat a redirect or browser callback as proof of payment.
 
 ## 3. Complete the player profile and tournament registration
 
@@ -42,7 +42,11 @@ The backend verifies the reference with Flutterwave, checks transaction status, 
 }
 ```
 
-This endpoint is available only after the application payment is confirmed. It creates the Player, paid `TournamentRegistration`, and accounting ticket in one database transaction, links them to the Fan application and Tournament, and marks the application completed. The response contains the Player session tokens, application, and final registration.
+This endpoint is available only after a successful `Payment` exists for the application. It uses the existing PlayerService creation logic to create the Player and wallet, creates the paid `TournamentRegistration` in the same database transaction, links it to the Fan application and Tournament, and marks the application completed. The response contains the Player session tokens, application, and final registration.
+
+## Tournament game category
+
+Tournament creation and update accept `gameType: "FOOTBALL" | "OTHER"`. The fan registration form uses this explicit field to decide whether to show national team selectors; it does not infer the game category from the title. Existing tournaments are backfilled from their game title by the migration.
 
 ## Database and environment setup
 

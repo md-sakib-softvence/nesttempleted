@@ -53,6 +53,7 @@ model Tournament {
   seriesTournaments SeriesTournament[]
   tickets           Ticket[]
   ticketTiers       TicketTier[]
+  payments          Payment[]
   fanApplications   FanTournamentApplication[]
 }
 
@@ -227,13 +228,12 @@ model FanTournamentApplication {
   updatedAt        DateTime                       @updatedAt
 
   @@unique([fanId, tournamentId])
-  @@index([tournamentId, status, paymentStatus])
+  @@index([tournamentId, status])
   @@index([fanId, status])
 }
 
 enum FanTournamentApplicationStatus {
   PENDING_PAYMENT
-  PAYMENT_CONFIRMED
   COMPLETED
   CANCELLED
 }
@@ -245,8 +245,16 @@ enum TournamentGameType {
 
 model Payment {
   id               String                   @id @default(uuid())
-  applicationId    String
-  application      FanTournamentApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  applicationId    String?
+  application      FanTournamentApplication? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  tournamentId     String?
+  tournament       Tournament?              @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+  purchaserId      String?
+  purchaserRole    String?
+  ticketTierId     String?
+  quantity         Int                      @default(1)
+  seatNumber       String?
+  purpose          String?
   gateway          String
   status           String                   @default("PENDING")
   amount           Float
@@ -262,6 +270,8 @@ model Payment {
   updatedAt        DateTime                 @updatedAt
 
   @@index([applicationId, status])
+  @@index([tournamentId, status])
+  @@index([purchaserId, status])
   @@index([gateway, status])
 }
 

@@ -144,7 +144,10 @@ export class TicketService {
       throw new NotFoundException(`Tournament #${tournamentId} not found`);
     }
 
-    const totalCapacity = tournament.capacity || 0;
+    const tierCapacity = tournament.ticketTiers
+      .filter((tier) => tier.status === 'ACTIVE')
+      .reduce((sum, tier) => sum + Math.max(0, tier.capacity), 0);
+    const totalCapacity = tournament.capacity > 0 ? tournament.capacity : tierCapacity;
     const totalSold = tournament.tickets.length;
     const availableSeats = Math.max(0, totalCapacity - totalSold);
     const occupancyRate =
@@ -185,6 +188,7 @@ export class TicketService {
       totalCapacity,
       soldTickets: totalSold,
       availableSeats,
+      remainingSeats: availableSeats,
       occupancyRate,
       totalRevenue,
       totalCheckIns,
@@ -219,7 +223,12 @@ export class TicketService {
 
     const quantity = dto.quantity && dto.quantity > 0 ? dto.quantity : 1;
 
-    // Check overall tournament capacity
+    // Check overall tournament capacity. If the tournament-level capacity is
+    // unset, the active tier capacities are the source of truth.
+    const tierCapacity = tournament.ticketTiers
+      .filter((tier) => tier.status === 'ACTIVE')
+      .reduce((sum, tier) => sum + Math.max(0, tier.capacity), 0);
+    const effectiveCapacity = tournament.capacity > 0 ? tournament.capacity : tierCapacity;
     const currentTotalSold = await this.prisma.ticket.count({
       where: {
         tournamentId: dto.tournamentId,
@@ -228,10 +237,10 @@ export class TicketService {
     });
 
     if (
-      tournament.capacity &&
-      currentTotalSold + quantity > tournament.capacity
+      effectiveCapacity > 0 &&
+      currentTotalSold + quantity > effectiveCapacity
     ) {
-      const remaining = Math.max(0, tournament.capacity - currentTotalSold);
+      const remaining = Math.max(0, effectiveCapacity - currentTotalSold);
       throw new BadRequestException(
         `Not enough seats available. Tournament capacity reached. Remaining seats: ${remaining}`,
       );
@@ -268,11 +277,13 @@ export class TicketService {
       unitPrice = selectedTier.price;
       ticketType = selectedTier.type;
     } else {
-      // Default price from tournament entryFee or 1500 fallback
-      unitPrice =
-        tournament.entryFee && tournament.entryFee > 0
-          ? tournament.entryFee
-          : 1500;
+      unitPrice = tournament.entryFee;
+    }
+
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+      throw new BadRequestException(
+        'No payable ticket tier or entry fee is configured for this tournament.',
+      );
     }
 
     const totalAmount = unitPrice * quantity;
@@ -281,12 +292,17 @@ export class TicketService {
       currentUser.role,
     );
 
-    const customerEmail = purchaser.email || 'customer@tapegaming.com';
+    if (!purchaser.email) {
+      throw new BadRequestException(
+        'A valid email address is required before starting checkout.',
+      );
+    }
+    const customerEmail = purchaser.email;
     const customerName = purchaser.name || 'Spectator';
-    const customerPhone = purchaser.phone || '+2348000000000';
+    const customerPhone = purchaser.phone || undefined;
 
-    // Calculate designated seat
-    const seatNumber = dto.seatNumber || `Seat ${currentTotalSold + 1}`;
+    // This flow uses aggregate capacity only; no physical seat map is configured.
+    const seatNumber = null;
 
     const txRef = `FLW-TCK-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
 
@@ -318,7 +334,53 @@ export class TicketService {
       },
     };
 
-    const flwInit = await this.flutterwaveService.initializePayment(flwPayload);
+    const pendingPayment = await this.prisma.payment.create({
+      data: {
+        tournamentId: tournament.tournamentId,
+        purchaserId: currentUser.userId,
+        purchaserRole: purchaser.userType,
+        ticketTierId: selectedTier?.tierId || null,
+        quantity,
+        seatNumber,
+        purpose: 'SPECTATOR_TICKET_PURCHASE',
+        gateway: 'FLUTTERWAVE',
+        status: 'PENDING',
+        amount: totalAmount,
+        currency: tournament.currency || 'NGN',
+        txRef,
+        providerDetails: {
+          tournamentId: tournament.tournamentId,
+          tierId: selectedTier?.tierId || null,
+          ticketType,
+          quantity,
+          seatNumber,
+          userId: currentUser.userId,
+          userRole: purchaser.userType,
+        },
+      },
+    });
+
+    let flwInit;
+    try {
+      flwInit = await this.flutterwaveService.initializePayment(flwPayload);
+    } catch (error) {
+      await this.prisma.payment.update({
+        where: { id: pendingPayment.id },
+        data: { status: 'FAILED' },
+      });
+      throw error;
+    }
+
+    await this.prisma.payment.update({
+      where: { id: pendingPayment.id },
+      data: {
+        checkoutUrl: flwInit.link,
+        providerDetails: {
+          ...(pendingPayment.providerDetails as Record<string, unknown>),
+          checkoutUrl: flwInit.link,
+        },
+      },
+    });
 
     const baseUrl = process.env.FRONTEND_URL || 'https://tapegaming.com';
     const rolePath = purchaser.userType === 'PLAYER' ? 'player' : 'fan';
@@ -388,15 +450,37 @@ export class TicketService {
     }
 
     if (txData.status !== 'successful') {
+      await this.prisma.payment.updateMany({
+        where: { txRef },
+        data: { status: String(txData.status || 'FAILED').toUpperCase() },
+      });
       throw new BadRequestException(
         `Payment was not successful. Flutterwave status: ${txData.status}`,
       );
     }
 
+    // Persist the gateway result independently of issued tickets. This keeps
+    // the payment ledger auditable and makes webhook/redirect retries idempotent.
+    await this.prisma.payment.updateMany({
+      where: { txRef },
+      data: {
+        status: 'SUCCESS',
+        flwTransactionId: String(txData.id),
+        paidAmount: txData.chargedAmount || txData.amount,
+        paidCurrency: txData.currency,
+        paidAt: txData.createdAt ? new Date(txData.createdAt) : new Date(),
+        providerDetails: txData.raw || txData,
+      },
+    });
+
     const meta = txData.meta || {};
     const tournamentId = meta.tournamentId;
 
     if (!tournamentId) {
+      await this.prisma.payment.updateMany({
+        where: { txRef },
+        data: { status: 'INVALID_METADATA' },
+      });
       throw new BadRequestException(
         'Invalid transaction metadata: missing tournamentId',
       );
@@ -408,6 +492,10 @@ export class TicketService {
     });
 
     if (!tournament) {
+      await this.prisma.payment.updateMany({
+        where: { txRef },
+        data: { status: 'INVALID_TOURNAMENT' },
+      });
       throw new NotFoundException(`Tournament #${tournamentId} not found`);
     }
 
@@ -420,7 +508,52 @@ export class TicketService {
     const userId = meta.userId || null;
     const userRole = meta.userRole || 'FAN';
 
-    const baseSeatNumber = meta.seatNumber || 'General Admission';
+    const selectedTier = tierId
+      ? tournament.ticketTiers.find((tier) => tier.tierId === tierId)
+      : undefined;
+    const expectedUnitPrice = selectedTier?.price ?? tournament.entryFee;
+    const expectedAmount = Number((expectedUnitPrice * quantity).toFixed(2));
+    const chargedAmount = Number(txData.amount);
+    if (!Number.isFinite(chargedAmount) || Math.abs(chargedAmount - expectedAmount) > 0.01) {
+      await this.prisma.payment.updateMany({
+        where: { txRef },
+        data: { status: 'AMOUNT_MISMATCH' },
+      });
+      throw new BadRequestException(
+        `Payment amount mismatch. Expected ${expectedAmount}, received ${chargedAmount}.`,
+      );
+    }
+
+    const tierCapacity = tournament.ticketTiers
+      .filter((tier) => tier.status === 'ACTIVE')
+      .reduce((sum, tier) => sum + Math.max(0, tier.capacity), 0);
+    const effectiveCapacity = tournament.capacity > 0 ? tournament.capacity : tierCapacity;
+    const currentTotalSold = await this.prisma.ticket.count({
+      where: {
+        tournamentId,
+        status: { in: [TicketStatus.ACTIVE, TicketStatus.USED] },
+      },
+    });
+    if (effectiveCapacity > 0 && currentTotalSold + quantity > effectiveCapacity) {
+      await this.prisma.payment.updateMany({
+        where: { txRef },
+        data: { status: 'CAPACITY_EXCEEDED' },
+      });
+      throw new BadRequestException(
+        `Payment verified, but no seats remain. Remaining seats: ${Math.max(0, effectiveCapacity - currentTotalSold)}.`,
+      );
+    }
+    if (selectedTier && selectedTier.sold + quantity > selectedTier.capacity) {
+      await this.prisma.payment.updateMany({
+        where: { txRef },
+        data: { status: 'TIER_CAPACITY_EXCEEDED' },
+      });
+      throw new BadRequestException(
+        `Payment verified, but the selected tier has no remaining capacity.`,
+      );
+    }
+
+    const requestedSeat = null;
     const unitPrice =
       quantity > 0
         ? Number((txData.amount / quantity).toFixed(2))
@@ -435,8 +568,7 @@ export class TicketService {
       const randomChunk1 = crypto.randomBytes(2).toString('hex').toUpperCase();
       const randomChunk2 = crypto.randomBytes(2).toString('hex').toUpperCase();
       const showTicketId = `TCK-2026-${randomChunk1}-${randomChunk2}`;
-      const seat =
-        quantity === 1 ? baseSeatNumber : `${baseSeatNumber}-${i + 1}`;
+      const seat = requestedSeat || null;
 
       // Cryptographic Anti-Clone Signature (HMAC-SHA256)
       const hmacSecret =
@@ -1551,10 +1683,15 @@ export class TicketService {
   }
 
   async getTiersByTournament(tournamentId: string) {
-    return this.prisma.ticketTier.findMany({
+    const tiers = await this.prisma.ticketTier.findMany({
       where: { tournamentId },
       orderBy: { price: 'asc' },
     });
+    return tiers.map((tier) => ({
+      ...tier,
+      soldCount: tier.sold,
+      remainingSeats: Math.max(0, tier.capacity - tier.sold),
+    }));
   }
 
   async updateTier(tierId: string, dto: UpdateTierDto) {
@@ -1694,11 +1831,7 @@ export class TicketService {
           currency: tier?.currency || tournament.currency || 'NGN',
           status: TicketStatus.ACTIVE,
           qrToken,
-          seatNumber:
-            body.seatNumber ||
-            (tier
-              ? `${tier.name.slice(0, 3).toUpperCase()}-${(tier.sold || 0) + 1}`
-              : null),
+          seatNumber: body.seatNumber || null,
           paymentReference: `DIRECT-${Date.now().toString(36).toUpperCase()}`,
           paymentGateway: 'DIRECT',
           paymentStatus: 'SUCCESS',

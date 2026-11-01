@@ -167,6 +167,7 @@ export class TournamentTabsService {
       basicInformation: {
         name: tournament.name,
         gameTitle: tournament.gameTitle,
+        gameType: tournament.gameType,
         format: tournament.tournamentFormat,
         status: tournament.status,
         capacity: tournament.capacity,
@@ -224,6 +225,7 @@ export class TournamentTabsService {
     const data: Prisma.TournamentUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.gameTitle !== undefined) data.gameTitle = dto.gameTitle;
+    if (dto.gameType !== undefined) data.gameType = dto.gameType;
     if (dto.tournamentFormat !== undefined)
       data.tournamentFormat = dto.tournamentFormat;
     if (dto.capacity !== undefined) data.capacity = dto.capacity;
@@ -1277,6 +1279,7 @@ export class TournamentTabsService {
       tournamentId: tournament.tournamentId,
       name: tournament.name,
       gameTitle: tournament.gameTitle,
+      gameType: tournament.gameType,
       format: tournament.tournamentFormat,
       tournamentFormat: tournament.tournamentFormat,
       registrationMode: tournament.registrationCutOffMode,
@@ -1337,6 +1340,7 @@ export class TournamentTabsService {
     const data: Prisma.TournamentUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.gameTitle !== undefined) data.gameTitle = dto.gameTitle;
+    if (dto.gameType !== undefined) data.gameType = dto.gameType;
     if (dto.format !== undefined) data.tournamentFormat = dto.format;
     if (dto.tournamentFormat !== undefined)
       data.tournamentFormat = dto.tournamentFormat;

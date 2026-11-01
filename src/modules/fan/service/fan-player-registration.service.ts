@@ -8,8 +8,6 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import {
   FanTournamentApplicationStatus,
-  TicketStatus,
-  TicketType,
   TournamentRegistrationStatus,
   TournamentStatus,
 } from '@prisma/client';
@@ -20,6 +18,12 @@ import { FlutterwaveService } from '../../flutterwave/service/flutterwave.servic
 import { uploadBase64ToS3 } from '../../utils/s3.util';
 import { CompleteFanTournamentApplicationDto } from '../dto/complete-fan-tournament-application.dto';
 import { CreateFanTournamentApplicationDto } from '../dto/create-fan-tournament-application.dto';
+
+const FOOTBALL_NATIONAL_TEAMS = new Set([
+  'France', 'Spain', 'Portugal', 'England', 'Brazil', 'Germany', 'Netherlands',
+  'Argentina', 'Italy', 'Belgium', 'Sweden', 'Morocco', 'Senegal', 'Croatia',
+  'Norway', 'Türkiye', 'Colombia', 'Uruguay', "Côte d'Ivoire",
+]);
 
 @Injectable()
 export class FanPlayerRegistrationService {
@@ -79,6 +83,18 @@ export class FanPlayerRegistrationService {
     if (!fan || fan.isDeleted || fan.status !== 'ACTIVE') {
       throw new NotFoundException('Active fan account not found.');
     }
+    const existingPlayerAccount = await this.prisma.player.findFirst({
+      where: {
+        email: { equals: fan.email, mode: 'insensitive' },
+        isDeleted: false,
+      },
+      select: { playerId: true },
+    });
+    if (existingPlayerAccount) {
+      throw new ConflictException(
+        'You already have a Player account. Use that account to register for tournaments.',
+      );
+    }
     if (!tournament || tournament.isDeleted) {
       throw new NotFoundException('Tournament not found.');
     }
@@ -95,6 +111,12 @@ export class FanPlayerRegistrationService {
         throw new BadRequestException(
           'Choose both a primary and a backup team for this football tournament.',
         );
+      }
+      if (
+        !FOOTBALL_NATIONAL_TEAMS.has(dto.primaryTeamId.trim()) ||
+        !FOOTBALL_NATIONAL_TEAMS.has(dto.secondaryTeamId.trim())
+      ) {
+        throw new BadRequestException('Choose teams from the supported national team list.');
       }
       if (dto.primaryTeamId.trim() === dto.secondaryTeamId.trim()) {
         throw new BadRequestException('Primary and backup teams must be different.');
@@ -157,8 +179,21 @@ export class FanPlayerRegistrationService {
       });
     }
 
+    const settledPayment = await this.prisma.payment.findFirst({
+      where: { applicationId: application.id, status: 'SUCCESS' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (settledPayment) {
+      return {
+        application,
+        payment: settledPayment,
+        checkout: null,
+        requiresPayment: false,
+      };
+    }
+
     if (tournament.entryFee <= 0) {
-      await this.prisma.payment.create({
+      const payment = await this.prisma.payment.create({
         data: {
           applicationId: application.id,
           gateway: 'FREE',
@@ -171,10 +206,14 @@ export class FanPlayerRegistrationService {
           providerDetails: { reason: 'No entry fee' },
         },
       });
-      return { application, checkout: null, requiresPayment: false };
+      return { application, payment, checkout: null, requiresPayment: false };
     }
 
     const txRef = `TAPE-APP-${application.id}-${randomUUID().slice(0, 8)}`;
+    await this.prisma.payment.updateMany({
+      where: { applicationId: application.id, gateway: 'FLUTTERWAVE', status: 'PENDING' },
+      data: { status: 'ABANDONED' },
+    });
     const payment = await this.prisma.payment.create({
       data: {
         applicationId: application.id,
@@ -199,9 +238,7 @@ export class FanPlayerRegistrationService {
         currency: payment.currency,
         name: `${fan.firstName} ${fan.surname || ''}`.trim(),
         phoneNumber: fan.phoneNumber,
-        redirectUrl:
-          this.configService.get<string>('FRONTEND_URL') ||
-          this.configService.get<string>('app.frontendDomain'),
+        redirectUrl: this.getTournamentPaymentRedirectUrl(tournamentId),
         title: tournament.name,
         description: `Tournament entry for ${tournament.name}`,
         txRef,
@@ -216,7 +253,10 @@ export class FanPlayerRegistrationService {
         where: { id: payment.id },
         data: {
           checkoutUrl: checkout.link,
-          providerDetails: { ...payment.providerDetails as object, checkoutUrl: checkout.link },
+          providerDetails: {
+            ...(payment.providerDetails as Record<string, unknown>),
+            checkoutUrl: checkout.link,
+          },
         },
       });
       return { application, payment, checkout, requiresPayment: true };
@@ -228,6 +268,110 @@ export class FanPlayerRegistrationService {
       throw error;
     }
 
+  }
+
+  async getMyTournamentApplication(fanId: string, tournamentId: string) {
+    const application = await this.prisma.fanTournamentApplication.findUnique({
+      where: { fanId_tournamentId: { fanId, tournamentId } },
+      include: {
+        payments: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            gateway: true,
+            status: true,
+            amount: true,
+            currency: true,
+            txRef: true,
+            checkoutUrl: true,
+            paidAmount: true,
+            paidCurrency: true,
+            paidAt: true,
+          },
+        },
+        registration: {
+          select: { registrationId: true, status: true },
+        },
+        player: {
+          select: {
+            playerId: true,
+            firstName: true,
+            lastName: true,
+            gamerTag: true,
+          },
+        },
+      },
+    });
+
+    if (!application) return null;
+    const { payments, ...applicationData } = application;
+    return { application: applicationData, payment: payments[0] ?? null };
+  }
+
+  async getTournamentForPaymentReturn(fanId: string, txRef: string) {
+    const normalizedTxRef = txRef?.trim();
+    if (!normalizedTxRef) {
+      throw new BadRequestException('A Flutterwave payment reference is required.');
+    }
+
+    const payment = await this.prisma.payment.findFirst({
+      where: { txRef: normalizedTxRef, gateway: 'FLUTTERWAVE' },
+      select: { applicationId: true },
+    });
+    if (!payment) {
+      throw new NotFoundException('Flutterwave payment reference was not found.');
+    }
+    if (!payment.applicationId) {
+      throw new NotFoundException('This payment reference is not a tournament application payment.');
+    }
+
+    const application = await this.prisma.fanTournamentApplication.findFirst({
+      where: { id: payment.applicationId, fanId },
+      select: { tournamentId: true },
+    });
+    if (!application) {
+      throw new NotFoundException(
+        'This payment reference is not linked to your fan account.',
+      );
+    }
+
+    return { tournamentId: application.tournamentId };
+  }
+
+  private getTournamentPaymentRedirectUrl(tournamentId: string) {
+    const frontendUrl =
+      this.configService.get<string>('FRONTEND_URL') ||
+      this.configService.get<string>('app.frontendDomain');
+    if (!frontendUrl) return undefined;
+
+    const base = frontendUrl.replace(/\/+$/, '');
+    return `${base}/fan/tournaments/${encodeURIComponent(tournamentId)}?payment=flutterwave`;
+  }
+
+  async checkGamerTagAvailability(gamerTag: string) {
+    const normalizedGamerTag = gamerTag?.trim();
+    if (!normalizedGamerTag) {
+      throw new BadRequestException('Enter a Gamer Tag to check availability.');
+    }
+    if (normalizedGamerTag.length > 40) {
+      throw new BadRequestException('Gamer Tag must be 40 characters or fewer.');
+    }
+
+    const existingPlayer = await this.findPlayerByGamerTag(normalizedGamerTag);
+
+    return { gamerTag: normalizedGamerTag, available: !existingPlayer };
+  }
+
+  private async findPlayerByGamerTag(gamerTag: string) {
+    const rows = await this.prisma.$queryRaw<Array<{ playerId: string }>>`
+      SELECT "playerId"
+      FROM "Player"
+      WHERE NULLIF(BTRIM("gamerTag"), '') IS NOT NULL
+        AND LOWER(BTRIM("gamerTag")) = LOWER(${gamerTag.trim()})
+      LIMIT 1
+    `;
+    return rows[0] ?? null;
   }
 
   async verifyApplicationPayment(
@@ -251,7 +395,10 @@ export class FanPlayerRegistrationService {
     if (payment.status === 'SUCCESS') return payment;
 
     const transaction = await this.flutterwave.verifyTransactionByRef(txRef);
-    const meta = transaction.meta || payment.providerDetails || {};
+    const meta: Record<string, any> =
+      transaction.meta ||
+      (payment.providerDetails as Record<string, any> | null) ||
+      {};
     if (
       transaction.txRef !== txRef ||
       meta.purpose !== 'FAN_TOURNAMENT_APPLICATION' ||
@@ -310,7 +457,6 @@ export class FanPlayerRegistrationService {
     if (application.payments.length === 0) {
       throw new BadRequestException('Complete payment before activating a player profile.');
     }
-    const payment = application.payments[0];
     if (application.playerId) {
       const existingPlayer = await this.prisma.player.findUnique({
         where: { playerId: application.playerId },
@@ -336,9 +482,7 @@ export class FanPlayerRegistrationService {
       this.prisma.player.findFirst({
         where: { email: { equals: fan.email, mode: 'insensitive' } },
       }),
-      this.prisma.player.findFirst({
-        where: { gamerTag: { equals: gamerTag, mode: 'insensitive' } },
-      }),
+      this.findPlayerByGamerTag(gamerTag),
     ]);
     if (existingPlayer) {
       throw new ConflictException(
@@ -350,24 +494,30 @@ export class FanPlayerRegistrationService {
     const requestedPicture = dto.profilePicture?.trim();
     if (
       requestedPicture &&
-      !requestedPicture.startsWith('data:image/') &&
-      !/^https:\/\//i.test(requestedPicture)
+      !/^data:image\/(?:jpeg|png|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$/i.test(
+        requestedPicture,
+      )
     ) {
-      throw new BadRequestException('Profile picture must be an image or HTTPS URL.');
+      throw new BadRequestException(
+        'Profile picture must be a valid JPEG, PNG, GIF or WebP upload.',
+      );
     }
     const profilePicture = requestedPicture
-      ? requestedPicture.startsWith('data:image/')
-        ? await uploadBase64ToS3(requestedPicture, `player-${fan.fanId}`)
-        : requestedPicture
-      : fan.profileImage;
+      ? await uploadBase64ToS3(requestedPicture, `player-${fan.fanId}`)
+      : fan.profileImage &&
+          !/^https?:\/\//i.test(fan.profileImage) &&
+          !/^data:/i.test(fan.profileImage)
+        ? fan.profileImage
+        : null;
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    let result;
+    try {
+      result = await this.prisma.$transaction(async (tx) => {
       const latestApplication = await tx.fanTournamentApplication.findFirst({
         where: {
           id: applicationId,
           fanId,
           tournamentId,
-          paymentStatus: 'PAID',
         },
         include: { tournament: true, payments: { where: { status: 'SUCCESS' }, orderBy: { createdAt: 'desc' }, take: 1 } },
       });
@@ -417,42 +567,6 @@ export class FanPlayerRegistrationService {
         },
       });
 
-      await tx.ticket.upsert({
-        where: { qrToken: qrCodeString },
-        update: {
-          status: TicketStatus.ACTIVE,
-          checkedIn: false,
-          playerId: player.playerId,
-          purchasedBy: player.playerId,
-          paymentReference: latestPayment.txRef,
-          flwTransactionId: latestPayment.flwTransactionId,
-          paymentStatus: 'SUCCESS',
-        },
-        create: {
-          tournamentId,
-          playerId: player.playerId,
-          purchasedBy: player.playerId,
-          purchaserRole: 'PLAYER',
-          type: TicketType.DAY_PASS,
-          pricePaid: latestPayment.paidAmount ?? latestPayment.amount,
-          currency: latestPayment.paidCurrency || latestPayment.currency,
-          status: TicketStatus.ACTIVE,
-          qrToken: qrCodeString,
-          checkedIn: false,
-          showTicketId: `PASS-${registration.registrationId.slice(0, 8).toUpperCase()}`,
-          paymentReference: latestPayment.txRef,
-          flwTransactionId: latestPayment.flwTransactionId,
-          paymentStatus: 'SUCCESS',
-          metadata: {
-            applicationId,
-            registrationId: registration.registrationId,
-            entryFee: latestPayment.amount,
-            paidAmount: latestPayment.paidAmount,
-            paidCurrency: latestPayment.paidCurrency,
-          },
-        },
-      });
-
       const completedApplication = await tx.fanTournamentApplication.update({
         where: { id: applicationId },
         data: {
@@ -462,7 +576,20 @@ export class FanPlayerRegistrationService {
       });
 
       return { player, registration, application: completedApplication };
-    });
+      });
+    } catch (error) {
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'The Gamer Tag or player account is already in use.',
+        );
+      }
+      throw error;
+    }
 
     return {
       ...(await this.createPlayerSession(result.player)),

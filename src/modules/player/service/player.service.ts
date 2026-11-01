@@ -11,6 +11,7 @@ import { UpdatePlayerDto } from '../dto/update-player.dto';
 import { UpdateDocumentStatusDto } from '../dto/update-document-status.dto';
 import { RequestPayoutDto } from '../dto/request-payout.dto';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import {
   buildPrismaQuery,
@@ -85,10 +86,10 @@ export class PlayerService {
       ...rest
     } = createPlayerDto;
 
-    const normalizedGamerTag = gamerTag || gamertag;
+    const normalizedGamerTag = (gamerTag || gamertag)?.trim() || undefined;
     if (normalizedGamerTag) {
       const tagExists = await this.prisma.player.findFirst({
-        where: { gamerTag: normalizedGamerTag },
+        where: { gamerTag: { equals: normalizedGamerTag, mode: 'insensitive' } },
       });
       if (tagExists) {
         throw new ConflictException('This Gamer Tag is already in use');
@@ -113,7 +114,9 @@ export class PlayerService {
     const showPlayerId = await generatePlayerId(this.prisma);
     const initialDocs = documentKeys || [];
 
-    const newPlayer = await this.prisma.$transaction(async (tx) => {
+    let newPlayer;
+    try {
+      newPlayer = await this.prisma.$transaction(async (tx) => {
       const created = await tx.player.create({
         data: {
           ...rest,
@@ -154,13 +157,76 @@ export class PlayerService {
         where: { playerId: created.playerId },
         include: { documents: true },
       });
-    });
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'The Gamer Tag or player account is already in use.',
+        );
+      }
+      throw error;
+    }
 
     const title = 'Player Creation';
     const description = `Player ${newPlayer?.firstName} ${newPlayer?.lastName} (${newPlayer?.email}) was successfully created.`;
     await createActivities(this.prisma, title, description, 'PLAYER');
 
     return formatPlayerResponse(newPlayer);
+  }
+
+  /**
+   * Create a Player from an authenticated Fan inside the caller's transaction.
+   * Keeps the Fan's existing password hash and provisions the standard Player wallet.
+   */
+  async createPlayerFromFan(
+    tx: Prisma.TransactionClient,
+    fan: {
+      firstName: string;
+      surname: string | null;
+      email: string;
+      password: string;
+      phoneNumber: string;
+    },
+    profile: {
+      gamerTag: string;
+      profilePicture?: string | null;
+      preferredPlatform?: string | null;
+      favoriteTeam?: string | null;
+    },
+  ) {
+    const showPlayerId = await generatePlayerId(this.prisma);
+    const player = await tx.player.create({
+      data: {
+        showPlayerId,
+        firstName: fan.firstName,
+        lastName: fan.surname || '',
+        email: fan.email,
+        password: fan.password,
+        phoneNumber: fan.phoneNumber,
+        gamerTag: profile.gamerTag,
+        profilePicture: profile.profilePicture || null,
+        preferredPlatform: profile.preferredPlatform || null,
+        favoriteTeam: profile.favoriteTeam || null,
+        document: [],
+      },
+    });
+
+    await tx.wallet.create({
+      data: {
+        playerId: player.playerId,
+        userId: player.playerId,
+        userRole: 'PLAYER',
+        cashBalance: 0,
+        creditBalance: 0,
+        escrowBalance: 0,
+        currency: 'NGN',
+      },
+    });
+
+    return player;
   }
 
   /**
@@ -232,12 +298,19 @@ export class PlayerService {
     }
 
     // GamerTag Uniqueness Check
-    const targetGamerTag = updatePlayerDto.gamerTag || updatePlayerDto.gamertag;
-    if (targetGamerTag && targetGamerTag !== existingPlayer.gamerTag) {
+    const requestedGamerTag = updatePlayerDto.gamerTag || updatePlayerDto.gamertag;
+    const targetGamerTag = requestedGamerTag?.trim();
+    if (
+      targetGamerTag &&
+      targetGamerTag.toLowerCase() !== existingPlayer.gamerTag?.trim().toLowerCase()
+    ) {
       const gamerTagTaken = await this.prisma.player.findFirst({
-        where: { gamerTag: targetGamerTag },
+        where: {
+          gamerTag: { equals: targetGamerTag, mode: 'insensitive' },
+          playerId: { not: id },
+        },
       });
-      if (gamerTagTaken && gamerTagTaken.playerId !== id) {
+      if (gamerTagTaken) {
         throw new ConflictException('This Gamer Tag is already taken');
       }
     }
@@ -287,7 +360,9 @@ export class PlayerService {
     // Delegate document reconciliation to PlayerDocumentService
     let docsToDeleteFromS3: string[] = [];
 
-    const updatedPlayerRecord = await this.prisma.$transaction(async (tx) => {
+    let updatedPlayerRecord;
+    try {
+      updatedPlayerRecord = await this.prisma.$transaction(async (tx) => {
       const { updatedLegacyDocumentList, documentsToDeleteFromS3 } =
         await this.documentService.reconcileDocumentsInTx(
           tx,
@@ -322,7 +397,18 @@ export class PlayerService {
           marketingData: true,
         },
       });
-    });
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'The Gamer Tag or player account is already in use.',
+        );
+      }
+      throw error;
+    }
 
     // Cleanup S3 storage asynchronously after successful DB commit
     if (oldPictureToDelete) {

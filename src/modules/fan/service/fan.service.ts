@@ -170,6 +170,14 @@ export class FanService {
       fan.profileImage = await getPreSignedUrl(fan.profileImage);
     }
 
+    const playerProfile = await this.prisma.player.findFirst({
+      where: {
+        email: { equals: fan.email, mode: 'insensitive' },
+        isDeleted: false,
+      },
+      select: { playerId: true },
+    });
+
     const following = await this.prisma.follower.count({
       where: { fanId: fan.fanId },
     });
@@ -179,6 +187,7 @@ export class FanService {
     return {
       ...fanWithoutPassword,
       following,
+      hasPlayerAccount: Boolean(playerProfile),
     };
   }
 
