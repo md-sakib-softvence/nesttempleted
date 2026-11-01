@@ -379,15 +379,30 @@ export class UpdateSettingsTabDto {
   @IsString()
   name?: string;
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  gameTitle?: string;
+
   @ApiPropertyOptional({ enum: TournamentFormat })
   @IsOptional()
   @IsEnum(TournamentFormat)
   format?: TournamentFormat;
 
+  @ApiPropertyOptional({ enum: TournamentFormat })
+  @IsOptional()
+  @IsEnum(TournamentFormat)
+  tournamentFormat?: TournamentFormat;
+
   @ApiPropertyOptional({ enum: RegistrationCutOffMode })
   @IsOptional()
   @IsEnum(RegistrationCutOffMode)
   registrationMode?: RegistrationCutOffMode;
+
+  @ApiPropertyOptional({ enum: RegistrationCutOffMode })
+  @IsOptional()
+  @IsEnum(RegistrationCutOffMode)
+  registrationCutOffMode?: RegistrationCutOffMode;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -401,6 +416,61 @@ export class UpdateSettingsTabDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsNumber()
+  numberOfTeams?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  entryFee?: number;
+
+  @ApiPropertyOptional({ enum: Currency })
+  @IsOptional()
+  @IsEnum(Currency)
+  currency?: Currency;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  paymentWindow?: number;
+
+  @ApiPropertyOptional({ enum: PrizeRule })
+  @IsOptional()
+  @IsEnum(PrizeRule)
+  prizeRule?: PrizeRule;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  percentage?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  houseRake?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  registrationOpen?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  thirdPlacePlayoffEnabled?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  requireJerseySize?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  deadline?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   deadlineDate?: string;
 
@@ -408,6 +478,51 @@ export class UpdateSettingsTabDto {
   @IsOptional()
   @IsString()
   startDate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  dailyStart?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  dailyEnd?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  matchDuration?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  turnoverDuration?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  buffer?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  lunchBreakTime?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  lunchDuration?: number;
+
+  @ApiPropertyOptional({ enum: FrequencyStatus })
+  @IsOptional()
+  @IsEnum(FrequencyStatus)
+  frequencyStatus?: FrequencyStatus;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  frequencyArray?: string[];
 
   @ApiPropertyOptional({ enum: SchedulingMode })
   @IsOptional()
@@ -491,6 +606,16 @@ export class QueryTabScheduleDto {
   @Type(() => Number)
   @IsNumber()
   limit?: number = 25;
+
+  @ApiPropertyOptional({ description: 'Filter by date (YYYY-MM-DD)' })
+  @IsOptional()
+  @IsString()
+  date?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by venueId' })
+  @IsOptional()
+  @IsString()
+  venueId?: string;
 
   @ApiPropertyOptional({ description: 'Filter by round' })
   @IsOptional()

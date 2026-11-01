@@ -265,9 +265,12 @@ describe('TournamentService (Admin Invariants & Concurrency Tests)', () => {
       expect(item.formattedStartDate).toBe('Nov 20, 2026');
       expect(res.meta).toEqual({
         total: 1,
+        totalItems: 1,
         page: 1,
         limit: 10,
         totalPages: 1,
+        hasNextPage: false,
+        hasPrevPage: false,
       });
     });
   });

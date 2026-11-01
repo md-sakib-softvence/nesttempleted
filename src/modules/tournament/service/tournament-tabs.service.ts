@@ -23,7 +23,6 @@ import {
 } from '../dto/tournament-tabs/tournament-tabs.dto';
 import {
   TournamentRegistrationStatus,
-  TournamentStatus,
   SponsorStatus,
   Prisma,
 } from '@prisma/client';
@@ -55,7 +54,7 @@ export class TournamentTabsService {
   }
 
   // ==========================================
-  // TAB 1: DETAILS
+  // TAB 1: DETAILS & OVERVIEW
   // ==========================================
 
   async getDetailsTab(tournamentId: string) {
@@ -69,6 +68,13 @@ export class TournamentTabsService {
           include: { series: true },
         },
         manageEventPrizes: true,
+        _count: {
+          select: {
+            registrations: {
+              where: { status: TournamentRegistrationStatus.CONFIRMED },
+            },
+          },
+        },
       },
     });
 
@@ -93,7 +99,30 @@ export class TournamentTabsService {
         }
       : null;
 
-    // Build venue utilization / heatmap data
+    // Financial calculations
+    const confirmedCount = tournament._count?.registrations ?? 0;
+    const entryFee = tournament.entryFee ?? 0;
+    const totalCollected = confirmedCount * entryFee;
+    const prizePoolPercent = tournament.percentage ?? 70;
+    const houseRakePercent = tournament.houseRake ?? 10;
+    const netEarningsPercent = Math.max(
+      0,
+      100 - prizePoolPercent - houseRakePercent,
+    );
+
+    let prizePoolAmount = 0;
+    if (tournament.prizeRule === 'FIXED_AMOUNT') {
+      prizePoolAmount =
+        tournament.manageEventPrizes?.reduce(
+          (sum, p) => sum + (p.amount || 0),
+          0,
+        ) || 0;
+    } else {
+      prizePoolAmount = (totalCollected * prizePoolPercent) / 100;
+    }
+    const platformFeeAmount = (totalCollected * houseRakePercent) / 100;
+
+    // Build venue utilization & unique matchdays
     const uniqueMatchdaysSet = new Set<string>();
     const heatmapVenues: any[] = [];
 
@@ -124,6 +153,14 @@ export class TournamentTabsService {
     });
 
     const uniqueMatchdays = Array.from(uniqueMatchdaysSet);
+    const primaryVenue = tournament.venues?.[0]
+      ? `${tournament.venues[0].name}, ${tournament.venues[0].address}`
+      : 'TBD';
+
+    const bannerUrl = tournament.canvasImage || null;
+    const logo = tournament.tournamentLogoUrl || tournament.canvasImage || null;
+    const description =
+      tournament.rules?.[0] || 'Tournament details and overview';
 
     return {
       tournamentId: tournament.tournamentId,
@@ -139,6 +176,16 @@ export class TournamentTabsService {
         possibleMatchCount,
         playedCount,
         remainingCount,
+        bannerUrl,
+        logo,
+        description,
+        startDate: tournament.startDate
+          ? tournament.startDate.toISOString()
+          : null,
+        deadline: tournament.deadline
+          ? tournament.deadline.toISOString()
+          : null,
+        venue: primaryVenue,
       },
       financialSettings: {
         entryFee: tournament.entryFee,
@@ -147,19 +194,27 @@ export class TournamentTabsService {
         percentage: tournament.percentage,
         houseRake: tournament.houseRake ?? 0,
         paymentWindow: tournament.paymentWindow,
+        totalCollected,
+        prizePoolAmount,
+        platformFeeAmount,
+        netEarningsPercent,
       },
       venueUtilization: {
         venues: tournament.venues.map((v) => ({
           id: v.venueId,
           name: v.name,
+          address: v.address,
           screens: v.screens.map((s) => ({
             id: s.screenId,
             name: s.screenName,
+            slots: [],
           })),
         })),
         uniqueMatchdays,
         heatmapData: heatmapVenues,
       },
+      rulesUrl: tournament.rules?.[0] || null,
+      termsAndConditionsUrl: tournament.tsAndTc?.[0] || null,
     };
   }
 
@@ -195,49 +250,61 @@ export class TournamentTabsService {
   }
 
   // ==========================================
-  // TAB 2: REGISTRATIONS
+  // TAB 2: REGISTRATIONS MANAGEMENT
   // ==========================================
 
   async getRegistrationsTab(
     tournamentId: string,
     query?: QueryTabRegistrationsDto,
   ) {
-    const tournament = await this.findTournamentOrThrow(tournamentId);
+    const page = Math.max(1, Number(query?.page) || 1);
+    const limit = Math.max(1, Number(query?.limit) || 20);
+    const skip = (page - 1) * limit;
 
-    const [regCount, selectedCount, confirmedCount, waitlistCount] =
-      await Promise.all([
-        this.prisma.tournamentRegistration.count({
-          where: {
-            tournamentId,
-            status: TournamentRegistrationStatus.REGISTERED,
-          },
-        }),
-        this.prisma.tournamentRegistration.count({
-          where: {
-            tournamentId,
-            status: TournamentRegistrationStatus.SELECTED_UNPAID,
-          },
-        }),
-        this.prisma.tournamentRegistration.count({
-          where: {
-            tournamentId,
-            status: TournamentRegistrationStatus.CONFIRMED,
-          },
-        }),
-        this.prisma.tournamentRegistration.count({
-          where: {
-            tournamentId,
-            status: TournamentRegistrationStatus.WAITLISTED,
-          },
-        }),
-      ]);
+    // Single-batch concurrent DB roundtrip: tournament metadata + status grouping
+    const [tournament, statusCounts] = await Promise.all([
+      this.prisma.tournament.findUnique({
+        where: { tournamentId },
+        select: {
+          tournamentId: true,
+          registrationOpen: true,
+          registrationCutOffMode: true,
+          capacity: true,
+          numberOfTeams: true,
+          requireJerseySize: true,
+          status: true,
+          isDeleted: true,
+          venues: { select: { venueId: true, name: true } },
+        },
+      }),
+      this.prisma.tournamentRegistration.groupBy({
+        by: ['status'],
+        where: { tournamentId },
+        _count: { _all: true },
+      }),
+    ]);
 
+    if (!tournament || tournament.isDeleted) {
+      throw new NotFoundException(`Tournament #${tournamentId} not found`);
+    }
+
+    let regCount = 0;
+    let selectedCount = 0;
+    let confirmedCount = 0;
+    let waitlistCount = 0;
+    for (const sc of statusCounts) {
+      if (sc.status === TournamentRegistrationStatus.REGISTERED) {
+        regCount = sc._count._all;
+      } else if (sc.status === TournamentRegistrationStatus.SELECTED_UNPAID) {
+        selectedCount = sc._count._all;
+      } else if (sc.status === TournamentRegistrationStatus.CONFIRMED) {
+        confirmedCount = sc._count._all;
+      } else if (sc.status === TournamentRegistrationStatus.WAITLISTED) {
+        waitlistCount = sc._count._all;
+      }
+    }
     const totalCount =
       regCount + selectedCount + confirmedCount + waitlistCount;
-
-    const page = Number(query?.page) || 1;
-    const limit = Number(query?.limit) || 25;
-    const skip = (page - 1) * limit;
 
     let statusFilter: TournamentRegistrationStatus | undefined = query?.status;
     if (query?.tab === 'registered') {
@@ -275,7 +342,17 @@ export class TournamentTabsService {
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
-        include: {
+        select: {
+          registrationId: true,
+          playerId: true,
+          homeVenueId: true,
+          jerseySize: true,
+          status: true,
+          paymentStatus: true,
+          paymentDeadline: true,
+          qrCodeString: true,
+          checkedInVenue: true,
+          createdAt: true,
           player: {
             select: {
               playerId: true,
@@ -283,17 +360,69 @@ export class TournamentTabsService {
               lastName: true,
               gamerTag: true,
               email: true,
-              phoneNumber: true,
+              profilePicture: true,
             },
           },
         },
       }),
     ]);
 
+    const venueMap = new Map<string, string>();
+    (tournament.venues || []).forEach((v) => venueMap.set(v.venueId, v.name));
+
+    const normalizedRegistrations = paginatedItems.map((r) => {
+      const fullName =
+        [r.player?.firstName, r.player?.lastName]
+          .filter(Boolean)
+          .join(' ')
+          .trim() ||
+        r.player?.gamerTag ||
+        'Anonymous Player';
+
+      return {
+        registrationId: r.registrationId,
+        playerId: r.playerId,
+        gamertag: r.player?.gamerTag || fullName,
+        fullName,
+        email: r.player?.email || '',
+        playerPhotoUrl: r.player?.profilePicture || null,
+        homeVenueId: r.homeVenueId || null,
+        homeVenueName: r.homeVenueId
+          ? venueMap.get(r.homeVenueId) || null
+          : null,
+        jerseySize: r.jerseySize || null,
+        status: r.status,
+        paymentStatus: r.paymentStatus,
+        registeredAt: r.createdAt.toISOString(),
+        registrationDate: r.createdAt.toISOString(),
+        paymentDeadline: r.paymentDeadline
+          ? r.paymentDeadline.toISOString()
+          : null,
+        qrCodeString: r.qrCodeString || `PLAYER:${tournamentId}:${r.playerId}`,
+        checkedInVenue: r.checkedInVenue ?? false,
+      };
+    });
+
     const pagination = calculatePaginationMeta(tabFilteredCount, page, limit);
 
     return {
       tournamentId: tournament.tournamentId,
+      registrationOpen: tournament.registrationOpen,
+      registrationCutOffMode: tournament.registrationCutOffMode,
+      capacity: tournament.capacity,
+      requireJerseySize: tournament.requireJerseySize,
+      counts: {
+        total: totalCount,
+        registered: regCount,
+        selected: selectedCount,
+        selectedUnpaid: selectedCount,
+        confirmed: confirmedCount,
+        waitlisted: waitlistCount,
+        waitlist: waitlistCount,
+      },
+      registrations: normalizedRegistrations,
+      items: normalizedRegistrations, // Backward-compatibility
+      pagination,
       config: {
         registrationOpen: tournament.registrationOpen,
         registrationCutOffMode: tournament.registrationCutOffMode,
@@ -301,15 +430,6 @@ export class TournamentTabsService {
         requireJerseySize: tournament.requireJerseySize,
         status: tournament.status,
       },
-      counts: {
-        registered: regCount,
-        selectedUnpaid: selectedCount,
-        confirmed: confirmedCount,
-        waitlist: waitlistCount,
-        total: totalCount,
-      },
-      items: paginatedItems,
-      pagination,
     };
   }
 
@@ -317,26 +437,21 @@ export class TournamentTabsService {
     tournamentId: string,
     dto: UpdateRegistrationsTabDto,
   ) {
-    await this.findTournamentOrThrow(tournamentId);
+    const tournament = await this.findTournamentOrThrow(tournamentId);
 
     if (dto.action === 'open') {
       const mode =
         dto.registrationCutOffMode ||
-        (await this.prisma.tournament
-          .findUnique({
-            where: { tournamentId },
-            select: { registrationCutOffMode: true },
-          })
-          .then((t) => t?.registrationCutOffMode)) ||
+        tournament.registrationCutOffMode ||
         'CAPACITY';
       await this.registrationService.openRegistration(tournamentId, {
-        mode: mode,
+        mode,
         capacity: dto.capacity,
       });
     } else if (dto.action === 'close') {
       await this.registrationService.closeRegistration(tournamentId);
     } else if (dto.action === 'select') {
-      const mode = (dto.selectionMode as any) || 'manual';
+      const mode = (dto.selectionMode as any) || 'first_in';
       await this.registrationService.selectRegistrations(tournamentId, {
         mode,
         registrationIds: dto.selectedPlayerIds,
@@ -356,6 +471,35 @@ export class TournamentTabsService {
       await this.prisma.tournament.update({
         where: { tournamentId },
         data,
+      });
+    }
+
+    // Automated Capacity Trigger: auto-close registration if CAPACITY mode reached
+    const updated = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+      select: {
+        capacity: true,
+        registrationCutOffMode: true,
+        registrationOpen: true,
+        _count: {
+          select: {
+            registrations: {
+              where: { status: TournamentRegistrationStatus.CONFIRMED },
+            },
+          },
+        },
+      },
+    });
+
+    if (
+      updated &&
+      updated.registrationOpen &&
+      updated.registrationCutOffMode === 'CAPACITY' &&
+      updated._count.registrations >= updated.capacity
+    ) {
+      await this.prisma.tournament.update({
+        where: { tournamentId },
+        data: { registrationOpen: false },
       });
     }
 
@@ -381,10 +525,76 @@ export class TournamentTabsService {
     }
 
     const schedule = (tournament.schedule as any) || {};
-    const matches: any[] =
+    const rawMatches: any[] =
       schedule.structure?.matches || schedule.matches || [];
 
-    let filteredMatches = matches;
+    // Build venue and screen name lookup maps for O(1) resolution
+    const venueMap = new Map<string, string>();
+    const screenMap = new Map<string, string>();
+    (tournament.venues || []).forEach((v) => {
+      venueMap.set(v.venueId, v.name);
+      (v.screens || []).forEach((s) => screenMap.set(s.screenId, s.screenName));
+    });
+
+    // Normalize matches into standard contract
+    const allMatches = rawMatches.map((m: any, idx: number) => {
+      const matchId = m.id || m.matchId || `match-${idx + 1}`;
+      const vId = m.venueId || m.physicalAllocation?.venueId || null;
+      const sId = m.screenId || m.physicalAllocation?.screenId || null;
+
+      const p1 = m.player1 || {
+        id: m.participant1Ref?.value || 'p-tbd-1',
+        gamertag:
+          m.participant1Ref?.displayName ||
+          m.participant1Ref?.gamerTag ||
+          'TBD',
+        name:
+          m.participant1Ref?.name || m.participant1Ref?.displayName || 'TBD',
+        avatar: m.participant1Ref?.avatar || null,
+      };
+
+      const p2 = m.player2 || {
+        id: m.participant2Ref?.value || 'p-tbd-2',
+        gamertag:
+          m.participant2Ref?.displayName ||
+          m.participant2Ref?.gamerTag ||
+          'TBD',
+        name:
+          m.participant2Ref?.name || m.participant2Ref?.displayName || 'TBD',
+        avatar: m.participant2Ref?.avatar || null,
+      };
+
+      return {
+        id: matchId,
+        stage: m.stage || (m.bracketSection ? m.bracketSection : 'KNOCKOUT'),
+        round: m.round || `Round ${m.roundNumber || 1}`,
+        venueId: vId,
+        venueName: vId ? venueMap.get(vId) || m.venueName || null : null,
+        screenId: sId,
+        screenName: sId ? screenMap.get(sId) || m.screenName || null : null,
+        scheduledDate: m.scheduledDate || m.date || null,
+        startTime: m.startTime || m.time || null,
+        endTime: m.endTime || null,
+        status: m.status || 'SCHEDULED',
+        player1: p1,
+        player2: p2,
+        score1: m.score1 !== undefined ? m.score1 : null,
+        score2: m.score2 !== undefined ? m.score2 : null,
+        winnerId: m.winnerId || null,
+      };
+    });
+
+    let filteredMatches = allMatches;
+    if (query?.date) {
+      filteredMatches = filteredMatches.filter(
+        (m: any) => String(m.scheduledDate) === String(query.date),
+      );
+    }
+    if (query?.venueId) {
+      filteredMatches = filteredMatches.filter(
+        (m: any) => String(m.venueId) === String(query.venueId),
+      );
+    }
     if (query?.round) {
       filteredMatches = filteredMatches.filter(
         (m: any) => String(m.round) === String(query.round),
@@ -398,12 +608,12 @@ export class TournamentTabsService {
     if (query?.isAllocated !== undefined) {
       const isAlloc = query.isAllocated === 'true';
       filteredMatches = filteredMatches.filter((m: any) =>
-        isAlloc ? !!(m.time || m.slot) : !(m.time || m.slot),
+        isAlloc ? !!(m.startTime || m.screenId) : !(m.startTime || m.screenId),
       );
     }
 
-    const page = Number(query?.page) || 1;
-    const limit = Number(query?.limit) || 25;
+    const page = Math.max(1, Number(query?.page) || 1);
+    const limit = Math.max(1, Number(query?.limit) || 25);
     const total = filteredMatches.length;
     const paginatedMatches = filteredMatches.slice(
       (page - 1) * limit,
@@ -411,27 +621,53 @@ export class TournamentTabsService {
     );
     const pagination = calculatePaginationMeta(total, page, limit);
 
+    // Extract calendar unique matchdays & policies
+    const uniqueMatchdaysSet = new Set<string>();
+    const policies: Record<string, any> = {};
+
+    if (Array.isArray(schedule.calendar)) {
+      schedule.calendar.forEach((calVenue: any) => {
+        (calVenue.screens || []).forEach((scr: any) => {
+          (scr.days || []).forEach((d: any) => {
+            if (d.date) {
+              uniqueMatchdaysSet.add(d.date);
+              if (d.schedulingPolicy && !policies[d.date]) {
+                policies[d.date] = d.schedulingPolicy;
+              }
+            }
+          });
+        });
+      });
+    }
+
+    allMatches.forEach((m) => {
+      if (m.scheduledDate) uniqueMatchdaysSet.add(m.scheduledDate);
+    });
+
+    const uniqueMatchdays = Array.from(uniqueMatchdaysSet);
+
     return {
       tournamentId: tournament.tournamentId,
       schedulingMode: tournament.schedulingMode,
       schedulingPaused: tournament.schedulingPaused,
-      scheduleSettings: {
-        startDate: tournament.startDate,
-        deadline: tournament.deadline,
-        dailyStart: tournament.dailyStart,
-        dailyEnd: tournament.dailyEnd,
-        matchDuration: tournament.matchDuration,
-        turnoverDuration: tournament.turnoverDuration,
-        buffer: tournament.buffer,
-        lunchBreakTime: tournament.lunchBreakTime,
-        lunchDuration: tournament.lunchDuration,
-        frequencyStatus: tournament.frequencyStatus,
-        frequencyArray: tournament.frequencyArray,
-      },
-      canonicalMatches: paginatedMatches,
+      dailyStart: tournament.dailyStart,
+      dailyEnd: tournament.dailyEnd,
+      matchDuration: tournament.matchDuration,
+      turnoverDuration: tournament.turnoverDuration,
+      buffer: tournament.buffer,
+      lunchBreakTime: tournament.lunchBreakTime,
+      lunchDuration: tournament.lunchDuration,
+      frequencyStatus: tournament.frequencyStatus,
+      frequencyArray: tournament.frequencyArray,
+      matches: paginatedMatches,
+      canonicalMatches: paginatedMatches, // Backward-compatibility
       totalMatches: total,
       groups: schedule.groups || schedule.structure?.groups || [],
-      calendar: schedule.calendar || null,
+      calendar: {
+        uniqueMatchdays,
+        policies,
+        raw: schedule.calendar || null,
+      },
       venues: tournament.venues,
       pagination,
     };
@@ -476,7 +712,7 @@ export class TournamentTabsService {
   }
 
   // ==========================================
-  // TAB 4: LEADERBOARDS
+  // TAB 4: LEADERBOARDS & ANALYTICS
   // ==========================================
 
   async getLeaderboardsTab(
@@ -496,8 +732,8 @@ export class TournamentTabsService {
       throw new NotFoundException(`Tournament #${tournamentId} not found`);
     }
 
-    const page = Number(query?.page) || 1;
-    const limit = Number(query?.limit) || 25;
+    const page = Math.max(1, Number(query?.page) || 1);
+    const limit = Math.max(1, Number(query?.limit) || 25);
 
     const leaderboard = await this.leaderboardService.getTournamentLeaderboard(
       tournamentId,
@@ -513,19 +749,45 @@ export class TournamentTabsService {
         }
       : null;
 
-    const standings =
+    let standings: any[] =
       (leaderboard as any).data ||
       (leaderboard as any).standings ||
-      leaderboard;
+      (Array.isArray(leaderboard) ? leaderboard : []);
 
-    const total = Array.isArray(standings) ? standings.length : 0;
+    if (query?.search) {
+      const s = query.search.toLowerCase();
+      standings = standings.filter(
+        (item: any) =>
+          item.gamertag?.toLowerCase().includes(s) ||
+          item.name?.toLowerCase().includes(s) ||
+          item.playerName?.toLowerCase().includes(s) ||
+          item.player?.gamerTag?.toLowerCase().includes(s),
+      );
+    }
+
+    const total = standings.length;
+    const paginatedStandings = standings.slice(
+      (page - 1) * limit,
+      page * limit,
+    );
     const pagination = calculatePaginationMeta(total, page, limit);
+
+    const schedule = (tournament.schedule as any) || {};
+    const rulesConfig = schedule.leaderboardRules || {};
 
     return {
       tournamentId: tournament.tournamentId,
       tournamentName: tournament.name,
       tournamentFormat: tournament.tournamentFormat,
-      tournamentLeaderboard: standings,
+      rulesVersion: rulesConfig.rulesVersion || 1,
+      tieBreakerRule: rulesConfig.tieBreakerRule || 'GOAL_DIFFERENCE',
+      pointAdjustments: rulesConfig.pointAdjustments || {
+        win: 3,
+        draw: 1,
+        loss: 0,
+      },
+      standings: paginatedStandings,
+      tournamentLeaderboard: paginatedStandings, // Backward-compatibility
       tournamentGroup,
       seriesLeaderboard: [],
       pagination,
@@ -536,22 +798,47 @@ export class TournamentTabsService {
     tournamentId: string,
     dto: UpdateLeaderboardsTabDto,
   ) {
-    await this.findTournamentOrThrow(tournamentId);
+    const tournament = await this.findTournamentOrThrow(tournamentId);
+
+    const schedule = (tournament.schedule as any) || {};
+    schedule.leaderboardRules = {
+      rulesVersion:
+        dto.rulesVersion || (schedule.leaderboardRules?.rulesVersion || 1) + 1,
+      tieBreakerRule:
+        dto.tieBreakerRule ||
+        schedule.leaderboardRules?.tieBreakerRule ||
+        'GOAL_DIFFERENCE',
+      pointAdjustments: dto.pointAdjustments ||
+        schedule.leaderboardRules?.pointAdjustments || {
+          win: 3,
+          draw: 1,
+          loss: 0,
+        },
+    };
+
+    await this.prisma.tournament.update({
+      where: { tournamentId },
+      data: {
+        schedule,
+        version: { increment: 1 },
+      },
+    });
+
     return this.getLeaderboardsTab(tournamentId);
   }
 
   // ==========================================
-  // TAB 5: RAFFLES
+  // TAB 5: RAFFLES & GIVEAWAYS
   // ==========================================
 
   async getRafflesTab(tournamentId: string, query?: QueryTabRafflesDto) {
     await this.findTournamentOrThrow(tournamentId);
 
-    const page = Number(query?.page) || 1;
-    const limit = Number(query?.limit) || 10;
+    const page = Math.max(1, Number(query?.page) || 1);
+    const limit = Math.max(1, Number(query?.limit) || 10);
     const skip = (page - 1) * limit;
 
-    const [total, raffles] = await Promise.all([
+    const [total, rawRaffles] = await Promise.all([
       this.prisma.raffle.count({ where: { tournamentId } }),
       this.prisma.raffle.findMany({
         where: { tournamentId },
@@ -560,6 +847,26 @@ export class TournamentTabsService {
         orderBy: { createdAt: 'desc' },
       }),
     ]);
+
+    const raffles = rawRaffles.map((r) => {
+      const entries = Array.isArray(r.entries) ? (r.entries as any[]) : [];
+      const winners = Array.isArray(r.winners) ? (r.winners as any[]) : [];
+      return {
+        id: r.raffleId,
+        raffleId: r.raffleId,
+        name: r.name,
+        prizeDescription: r.prizeDescription,
+        numberOfWinners: r.numberOfWinners,
+        status: r.status,
+        drawDate: r.drawDate ? r.drawDate.toISOString() : null,
+        registrationCloseDate: r.registrationCloseDate
+          ? r.registrationCloseDate.toISOString()
+          : null,
+        eligibleEntriesCount: entries.length,
+        winners,
+        createdAt: r.createdAt.toISOString(),
+      };
+    });
 
     const pagination = calculatePaginationMeta(total, page, limit);
 
@@ -630,15 +937,27 @@ export class TournamentTabsService {
 
     const presigned = await presignTournamentMedia(tournament as any);
 
+    const sponsors = (tournament.sponsors || []).map((s) => ({
+      id: s.sponsorId,
+      sponsorId: s.sponsorId,
+      name: s.name,
+      logo: s.logo || null,
+      logoUrl: s.logo || null,
+      website: s.website || null,
+      websiteUrl: s.website || null,
+      tier: s.priority || 'GOLD',
+      priority: s.priority || 'GOLD',
+    }));
+
     return {
       tournamentId: tournament.tournamentId,
-      organizerLogo: presigned.playerOrgUrl || tournament.playerOrgUrl,
-      secondaryOrganizerLogo: presigned.prOrgUrl || tournament.prOrgUrl,
+      organizerLogo: presigned.playerOrgUrl || tournament.playerOrgUrl || null,
+      secondaryOrganizerLogo: presigned.prOrgUrl || tournament.prOrgUrl || null,
       tournamentLogo:
-        presigned.tournamentLogoUrl || tournament.tournamentLogoUrl,
-      canvasImage: presigned.canvasImage || tournament.canvasImage,
-      sponsors: tournament.sponsors,
-      playerCardTemplate: tournament.playerCardTemplate,
+        presigned.tournamentLogoUrl || tournament.tournamentLogoUrl || null,
+      canvasImage: presigned.canvasImage || tournament.canvasImage || null,
+      sponsors,
+      playerCardTemplate: tournament.playerCardTemplate || null,
     };
   }
 
@@ -682,17 +1001,15 @@ export class TournamentTabsService {
     if (Array.isArray(dto.sponsors)) {
       for (const item of dto.sponsors) {
         if (typeof item === 'object' && item !== null && item.name) {
-          if (item.sponsorId) {
+          if (item.sponsorId || item.id) {
+            const sid = item.sponsorId || item.id;
             await this.prisma.sponsor.update({
-              where: { sponsorId: item.sponsorId },
+              where: { sponsorId: sid },
               data: {
                 name: item.name,
-                logo: item.logo,
-                website: item.website,
-                priority: item.priority,
-                contact: item.contact,
-                value:
-                  item.value !== undefined ? Number(item.value) : undefined,
+                logo: item.logo || item.logoUrl,
+                website: item.website || item.websiteUrl,
+                priority: item.tier || item.priority,
                 status: SponsorStatus.PLAYER,
               },
             });
@@ -701,12 +1018,9 @@ export class TournamentTabsService {
               data: {
                 tournamentId,
                 name: item.name,
-                logo: item.logo,
-                website: item.website,
-                priority: item.priority,
-                contact: item.contact,
-                value:
-                  item.value !== undefined ? Number(item.value) : undefined,
+                logo: item.logo || item.logoUrl,
+                website: item.website || item.websiteUrl,
+                priority: item.tier || item.priority || 'GOLD',
                 status: SponsorStatus.PLAYER,
               },
             });
@@ -740,15 +1054,28 @@ export class TournamentTabsService {
 
     const presigned = await presignTournamentMedia(tournament as any);
 
+    const sponsors = (tournament.sponsors || []).map((s) => ({
+      id: s.sponsorId,
+      sponsorId: s.sponsorId,
+      name: s.name,
+      logo: s.logo || null,
+      logoUrl: s.logo || null,
+      website: s.website || null,
+      websiteUrl: s.website || null,
+      tier: s.priority || 'GOLD',
+      priority: s.priority || 'GOLD',
+    }));
+
     return {
       tournamentId: tournament.tournamentId,
-      organizerLogo: presigned.playerOrgUrl || tournament.playerOrgUrl,
-      secondaryOrganizerLogo: presigned.prOrgUrl || tournament.prOrgUrl,
+      organizerLogo: presigned.playerOrgUrl || tournament.playerOrgUrl || null,
+      secondaryOrganizerLogo: presigned.prOrgUrl || tournament.prOrgUrl || null,
       tournamentLogo:
-        presigned.tournamentLogoUrl || tournament.tournamentLogoUrl,
-      fanPassArtUrl: presigned.canvasImage || tournament.canvasImage,
-      sponsors: tournament.sponsors,
-      fanPassTemplate: tournament.fanPassTemplate,
+        presigned.tournamentLogoUrl || tournament.tournamentLogoUrl || null,
+      fanPassArtUrl: presigned.canvasImage || tournament.canvasImage || null,
+      canvasImage: presigned.canvasImage || tournament.canvasImage || null,
+      sponsors,
+      fanPassTemplate: tournament.fanPassTemplate || null,
     };
   }
 
@@ -791,17 +1118,15 @@ export class TournamentTabsService {
     if (Array.isArray(dto.sponsors)) {
       for (const item of dto.sponsors) {
         if (typeof item === 'object' && item !== null && item.name) {
-          if (item.sponsorId) {
+          if (item.sponsorId || item.id) {
+            const sid = item.sponsorId || item.id;
             await this.prisma.sponsor.update({
-              where: { sponsorId: item.sponsorId },
+              where: { sponsorId: sid },
               data: {
                 name: item.name,
-                logo: item.logo,
-                website: item.website,
-                priority: item.priority,
-                contact: item.contact,
-                value:
-                  item.value !== undefined ? Number(item.value) : undefined,
+                logo: item.logo || item.logoUrl,
+                website: item.website || item.websiteUrl,
+                priority: item.tier || item.priority,
                 status: SponsorStatus.FAN,
               },
             });
@@ -810,12 +1135,9 @@ export class TournamentTabsService {
               data: {
                 tournamentId,
                 name: item.name,
-                logo: item.logo,
-                website: item.website,
-                priority: item.priority,
-                contact: item.contact,
-                value:
-                  item.value !== undefined ? Number(item.value) : undefined,
+                logo: item.logo || item.logoUrl,
+                website: item.website || item.websiteUrl,
+                priority: item.tier || item.priority || 'GOLD',
                 status: SponsorStatus.FAN,
               },
             });
@@ -828,7 +1150,7 @@ export class TournamentTabsService {
   }
 
   // ==========================================
-  // TAB 8: RULES
+  // TAB 8: OFFICIAL RULES
   // ==========================================
 
   async getRulesTab(tournamentId: string) {
@@ -863,7 +1185,7 @@ export class TournamentTabsService {
   }
 
   // ==========================================
-  // TAB 9: T&CS (TERMS & CONDITIONS)
+  // TAB 9: TERMS & CONDITIONS
   // ==========================================
 
   async getTermsTab(tournamentId: string) {
@@ -903,7 +1225,7 @@ export class TournamentTabsService {
   }
 
   // ==========================================
-  // TAB 10: SETTINGS
+  // TAB 10: TOURNAMENT FULL SETTINGS
   // ==========================================
 
   async getSettingsTab(tournamentId: string) {
@@ -922,34 +1244,90 @@ export class TournamentTabsService {
       throw new NotFoundException(`Tournament #${tournamentId} not found`);
     }
 
+    const venues = tournament.venues.map((v) => ({
+      id: v.venueId,
+      venueId: v.venueId,
+      name: v.name,
+      address: v.address,
+      screens: v.screens.map((s) => s.screenName),
+      screenObjects: v.screens.map((s) => ({
+        id: s.screenId,
+        name: s.screenName,
+      })),
+    }));
+
+    const eventCosts = tournament.manageEventCosts.map((c) => ({
+      id: c.manageEventCostId,
+      manageEventCostId: c.manageEventCostId,
+      name: c.costCategory,
+      category: c.costCategory,
+      amount: c.amount,
+    }));
+
+    const prizePayouts = tournament.manageEventPrizes.map((p, idx) => ({
+      id: p.manageEventPrizeId,
+      manageEventPrizeId: p.manageEventPrizeId,
+      place: idx + 1,
+      category: p.prizeCategory,
+      percentage: tournament.percentage || 0,
+      amount: p.amount,
+    }));
+
     return {
       tournamentId: tournament.tournamentId,
       name: tournament.name,
+      gameTitle: tournament.gameTitle,
       format: tournament.tournamentFormat,
+      tournamentFormat: tournament.tournamentFormat,
       registrationMode: tournament.registrationCutOffMode,
+      registrationCutOffMode: tournament.registrationCutOffMode,
       maxCapacity: tournament.capacity,
       capacity: tournament.capacity,
-      deadlineDate: tournament.deadline,
-      startDate: tournament.startDate,
+      numberOfTeams: tournament.numberOfTeams,
+      entryFee: tournament.entryFee,
+      currency: tournament.currency,
+      paymentWindow: tournament.paymentWindow,
+      prizeRule: tournament.prizeRule,
+      percentage: tournament.percentage,
+      houseRake: tournament.houseRake ?? 0,
+      startDate: tournament.startDate
+        ? tournament.startDate.toISOString()
+        : null,
+      deadlineDate: tournament.deadline
+        ? tournament.deadline.toISOString()
+        : null,
+      deadline: tournament.deadline ? tournament.deadline.toISOString() : null,
       schedulingMode: tournament.schedulingMode,
+      status: tournament.status,
+      registrationOpen: tournament.registrationOpen,
+      requireJerseySize: tournament.requireJerseySize,
+      venues,
       scheduleSettings: {
-        startDate: tournament.startDate,
-        dailyStart: tournament.dailyStart,
-        dailyEnd: tournament.dailyEnd,
-        matchDuration: tournament.matchDuration,
-        turnoverDuration: tournament.turnoverDuration,
-        buffer: tournament.buffer,
-        lunchBreakTime: tournament.lunchBreakTime,
-        lunchDuration: tournament.lunchDuration,
+        startDate: tournament.startDate
+          ? tournament.startDate.toISOString()
+          : null,
+        eventStartTime: tournament.dailyStart || '09:00',
+        dailyStart: tournament.dailyStart || '09:00',
+        eventEndTime: tournament.dailyEnd || '17:00',
+        dailyEnd: tournament.dailyEnd || '17:00',
+        slotDuration: tournament.matchDuration || 20,
+        matchDuration: tournament.matchDuration || 20,
+        turnoverDuration: tournament.turnoverDuration || 5,
+        buffer: tournament.buffer || 0,
+        lunchBreakStartTime: tournament.lunchBreakTime || '13:00',
+        lunchBreakTime: tournament.lunchBreakTime || '13:00',
+        lunchBreakDuration: tournament.lunchDuration || 60,
+        lunchDuration: tournament.lunchDuration || 60,
       },
       frequencySettings: {
-        frequencyStatus: tournament.frequencyStatus,
-        frequencyArray: tournament.frequencyArray,
+        frequency: tournament.frequencyStatus || 'DAILY',
+        frequencyStatus: tournament.frequencyStatus || 'DAILY',
+        buffer: tournament.buffer || 0,
+        playingDays: tournament.frequencyArray || [0, 1, 2, 3, 4, 5, 6],
+        frequencyArray: tournament.frequencyArray || [],
       },
-      status: tournament.status,
-      venues: tournament.venues,
-      eventCosts: tournament.manageEventCosts,
-      prizePayouts: tournament.manageEventPrizes,
+      eventCosts,
+      prizePayouts,
     };
   }
 
@@ -958,35 +1336,77 @@ export class TournamentTabsService {
 
     const data: Prisma.TournamentUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
+    if (dto.gameTitle !== undefined) data.gameTitle = dto.gameTitle;
     if (dto.format !== undefined) data.tournamentFormat = dto.format;
+    if (dto.tournamentFormat !== undefined)
+      data.tournamentFormat = dto.tournamentFormat;
     if (dto.registrationMode !== undefined)
       data.registrationCutOffMode = dto.registrationMode;
+    if (dto.registrationCutOffMode !== undefined)
+      data.registrationCutOffMode = dto.registrationCutOffMode;
     if (dto.maxCapacity !== undefined || dto.capacity !== undefined) {
       data.capacity = dto.maxCapacity ?? dto.capacity;
       data.numberOfTeams = dto.maxCapacity ?? dto.capacity;
     }
+    if (dto.numberOfTeams !== undefined) data.numberOfTeams = dto.numberOfTeams;
+    if (dto.entryFee !== undefined) data.entryFee = dto.entryFee;
+    if (dto.currency !== undefined) data.currency = dto.currency;
+    if (dto.paymentWindow !== undefined) data.paymentWindow = dto.paymentWindow;
+    if (dto.prizeRule !== undefined) data.prizeRule = dto.prizeRule;
+    if (dto.percentage !== undefined) data.percentage = dto.percentage;
+    if (dto.houseRake !== undefined) data.houseRake = dto.houseRake;
+    if (dto.registrationOpen !== undefined)
+      data.registrationOpen = dto.registrationOpen;
+    if (dto.requireJerseySize !== undefined)
+      data.requireJerseySize = dto.requireJerseySize;
+
     if (dto.deadlineDate !== undefined)
       data.deadline = new Date(dto.deadlineDate);
+    if (dto.deadline !== undefined) data.deadline = new Date(dto.deadline);
     if (dto.startDate !== undefined) data.startDate = new Date(dto.startDate);
     if (dto.schedulingMode !== undefined)
       data.schedulingMode = dto.schedulingMode;
     if (dto.status !== undefined) data.status = dto.status;
 
+    if (dto.dailyStart !== undefined) data.dailyStart = dto.dailyStart;
+    if (dto.dailyEnd !== undefined) data.dailyEnd = dto.dailyEnd;
+    if (dto.matchDuration !== undefined) data.matchDuration = dto.matchDuration;
+    if (dto.turnoverDuration !== undefined)
+      data.turnoverDuration = dto.turnoverDuration;
+    if (dto.buffer !== undefined) data.buffer = dto.buffer;
+    if (dto.lunchBreakTime !== undefined)
+      data.lunchBreakTime = dto.lunchBreakTime;
+    if (dto.lunchDuration !== undefined) data.lunchDuration = dto.lunchDuration;
+    if (dto.frequencyStatus !== undefined)
+      data.frequencyStatus = dto.frequencyStatus;
+    if (dto.frequencyArray !== undefined)
+      data.frequencyArray = dto.frequencyArray;
+
     if (dto.scheduleSettings) {
       if (dto.scheduleSettings.dailyStart !== undefined)
         data.dailyStart = dto.scheduleSettings.dailyStart;
+      if (dto.scheduleSettings.eventStartTime !== undefined)
+        data.dailyStart = dto.scheduleSettings.eventStartTime;
       if (dto.scheduleSettings.dailyEnd !== undefined)
         data.dailyEnd = dto.scheduleSettings.dailyEnd;
+      if (dto.scheduleSettings.eventEndTime !== undefined)
+        data.dailyEnd = dto.scheduleSettings.eventEndTime;
       if (dto.scheduleSettings.matchDuration !== undefined)
         data.matchDuration = dto.scheduleSettings.matchDuration;
+      if (dto.scheduleSettings.slotDuration !== undefined)
+        data.matchDuration = dto.scheduleSettings.slotDuration;
       if (dto.scheduleSettings.turnoverDuration !== undefined)
         data.turnoverDuration = dto.scheduleSettings.turnoverDuration;
       if (dto.scheduleSettings.buffer !== undefined)
         data.buffer = dto.scheduleSettings.buffer;
       if (dto.scheduleSettings.lunchBreakTime !== undefined)
         data.lunchBreakTime = dto.scheduleSettings.lunchBreakTime;
+      if (dto.scheduleSettings.lunchBreakStartTime !== undefined)
+        data.lunchBreakTime = dto.scheduleSettings.lunchBreakStartTime;
       if (dto.scheduleSettings.lunchDuration !== undefined)
         data.lunchDuration = dto.scheduleSettings.lunchDuration;
+      if (dto.scheduleSettings.lunchBreakDuration !== undefined)
+        data.lunchDuration = dto.scheduleSettings.lunchBreakDuration;
       if (dto.scheduleSettings.startDate !== undefined)
         data.startDate = new Date(dto.scheduleSettings.startDate);
     }
@@ -994,8 +1414,12 @@ export class TournamentTabsService {
     if (dto.frequencySettings) {
       if (dto.frequencySettings.frequencyStatus !== undefined)
         data.frequencyStatus = dto.frequencySettings.frequencyStatus;
+      if (dto.frequencySettings.frequency !== undefined)
+        data.frequencyStatus = dto.frequencySettings.frequency;
       if (dto.frequencySettings.frequencyArray !== undefined)
         data.frequencyArray = dto.frequencySettings.frequencyArray;
+      if (dto.frequencySettings.buffer !== undefined)
+        data.buffer = dto.frequencySettings.buffer;
     }
 
     data.version = { increment: 1 };
@@ -1025,10 +1449,14 @@ export class TournamentTabsService {
             });
             if (Array.isArray(v.screens)) {
               for (const s of v.screens) {
+                const screenName =
+                  typeof s === 'string'
+                    ? s
+                    : s?.name || s?.screenName || 'Screen';
                 await this.prisma.screen.create({
                   data: {
                     venueId: created.venueId,
-                    screenName: s.name || s.screenName || 'Screen',
+                    screenName,
                   },
                 });
               }
@@ -1044,19 +1472,20 @@ export class TournamentTabsService {
         if (
           typeof c === 'object' &&
           c !== null &&
-          c.category &&
+          (c.category || c.name) &&
           c.amount !== undefined
         ) {
+          const category = c.category || c.name;
           if (c.id || c.manageEventCostId) {
             await this.prisma.manageEventCost.update({
               where: { manageEventCostId: c.id || c.manageEventCostId },
-              data: { costCategory: c.category, amount: Number(c.amount) },
+              data: { costCategory: category, amount: Number(c.amount) },
             });
           } else {
             await this.prisma.manageEventCost.create({
               data: {
                 tournamentId,
-                costCategory: c.category,
+                costCategory: category,
                 amount: Number(c.amount),
               },
             });
@@ -1071,19 +1500,20 @@ export class TournamentTabsService {
         if (
           typeof p === 'object' &&
           p !== null &&
-          p.category &&
+          (p.category || p.place !== undefined) &&
           p.amount !== undefined
         ) {
+          const category = p.category || `Place ${p.place}`;
           if (p.id || p.manageEventPrizeId) {
             await this.prisma.manageEventPrize.update({
               where: { manageEventPrizeId: p.id || p.manageEventPrizeId },
-              data: { prizeCategory: p.category, amount: Number(p.amount) },
+              data: { prizeCategory: category, amount: Number(p.amount) },
             });
           } else {
             await this.prisma.manageEventPrize.create({
               data: {
                 tournamentId,
-                prizeCategory: p.category,
+                prizeCategory: category,
                 amount: Number(p.amount),
               },
             });
@@ -1096,7 +1526,7 @@ export class TournamentTabsService {
   }
 
   // ==========================================
-  // DYNAMIC TAB DISPATCHER
+  // DYNAMIC TAB DISPATCHER (:tabName)
   // ==========================================
 
   async getTab(tournamentId: string, tabName: string, query?: any) {

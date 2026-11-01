@@ -55,10 +55,18 @@ export const calculatePaginationMeta = (
   page: number,
   limit: number,
 ) => {
+  const totalItems = Math.max(0, Number(total) || 0);
+  const currentPage = Math.max(1, Number(page) || 1);
+  const currentLimit = Math.max(1, Number(limit) || 10);
+  const totalPages = Math.max(1, Math.ceil(totalItems / currentLimit));
+
   return {
-    total,
-    page,
-    limit,
-    totalPages: Math.ceil(total / limit),
+    total: totalItems,
+    totalItems,
+    page: currentPage,
+    limit: currentLimit,
+    totalPages,
+    hasNextPage: currentPage < totalPages,
+    hasPrevPage: currentPage > 1,
   };
 };
