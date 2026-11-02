@@ -244,6 +244,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       },
       P2021: { status: HttpStatus.NOT_FOUND, message: 'Table does not exist' },
       P2022: { status: HttpStatus.NOT_FOUND, message: 'Column does not exist' },
+      ECONNREFUSED: {
+        status: HttpStatus.SERVICE_UNAVAILABLE,
+        message:
+          'Database unavailable. Start PostgreSQL and verify DATABASE_URL.',
+      },
     };
 
     const errorInfo = errorMap[exception.code] || {

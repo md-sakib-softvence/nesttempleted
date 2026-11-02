@@ -26,6 +26,7 @@ import { PaymentModule } from './modules/payment/payment.module';
 import { FlutterwaveModule } from './modules/flutterwave/flutterwave.module';
 import { SeriesModule } from './modules/series/series.module';
 import { TicketModule } from './modules/ticket/ticket.module';
+import { SearchModule } from './modules/search/search.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { TicketModule } from './modules/ticket/ticket.module';
     TournamentModule,
     SeriesModule,
     TicketModule,
+    SearchModule,
     AdminModule,
     AuthModule,
     EmployeeModule,
