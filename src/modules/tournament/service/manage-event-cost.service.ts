@@ -13,8 +13,13 @@ export class ManageEventCostService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateManageEventCostDto) {
+    const costCategory =
+      dto.costCategory || dto.category || dto.name || 'Cost';
     return this.prisma.manageEventCost.create({
-      data: dto,
+      data: {
+        costCategory,
+        amount: dto.amount,
+      },
       include: {
         tournament: {
           select: {

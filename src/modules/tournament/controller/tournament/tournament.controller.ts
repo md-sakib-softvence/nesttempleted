@@ -69,6 +69,8 @@ export class TournamentController {
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'canvasImage', maxCount: 1 },
+      { name: 'bannerUrl', maxCount: 1 },
+      { name: 'banner', maxCount: 1 },
       { name: 'fanPassArtUrl', maxCount: 1 },
       { name: 'playerOrgUrl', maxCount: 1 },
       { name: 'organizerLogo', maxCount: 1 },
@@ -87,6 +89,8 @@ export class TournamentController {
     @UploadedFiles()
     files: {
       canvasImage?: Express.Multer.File[];
+      bannerUrl?: Express.Multer.File[];
+      banner?: Express.Multer.File[];
       fanPassArtUrl?: Express.Multer.File[];
       playerOrgUrl?: Express.Multer.File[];
       organizerLogo?: Express.Multer.File[];
@@ -105,6 +109,8 @@ export class TournamentController {
     if (uploadedFiles.canvasImage) {
       createDto.canvasImage = uploadedFiles.canvasImage;
       createDto.fanPassArtUrl = uploadedFiles.canvasImage;
+    } else if (createDto.bannerUrl && typeof createDto.bannerUrl === 'string') {
+      createDto.canvasImage = createDto.bannerUrl;
     }
 
     if (uploadedFiles.playerOrgUrl) {
@@ -117,11 +123,15 @@ export class TournamentController {
 
     if (uploadedFiles.tournamentLogoUrl) {
       createDto.tournamentLogoUrl = uploadedFiles.tournamentLogoUrl;
+    } else if (createDto.logo && typeof createDto.logo === 'string') {
+      createDto.tournamentLogoUrl = createDto.logo;
     }
     delete (createDto as any).tournamentLogo;
 
     if (uploadedFiles.rules.length > 0) {
       createDto.rules = uploadedFiles.rules;
+    } else if (createDto.rulesUrl && typeof createDto.rulesUrl === 'string') {
+      createDto.rules = [createDto.rulesUrl];
     } else {
       createDto.rules = normalizeStringArray(createDto.rules);
     }
@@ -129,6 +139,12 @@ export class TournamentController {
     if (uploadedFiles.tsAndTc.length > 0) {
       createDto.termsAndConditions = uploadedFiles.tsAndTc;
       createDto.tsAndTc = uploadedFiles.tsAndTc;
+    } else if (
+      createDto.termsAndConditionsUrl &&
+      typeof createDto.termsAndConditionsUrl === 'string'
+    ) {
+      createDto.termsAndConditions = [createDto.termsAndConditionsUrl];
+      createDto.tsAndTc = [createDto.termsAndConditionsUrl];
     } else {
       createDto.termsAndConditions = normalizeStringArray(
         createDto.termsAndConditions || createDto.tsAndTc,
@@ -238,6 +254,8 @@ export class TournamentController {
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'canvasImage', maxCount: 1 },
+      { name: 'bannerUrl', maxCount: 1 },
+      { name: 'banner', maxCount: 1 },
       { name: 'fanPassArtUrl', maxCount: 1 },
       { name: 'playerOrgUrl', maxCount: 1 },
       { name: 'organizerLogo', maxCount: 1 },
@@ -257,6 +275,8 @@ export class TournamentController {
     @UploadedFiles()
     files: {
       canvasImage?: Express.Multer.File[];
+      bannerUrl?: Express.Multer.File[];
+      banner?: Express.Multer.File[];
       fanPassArtUrl?: Express.Multer.File[];
       playerOrgUrl?: Express.Multer.File[];
       organizerLogo?: Express.Multer.File[];
@@ -275,6 +295,8 @@ export class TournamentController {
     if (uploadedFiles.canvasImage) {
       updateDto.canvasImage = uploadedFiles.canvasImage;
       updateDto.fanPassArtUrl = uploadedFiles.canvasImage;
+    } else if (updateDto.bannerUrl && typeof updateDto.bannerUrl === 'string') {
+      updateDto.canvasImage = updateDto.bannerUrl;
     }
 
     if (uploadedFiles.playerOrgUrl) {
@@ -287,11 +309,15 @@ export class TournamentController {
 
     if (uploadedFiles.tournamentLogoUrl) {
       updateDto.tournamentLogoUrl = uploadedFiles.tournamentLogoUrl;
+    } else if (updateDto.logo && typeof updateDto.logo === 'string') {
+      updateDto.tournamentLogoUrl = updateDto.logo;
     }
     delete (updateDto as any).tournamentLogo;
 
     if (uploadedFiles.rules.length > 0) {
       updateDto.rules = uploadedFiles.rules;
+    } else if (updateDto.rulesUrl && typeof updateDto.rulesUrl === 'string') {
+      updateDto.rules = [updateDto.rulesUrl];
     } else if (updateDto.rules !== undefined) {
       updateDto.rules = normalizeStringArray(updateDto.rules);
     }
@@ -299,6 +325,12 @@ export class TournamentController {
     if (uploadedFiles.tsAndTc.length > 0) {
       updateDto.termsAndConditions = uploadedFiles.tsAndTc;
       updateDto.tsAndTc = uploadedFiles.tsAndTc;
+    } else if (
+      updateDto.termsAndConditionsUrl &&
+      typeof updateDto.termsAndConditionsUrl === 'string'
+    ) {
+      updateDto.termsAndConditions = [updateDto.termsAndConditionsUrl];
+      updateDto.tsAndTc = [updateDto.termsAndConditionsUrl];
     } else if (
       updateDto.termsAndConditions !== undefined ||
       updateDto.tsAndTc !== undefined

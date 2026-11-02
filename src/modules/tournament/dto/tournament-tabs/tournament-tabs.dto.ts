@@ -555,6 +555,97 @@ export class UpdateSettingsTabDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsBoolean()
+  isDraft?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  couponCreation?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  schedulingWindowOpen?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  houseRakePercent?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  prizePoolConfig?: any;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  logo?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  tournamentLogoUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  bannerUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  canvasImage?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  organizerLogo?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  secondaryOrganizerLogo?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  fanPassArtUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  playerOrgUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  prOrgUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  rulesUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  rules?: any;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  termsAndConditionsUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  termsAndConditions?: any;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  tsAndTc?: any;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsArray()
   venues?: any[];
 
@@ -566,7 +657,22 @@ export class UpdateSettingsTabDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsArray()
+  manageEventCosts?: any[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
   prizePayouts?: any[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  manageEventPrizes?: any[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  sponsors?: any[];
 }
 
 export class QueryTabRegistrationsDto {

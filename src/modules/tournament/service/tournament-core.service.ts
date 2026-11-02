@@ -656,10 +656,14 @@ export class TournamentCoreService {
     delete updateData.termsAndConditionsUrl;
     delete updateData.termsAndConditions;
     delete updateData.logo;
+    delete updateData.bannerUrl;
     delete updateData.organizerLogo;
     delete updateData.secondaryOrganizerLogo;
     delete updateData.fanPassArtUrl;
     delete updateData.isDraft;
+    delete updateData.schedulingWindowOpen;
+    delete updateData.thirdPlacePlayoffEnabled;
+    delete updateData.groupsCount;
 
     // Map frontend aliases to Prisma fields if provided
     if (updateTournamentDto.format && !updateTournamentDto.tournamentFormat) {
@@ -688,6 +692,9 @@ export class TournamentCoreService {
     if (updateTournamentDto.logo) {
       updateData.tournamentLogoUrl = updateTournamentDto.logo;
     }
+    if (updateTournamentDto.bannerUrl) {
+      updateData.canvasImage = updateTournamentDto.bannerUrl;
+    }
     if (updateTournamentDto.organizerLogo) {
       updateData.playerOrgUrl = updateTournamentDto.organizerLogo;
     }
@@ -697,19 +704,23 @@ export class TournamentCoreService {
     if (updateTournamentDto.fanPassArtUrl) {
       updateData.canvasImage = updateTournamentDto.fanPassArtUrl;
     }
-    if (updateTournamentDto.prizePoolConfig) {
-      if (updateTournamentDto.prizePoolConfig.type) {
-        updateData.prizeRule = mapPrizeRule(
-          updateTournamentDto.prizePoolConfig.type,
-        );
-      }
-      if (updateTournamentDto.prizePoolConfig.value !== undefined) {
-        updateData.percentage = Number(
-          updateTournamentDto.prizePoolConfig.value,
-        );
-      }
+    if (updateTournamentDto.prizeRule !== undefined) {
+      updateData.prizeRule = mapPrizeRule(updateTournamentDto.prizeRule);
+    } else if (updateTournamentDto.prizePoolConfig?.type) {
+      updateData.prizeRule = mapPrizeRule(
+        updateTournamentDto.prizePoolConfig.type,
+      );
     }
-    if (updateTournamentDto.houseRakePercent !== undefined) {
+    if (updateTournamentDto.percentage !== undefined) {
+      updateData.percentage = Number(updateTournamentDto.percentage);
+    } else if (updateTournamentDto.prizePoolConfig?.value !== undefined) {
+      updateData.percentage = Number(
+        updateTournamentDto.prizePoolConfig.value,
+      );
+    }
+    if (updateTournamentDto.houseRake !== undefined) {
+      updateData.houseRake = Number(updateTournamentDto.houseRake);
+    } else if (updateTournamentDto.houseRakePercent !== undefined) {
       updateData.houseRake = Number(updateTournamentDto.houseRakePercent);
     }
     if (updateTournamentDto.registrationMode) {
@@ -719,6 +730,12 @@ export class TournamentCoreService {
     }
     if (updateTournamentDto.maxCapacity !== undefined) {
       updateData.capacity = Number(updateTournamentDto.maxCapacity);
+    }
+    if (updateTournamentDto.isDraft === true) {
+      updateData.status = TournamentStatus.DRAFT;
+    }
+    if (updateTournamentDto.schedulingWindowOpen !== undefined) {
+      updateData.schedulingPaused = !updateTournamentDto.schedulingWindowOpen;
     }
     if (updateTournamentDto.deadlineDate) {
       updateData.deadline = new Date(updateTournamentDto.deadlineDate);
@@ -766,7 +783,7 @@ export class TournamentCoreService {
       updateData.frequencyArray = normalizeStringArray(rest.frequencyArray);
     }
 
-    // Resolve & Create Costs
+    // Resolve & Upsert Costs
     const resolvedCostIds: string[] = [];
     if (updateManageEventCosts && Array.isArray(updateManageEventCosts)) {
       for (const item of updateManageEventCosts) {
@@ -775,15 +792,28 @@ export class TournamentCoreService {
         } else if (
           typeof item === 'object' &&
           item !== null &&
-          item.costCategory
+          (item.costCategory || item.category || item.name)
         ) {
-          const createdCost = await this.prisma.manageEventCost.create({
-            data: {
-              costCategory: item.costCategory,
-              amount: Number(item.amount) || 0,
-            },
-          });
-          resolvedCostIds.push(createdCost.manageEventCostId);
+          const costId = item.id || item.manageEventCostId;
+          const costCategory =
+            item.costCategory || item.category || item.name || 'Cost';
+          const amount = Number(item.amount) || 0;
+          if (costId) {
+            await this.prisma.manageEventCost.update({
+              where: { manageEventCostId: costId },
+              data: { costCategory, amount, tournamentId: id },
+            });
+            resolvedCostIds.push(costId);
+          } else {
+            const createdCost = await this.prisma.manageEventCost.create({
+              data: {
+                tournamentId: id,
+                costCategory,
+                amount,
+              },
+            });
+            resolvedCostIds.push(createdCost.manageEventCostId);
+          }
         }
       }
     }
@@ -795,7 +825,7 @@ export class TournamentCoreService {
       };
     }
 
-    // Resolve & Create Prizes
+    // Resolve & Upsert Prizes
     const resolvedPrizeIds: string[] = [];
     if (updateManageEventPrizes && Array.isArray(updateManageEventPrizes)) {
       for (const item of updateManageEventPrizes) {
@@ -804,15 +834,35 @@ export class TournamentCoreService {
         } else if (
           typeof item === 'object' &&
           item !== null &&
-          item.prizeCategory
+          (item.prizeCategory ||
+            item.category ||
+            item.label ||
+            item.place !== undefined)
         ) {
-          const createdPrize = await this.prisma.manageEventPrize.create({
-            data: {
-              prizeCategory: item.prizeCategory,
-              amount: Number(item.amount) || 0,
-            },
-          });
-          resolvedPrizeIds.push(createdPrize.manageEventPrizeId);
+          const prizeId = item.id || item.manageEventPrizeId;
+          const prizeCategory =
+            item.prizeCategory ||
+            item.label ||
+            item.category ||
+            `Place ${item.place || 1}`;
+          const amount =
+            Number(item.amount !== undefined ? item.amount : item.payout) || 0;
+          if (prizeId) {
+            await this.prisma.manageEventPrize.update({
+              where: { manageEventPrizeId: prizeId },
+              data: { prizeCategory, amount, tournamentId: id },
+            });
+            resolvedPrizeIds.push(prizeId);
+          } else {
+            const createdPrize = await this.prisma.manageEventPrize.create({
+              data: {
+                tournamentId: id,
+                prizeCategory,
+                amount,
+              },
+            });
+            resolvedPrizeIds.push(createdPrize.manageEventPrizeId);
+          }
         }
       }
     }
@@ -824,25 +874,36 @@ export class TournamentCoreService {
       };
     }
 
-    // Resolve & Create Sponsors
+    // Resolve & Upsert Sponsors
     const resolvedSponsorIds: string[] = [];
     if (updateSponsors && Array.isArray(updateSponsors)) {
       for (const item of updateSponsors) {
         if (typeof item === 'string') {
           resolvedSponsorIds.push(item);
         } else if (typeof item === 'object' && item !== null && item.name) {
-          const createdSponsor = await this.prisma.sponsor.create({
-            data: {
-              name: item.name,
-              logo: item.logo,
-              website: item.website,
-              priority: item.priority,
-              contact: item.contact,
-              value: item.value !== undefined ? Number(item.value) : undefined,
-              status: item.status || SponsorStatus.BOTH,
-            },
-          });
-          resolvedSponsorIds.push(createdSponsor.sponsorId);
+          const sponsorId = item.id || item.sponsorId;
+          const sponsorData = {
+            name: item.name,
+            logo: item.logo || item.logoUrl,
+            website: item.website,
+            priority: item.priority || item.tier,
+            contact: item.contact,
+            value: item.value !== undefined ? Number(item.value) : undefined,
+            status: item.status || SponsorStatus.BOTH,
+            tournamentId: id,
+          };
+          if (sponsorId) {
+            await this.prisma.sponsor.update({
+              where: { sponsorId },
+              data: sponsorData,
+            });
+            resolvedSponsorIds.push(sponsorId);
+          } else {
+            const createdSponsor = await this.prisma.sponsor.create({
+              data: sponsorData,
+            });
+            resolvedSponsorIds.push(createdSponsor.sponsorId);
+          }
         }
       }
     }
@@ -854,7 +915,7 @@ export class TournamentCoreService {
       };
     }
 
-    // Resolve & Create Venues
+    // Resolve & Upsert Venues and Screens
     const resolvedUpdateVenueIds: string[] = [];
     if (updateVenues && Array.isArray(updateVenues)) {
       for (const item of updateVenues) {
@@ -865,27 +926,63 @@ export class TournamentCoreService {
           item !== null &&
           (item.name || item.address)
         ) {
-          const screens =
-            item.screens && Array.isArray(item.screens)
-              ? item.screens.map((s: any) => ({
-                  screenName:
-                    typeof s === 'string' ? s : s.screenName || 'Screen',
-                }))
-              : [];
+          const venueId = item.id || item.venueId;
+          const rawScreens =
+            item.screens && Array.isArray(item.screens) ? item.screens : [];
 
-          const createdVenue = await this.prisma.venue.create({
-            data: {
-              name: item.name || 'Venue',
-              address: item.address || '',
-              ...(screens.length > 0 && {
-                screens: {
-                  create: screens,
-                },
-              }),
-            },
-            include: { screens: true },
-          });
-          resolvedUpdateVenueIds.push(createdVenue.venueId);
+          if (venueId) {
+            // Update existing venue
+            await this.prisma.venue.update({
+              where: { venueId },
+              data: {
+                name: item.name || 'Venue',
+                address: item.address || '',
+                tournamentId: id,
+              },
+            });
+            resolvedUpdateVenueIds.push(venueId);
+
+            // Sync screens for this venue
+            if (rawScreens.length > 0) {
+              const existingScreens = await this.prisma.screen.findMany({
+                where: { venueId },
+              });
+              const existingScreenNames = new Set(
+                existingScreens.map((s) => s.screenName),
+              );
+              for (const s of rawScreens) {
+                const screenName =
+                  typeof s === 'string'
+                    ? s
+                    : s?.name || s?.screenName || 'Screen';
+                if (!existingScreenNames.has(screenName)) {
+                  await this.prisma.screen.create({
+                    data: { venueId, screenName },
+                  });
+                }
+              }
+            }
+          } else {
+            // Create new venue and screens
+            const screens = rawScreens.map((s: any) => ({
+              screenName:
+                typeof s === 'string' ? s : s?.name || s?.screenName || 'Screen',
+            }));
+            const createdVenue = await this.prisma.venue.create({
+              data: {
+                tournamentId: id,
+                name: item.name || 'Venue',
+                address: item.address || '',
+                ...(screens.length > 0 && {
+                  screens: {
+                    create: screens,
+                  },
+                }),
+              },
+              include: { screens: true },
+            });
+            resolvedUpdateVenueIds.push(createdVenue.venueId);
+          }
         }
       }
     }

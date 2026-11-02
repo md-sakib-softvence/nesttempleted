@@ -23,11 +23,14 @@ import {
 } from '../dto/tournament-tabs/tournament-tabs.dto';
 import {
   TournamentRegistrationStatus,
+  TournamentStatus,
   SponsorStatus,
   Prisma,
 } from '@prisma/client';
 import { presignTournamentMedia } from '../utils/tournament-media.util';
 import { calculatePaginationMeta } from '../../utils/query.util';
+import { normalizeStringArray } from '../utils/file-upload.util';
+import { mapPrizeRule } from '../dto/tournament/create-tournament.dto';
 import { TournamentLeaderboardService } from './tournament-leaderboard.service';
 import { TournamentRegistrationService } from './tournament-registration.service';
 import { TournamentScheduleService } from './tournament-schedule.service';
@@ -1262,6 +1265,7 @@ export class TournamentTabsService {
         venues: {
           include: { screens: true },
         },
+        sponsors: true,
         manageEventCosts: true,
         manageEventPrizes: true,
       },
@@ -1291,71 +1295,171 @@ export class TournamentTabsService {
       amount: c.amount,
     }));
 
+    const manageEventCosts = tournament.manageEventCosts.map((c) => ({
+      id: c.manageEventCostId,
+      costCategory: c.costCategory,
+      amount: c.amount,
+    }));
+
     const prizePayouts = tournament.manageEventPrizes.map((p, idx) => ({
       id: p.manageEventPrizeId,
       manageEventPrizeId: p.manageEventPrizeId,
       place: idx + 1,
-      category: p.prizeCategory,
+      payout: p.amount,
+      label: p.prizeCategory,
       percentage: tournament.percentage || 0,
       amount: p.amount,
     }));
 
+    const manageEventPrizes = tournament.manageEventPrizes.map((p) => ({
+      id: p.manageEventPrizeId,
+      prizeCategory: p.prizeCategory,
+      amount: p.amount,
+    }));
+
+    const sponsors = (tournament.sponsors || []).map((sp) => ({
+      id: sp.sponsorId,
+      sponsorId: sp.sponsorId,
+      name: sp.name,
+      website: sp.website || '',
+      priority: sp.priority || 'PRIMARY',
+      tier: sp.priority || 'GOLD',
+      value: sp.value ?? 0,
+      status: sp.status || 'BOTH',
+      contact: sp.contact || '',
+      logo: sp.logo || '',
+      logoUrl: sp.logo || '',
+    }));
+
+    const scheduleObj = (tournament.schedule as any) || {};
+    const groupsCount =
+      scheduleObj?.structure?.groups?.length ||
+      (scheduleObj?.groups?.length ? scheduleObj.groups.length : 4);
+    const thirdPlacePlayoffEnabled =
+      scheduleObj?.structure?.thirdPlacePlayoffEnabled !== undefined
+        ? scheduleObj.structure.thirdPlacePlayoffEnabled
+        : true;
+    const rulesList = Array.isArray(tournament.rules) ? tournament.rules : [];
+    const tsAndTcList = Array.isArray(tournament.tsAndTc)
+      ? tournament.tsAndTc
+      : [];
+    const formatName =
+      tournament.tournamentFormat === 'SINGLE_ELIMINATION'
+        ? 'Single Elimination'
+        : tournament.tournamentFormat === 'DOUBLE_ELIMINATION'
+          ? 'Double Elimination'
+          : tournament.tournamentFormat === 'LEAGUE'
+            ? 'League'
+            : tournament.tournamentFormat;
+
+    const playingDays = [1, 2, 3, 4, 5, 6, 0];
+    const defaultFrequencyArray = [
+      'Mon',
+      'Tue',
+      'Wed',
+      'Thu',
+      'Fri',
+      'Sat',
+      'Sun',
+    ];
+
     return {
+      id: tournament.tournamentId,
       tournamentId: tournament.tournamentId,
       name: tournament.name,
       gameTitle: tournament.gameTitle,
-      gameType: tournament.gameType,
-      format: tournament.tournamentFormat,
+      format: formatName,
       tournamentFormat: tournament.tournamentFormat,
-      registrationMode: tournament.registrationCutOffMode,
-      registrationCutOffMode: tournament.registrationCutOffMode,
-      maxCapacity: tournament.capacity,
-      capacity: tournament.capacity,
       numberOfTeams: tournament.numberOfTeams,
-      entryFee: tournament.entryFee,
-      currency: tournament.currency,
-      paymentWindow: tournament.paymentWindow,
-      prizeRule: tournament.prizeRule,
-      percentage: tournament.percentage,
-      houseRake: tournament.houseRake ?? 0,
-      startDate: tournament.startDate
-        ? tournament.startDate.toISOString()
-        : null,
+      teams: tournament.numberOfTeams,
+      capacity: tournament.capacity,
+      maxCapacity: tournament.capacity,
+      registrationCutOffMode: tournament.registrationCutOffMode || 'CAPACITY',
+      registrationMode: tournament.registrationCutOffMode || 'CAPACITY',
+      registrationOpen: tournament.registrationOpen,
+      deadline: tournament.deadline ? tournament.deadline.toISOString() : null,
       deadlineDate: tournament.deadline
         ? tournament.deadline.toISOString()
         : null,
-      deadline: tournament.deadline ? tournament.deadline.toISOString() : null,
-      schedulingMode: tournament.schedulingMode,
-      status: tournament.status,
-      registrationOpen: tournament.registrationOpen,
+      paymentWindow: tournament.paymentWindow,
+      paymentWindowHours: tournament.paymentWindow,
+      groupsCount,
+      thirdPlacePlayoffEnabled,
       requireJerseySize: tournament.requireJerseySize,
+      couponCreation: tournament.couponCreation,
+      status: tournament.status,
+      isDraft: tournament.status === 'DRAFT',
+
+      logo: tournament.tournamentLogoUrl || null,
+      tournamentLogoUrl: tournament.tournamentLogoUrl || null,
+      bannerUrl: tournament.canvasImage || null,
+      canvasImage: tournament.canvasImage || null,
+      organizerLogo: tournament.playerOrgUrl || null,
+      secondaryOrganizerLogo: tournament.prOrgUrl || null,
+      fanPassArtUrl: tournament.canvasImage || null,
+
+      rulesUrl: rulesList[0] || null,
+      rules: rulesList,
+      termsAndConditionsUrl: tsAndTcList[0] || null,
+      termsAndConditions: tsAndTcList,
+      playerOrgUrl: tournament.playerOrgUrl || null,
+      prOrgUrl: tournament.prOrgUrl || null,
+
+      entryFee: tournament.entryFee,
+      currency: tournament.currency,
+      prizeRule: tournament.prizeRule,
+      percentage: tournament.percentage,
+      houseRake: tournament.houseRake ?? 0,
+      houseRakePercent: tournament.houseRake ?? 0,
+      prizePoolConfig: {
+        type:
+          tournament.prizeRule === 'FIXED_AMOUNT' ? 'fixed' : 'percentage',
+        value: tournament.percentage ?? 70,
+      },
+      eventCosts,
+      manageEventCosts,
+      prizePayouts,
+      manageEventPrizes,
+
       venues,
+
+      schedulingMode: tournament.schedulingMode,
+      schedulingWindowOpen: !tournament.schedulingPaused,
+      startDate: tournament.startDate
+        ? tournament.startDate.toISOString()
+        : null,
+      dailyStart: tournament.dailyStart || '09:00',
+      dailyEnd: tournament.dailyEnd || '17:00',
+      matchDuration: tournament.matchDuration || 20,
+      turnoverDuration: tournament.turnoverDuration || 5,
+      lunchBreakTime: tournament.lunchBreakTime || '13:00',
+      lunchDuration: tournament.lunchDuration || 60,
       scheduleSettings: {
         startDate: tournament.startDate
           ? tournament.startDate.toISOString()
           : null,
         eventStartTime: tournament.dailyStart || '09:00',
-        dailyStart: tournament.dailyStart || '09:00',
         eventEndTime: tournament.dailyEnd || '17:00',
-        dailyEnd: tournament.dailyEnd || '17:00',
         slotDuration: tournament.matchDuration || 20,
-        matchDuration: tournament.matchDuration || 20,
         turnoverDuration: tournament.turnoverDuration || 5,
-        buffer: tournament.buffer || 0,
         lunchBreakStartTime: tournament.lunchBreakTime || '13:00',
-        lunchBreakTime: tournament.lunchBreakTime || '13:00',
         lunchBreakDuration: tournament.lunchDuration || 60,
-        lunchDuration: tournament.lunchDuration || 60,
       },
+
+      frequencyStatus: tournament.frequencyStatus || 'DAILY',
+      buffer: tournament.buffer || 0,
+      playingDays,
+      frequencyArray:
+        tournament.frequencyArray && tournament.frequencyArray.length > 0
+          ? tournament.frequencyArray
+          : defaultFrequencyArray,
       frequencySettings: {
         frequency: tournament.frequencyStatus || 'DAILY',
-        frequencyStatus: tournament.frequencyStatus || 'DAILY',
         buffer: tournament.buffer || 0,
-        playingDays: tournament.frequencyArray || [0, 1, 2, 3, 4, 5, 6],
-        frequencyArray: tournament.frequencyArray || [],
+        playingDays,
       },
-      eventCosts,
-      prizePayouts,
+
+      sponsors,
     };
   }
 
@@ -1383,7 +1487,17 @@ export class TournamentTabsService {
     if (dto.paymentWindow !== undefined) data.paymentWindow = dto.paymentWindow;
     if (dto.prizeRule !== undefined) data.prizeRule = dto.prizeRule;
     if (dto.percentage !== undefined) data.percentage = dto.percentage;
+    if (dto.prizePoolConfig) {
+      if (dto.prizePoolConfig.type)
+        data.prizeRule = mapPrizeRule(dto.prizePoolConfig.type);
+      if (dto.prizePoolConfig.value !== undefined)
+        data.percentage = Number(dto.prizePoolConfig.value);
+    }
     if (dto.houseRake !== undefined) data.houseRake = dto.houseRake;
+    if (dto.houseRakePercent !== undefined)
+      data.houseRake = dto.houseRakePercent;
+    if (dto.couponCreation !== undefined)
+      data.couponCreation = dto.couponCreation;
     if (dto.registrationOpen !== undefined)
       data.registrationOpen = dto.registrationOpen;
     if (dto.requireJerseySize !== undefined)
@@ -1395,7 +1509,10 @@ export class TournamentTabsService {
     if (dto.startDate !== undefined) data.startDate = new Date(dto.startDate);
     if (dto.schedulingMode !== undefined)
       data.schedulingMode = dto.schedulingMode;
-    if (dto.status !== undefined) data.status = dto.status;
+    if (dto.isDraft === true) data.status = TournamentStatus.DRAFT;
+    else if (dto.status !== undefined) data.status = dto.status;
+    if (dto.schedulingWindowOpen !== undefined)
+      data.schedulingPaused = !dto.schedulingWindowOpen;
 
     if (dto.dailyStart !== undefined) data.dailyStart = dto.dailyStart;
     if (dto.dailyEnd !== undefined) data.dailyEnd = dto.dailyEnd;
@@ -1410,6 +1527,28 @@ export class TournamentTabsService {
       data.frequencyStatus = dto.frequencyStatus;
     if (dto.frequencyArray !== undefined)
       data.frequencyArray = dto.frequencyArray;
+
+    if (dto.bannerUrl !== undefined) data.canvasImage = dto.bannerUrl;
+    if (dto.canvasImage !== undefined) data.canvasImage = dto.canvasImage;
+    if (dto.fanPassArtUrl !== undefined) data.canvasImage = dto.fanPassArtUrl;
+    if (dto.logo !== undefined) data.tournamentLogoUrl = dto.logo;
+    if (dto.tournamentLogoUrl !== undefined)
+      data.tournamentLogoUrl = dto.tournamentLogoUrl;
+    if (dto.organizerLogo !== undefined)
+      data.playerOrgUrl = dto.organizerLogo;
+    if (dto.playerOrgUrl !== undefined) data.playerOrgUrl = dto.playerOrgUrl;
+    if (dto.secondaryOrganizerLogo !== undefined)
+      data.prOrgUrl = dto.secondaryOrganizerLogo;
+    if (dto.prOrgUrl !== undefined) data.prOrgUrl = dto.prOrgUrl;
+
+    if (dto.rulesUrl !== undefined) data.rules = [dto.rulesUrl];
+    if (dto.rules !== undefined) data.rules = normalizeStringArray(dto.rules);
+    if (dto.termsAndConditionsUrl !== undefined)
+      data.tsAndTc = [dto.termsAndConditionsUrl];
+    if (dto.termsAndConditions !== undefined)
+      data.tsAndTc = normalizeStringArray(dto.termsAndConditions);
+    if (dto.tsAndTc !== undefined)
+      data.tsAndTc = normalizeStringArray(dto.tsAndTc);
 
     if (dto.scheduleSettings) {
       if (dto.scheduleSettings.dailyStart !== undefined)
@@ -1462,53 +1601,79 @@ export class TournamentTabsService {
     if (Array.isArray(dto.venues)) {
       for (const v of dto.venues) {
         if (typeof v === 'object' && v !== null && v.name) {
-          if (v.id || v.venueId) {
-            const venueId = v.id || v.venueId;
+          const venueId = v.id || v.venueId;
+          const rawScreens =
+            v.screens && Array.isArray(v.screens) ? v.screens : [];
+          if (venueId) {
             await this.prisma.venue.update({
               where: { venueId },
-              data: { name: v.name, address: v.address || v.name },
-            });
-          } else {
-            const created = await this.prisma.venue.create({
               data: {
-                tournamentId,
                 name: v.name,
                 address: v.address || v.name,
+                tournamentId,
               },
             });
-            if (Array.isArray(v.screens)) {
-              for (const s of v.screens) {
+            if (rawScreens.length > 0) {
+              const existingScreens = await this.prisma.screen.findMany({
+                where: { venueId },
+              });
+              const existingScreenNames = new Set(
+                existingScreens.map((s) => s.screenName),
+              );
+              for (const s of rawScreens) {
                 const screenName =
                   typeof s === 'string'
                     ? s
                     : s?.name || s?.screenName || 'Screen';
-                await this.prisma.screen.create({
-                  data: {
-                    venueId: created.venueId,
-                    screenName,
-                  },
-                });
+                if (!existingScreenNames.has(screenName)) {
+                  await this.prisma.screen.create({
+                    data: { venueId, screenName },
+                  });
+                }
               }
             }
+          } else {
+            const screens = rawScreens.map((s: any) => ({
+              screenName:
+                typeof s === 'string' ? s : s?.name || s?.screenName || 'Screen',
+            }));
+            await this.prisma.venue.create({
+              data: {
+                tournamentId,
+                name: v.name,
+                address: v.address || v.name,
+                ...(screens.length > 0 && {
+                  screens: {
+                    create: screens,
+                  },
+                }),
+              },
+            });
           }
         }
       }
     }
 
     // Costs sync if provided
-    if (Array.isArray(dto.eventCosts)) {
-      for (const c of dto.eventCosts) {
+    const costsList = dto.eventCosts || dto.manageEventCosts;
+    if (Array.isArray(costsList)) {
+      for (const c of costsList) {
         if (
           typeof c === 'object' &&
           c !== null &&
-          (c.category || c.name) &&
+          (c.category || c.costCategory || c.name) &&
           c.amount !== undefined
         ) {
-          const category = c.category || c.name;
-          if (c.id || c.manageEventCostId) {
+          const category = c.costCategory || c.category || c.name;
+          const costId = c.id || c.manageEventCostId;
+          if (costId) {
             await this.prisma.manageEventCost.update({
-              where: { manageEventCostId: c.id || c.manageEventCostId },
-              data: { costCategory: category, amount: Number(c.amount) },
+              where: { manageEventCostId: costId },
+              data: {
+                costCategory: category,
+                amount: Number(c.amount),
+                tournamentId,
+              },
             });
           } else {
             await this.prisma.manageEventCost.create({
@@ -1524,27 +1689,67 @@ export class TournamentTabsService {
     }
 
     // Prizes sync if provided
-    if (Array.isArray(dto.prizePayouts)) {
-      for (const p of dto.prizePayouts) {
+    const prizesList = dto.prizePayouts || dto.manageEventPrizes;
+    if (Array.isArray(prizesList)) {
+      for (const p of prizesList) {
         if (
           typeof p === 'object' &&
           p !== null &&
-          (p.category || p.place !== undefined) &&
-          p.amount !== undefined
+          (p.prizeCategory ||
+            p.category ||
+            p.label ||
+            p.place !== undefined) &&
+          (p.amount !== undefined || p.payout !== undefined)
         ) {
-          const category = p.category || `Place ${p.place}`;
-          if (p.id || p.manageEventPrizeId) {
+          const category =
+            p.prizeCategory ||
+            p.label ||
+            p.category ||
+            `Place ${p.place || 1}`;
+          const amount =
+            Number(p.amount !== undefined ? p.amount : p.payout) || 0;
+          const prizeId = p.id || p.manageEventPrizeId;
+          if (prizeId) {
             await this.prisma.manageEventPrize.update({
-              where: { manageEventPrizeId: p.id || p.manageEventPrizeId },
-              data: { prizeCategory: category, amount: Number(p.amount) },
+              where: { manageEventPrizeId: prizeId },
+              data: { prizeCategory: category, amount, tournamentId },
             });
           } else {
             await this.prisma.manageEventPrize.create({
               data: {
                 tournamentId,
                 prizeCategory: category,
-                amount: Number(p.amount),
+                amount,
               },
+            });
+          }
+        }
+      }
+    }
+
+    // Sponsors sync if provided
+    if (Array.isArray(dto.sponsors)) {
+      for (const sp of dto.sponsors) {
+        if (typeof sp === 'object' && sp !== null && sp.name) {
+          const sponsorId = sp.id || sp.sponsorId;
+          const sponsorData = {
+            name: sp.name,
+            logo: sp.logo || sp.logoUrl,
+            website: sp.website,
+            priority: sp.priority || sp.tier,
+            contact: sp.contact,
+            value: sp.value !== undefined ? Number(sp.value) : undefined,
+            status: sp.status || SponsorStatus.BOTH,
+            tournamentId,
+          };
+          if (sponsorId) {
+            await this.prisma.sponsor.update({
+              where: { sponsorId },
+              data: sponsorData,
+            });
+          } else {
+            await this.prisma.sponsor.create({
+              data: sponsorData,
             });
           }
         }

@@ -246,25 +246,38 @@ export class CreateTournamentDto {
   @IsOptional()
   prizePoolConfig?: any;
 
-  // Backend Prisma prizeRule (Hidden from Swagger Payload)
-  @ApiHideProperty()
+  // Prize Rule (Frontend & Backend)
+  @ApiPropertyOptional({
+    description: 'Prize pool distribution rule',
+    enum: PrizeRule,
+    example: PrizeRule.PERCENTAGE,
+  })
   @Transform(({ value, obj }) => {
-    if (value) return mapPrizeRule(value);
+    if (value !== undefined && value !== null && value !== '')
+      return mapPrizeRule(value);
     if (obj?.prizePoolConfig?.type)
       return mapPrizeRule(obj.prizePoolConfig.type);
-    return PrizeRule.PERCENTAGE;
+    return undefined;
   })
   @IsEnum(PrizeRule)
   @IsOptional()
   prizeRule?: PrizeRule;
 
-  // Backend Prisma percentage (Hidden from Swagger Payload)
-  @ApiHideProperty()
+  // Prize pool percentage (Frontend & Backend)
+  @ApiPropertyOptional({
+    description: 'Prize pool percentage (e.g. 70)',
+    example: 70,
+  })
   @Transform(({ value, obj }) => {
-    if (value !== undefined && value !== '') return Number(value);
-    if (obj?.prizePoolConfig?.value !== undefined)
+    if (value !== undefined && value !== null && value !== '')
+      return Number(value);
+    if (
+      obj?.prizePoolConfig?.value !== undefined &&
+      obj?.prizePoolConfig?.value !== null &&
+      obj?.prizePoolConfig?.value !== ''
+    )
       return Number(obj.prizePoolConfig.value);
-    return 70;
+    return undefined;
   })
   @Type(() => Number)
   @IsNumber()
@@ -272,18 +285,39 @@ export class CreateTournamentDto {
   @IsOptional()
   percentage?: number;
 
-  // Frontend canonical houseRakePercent (Hidden from Swagger Payload)
-  @ApiHideProperty()
+  // Frontend canonical houseRakePercent
+  @ApiPropertyOptional({
+    description: 'House rake percentage (UI alias)',
+    example: 10,
+  })
+  @Transform(({ value, obj }) => {
+    const raw =
+      value !== undefined && value !== null && value !== ''
+        ? value
+        : obj?.houseRake;
+    return raw !== undefined && raw !== null && raw !== ''
+      ? Number(raw)
+      : undefined;
+  })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
   @IsOptional()
   houseRakePercent?: number;
 
-  // Backend Prisma houseRake (Hidden from Swagger Payload)
-  @ApiHideProperty()
+  // Backend Prisma houseRake
+  @ApiPropertyOptional({
+    description: 'House rake percentage',
+    example: 10,
+  })
   @Transform(({ value, obj }) => {
-    if (value !== undefined && value !== '') return Number(value);
-    if (obj?.houseRakePercent !== undefined)
-      return Number(obj.houseRakePercent);
-    return 30;
+    const raw =
+      value !== undefined && value !== null && value !== ''
+        ? value
+        : obj?.houseRakePercent;
+    return raw !== undefined && raw !== null && raw !== ''
+      ? Number(raw)
+      : undefined;
   })
   @Type(() => Number)
   @IsNumber()
@@ -646,20 +680,32 @@ export class CreateTournamentDto {
   @IsOptional()
   isDraft?: boolean;
 
-  // File Upload Fields
+  // File & Media Upload / URL Fields
+  @ApiPropertyOptional({
+    description: 'Tournament hero banner URL or file (alias for canvasImage)',
+    example: 'https://cdn.tapegaming.com/tournaments/banner.png',
+  })
+  @IsOptional()
+  bannerUrl?: any;
+
   @ApiPropertyOptional({
     type: 'string',
     format: 'binary',
-    description: 'Canvas Image file',
+    description: 'Canvas Image file or URL',
   })
+  @Transform(({ value, obj }) => value || obj?.bannerUrl || obj?.fanPassArtUrl)
   @IsOptional()
   canvasImage?: any;
 
   @ApiPropertyOptional({
     type: 'string',
     format: 'binary',
-    description: 'Tournament Logo file',
+    description: 'Tournament Logo file or URL',
   })
+  @Transform(
+    ({ value, obj }) =>
+      value || obj?.tournamentLogo || obj?.logo || obj?.tournamentLogoUrl,
+  )
   @IsOptional()
   tournamentLogoUrl?: any;
 
@@ -672,20 +718,25 @@ export class CreateTournamentDto {
   tournamentLogo?: any;
 
   @ApiPropertyOptional({
-    type: 'array',
-    items: { type: 'string', format: 'binary' },
-    description: 'Rules document files',
+    description: 'Rules document files or string URLs',
   })
-  @Transform(({ value }) => normalizeStringArray(value))
+  @Transform(({ value, obj }) => {
+    if (value !== undefined) return normalizeStringArray(value);
+    if (obj?.rulesUrl) return [obj.rulesUrl];
+    return undefined;
+  })
   @IsOptional()
   rules?: any;
 
   @ApiPropertyOptional({
-    type: 'array',
-    items: { type: 'string', format: 'binary' },
-    description: 'Terms & Conditions document files',
+    description: 'Terms & Conditions document files or string URLs',
   })
-  @Transform(({ value }) => normalizeStringArray(value))
+  @Transform(({ value, obj }) => {
+    const raw = value !== undefined ? value : obj?.tsAndTc;
+    if (raw !== undefined) return normalizeStringArray(raw);
+    if (obj?.termsAndConditionsUrl) return [obj.termsAndConditionsUrl];
+    return undefined;
+  })
   @IsOptional()
   termsAndConditions?: any;
 
@@ -695,13 +746,20 @@ export class CreateTournamentDto {
   @IsOptional()
   tsAndTc?: any;
 
-  // Direct URLs removed from Swagger Payload
-  @ApiHideProperty()
+  @ApiPropertyOptional({
+    description: 'Direct URL to official rules document',
+    example: 'https://cdn.tapegaming.com/tournaments/rules.pdf',
+  })
   @IsOptional()
+  @IsString()
   rulesUrl?: string;
 
-  @ApiHideProperty()
+  @ApiPropertyOptional({
+    description: 'Direct URL to terms & conditions document',
+    example: 'https://cdn.tapegaming.com/tournaments/terms.pdf',
+  })
   @IsOptional()
+  @IsString()
   termsAndConditionsUrl?: string;
 
   // Media / Logo File Upload Fields
@@ -757,10 +815,14 @@ export class CreateTournamentDto {
       const screens =
         item.screens && Array.isArray(item.screens)
           ? item.screens.map((s: any) =>
-              typeof s === 'string' ? s : s.name || s.screenName || 'Screen',
+              typeof s === 'string'
+                ? s
+                : s.name || s.screenName || 'Screen',
             )
           : [];
       return {
+        id: item.id || item.venueId,
+        venueId: item.id || item.venueId,
         name: item.name || 'Venue',
         address: item.address || '',
         screens,
@@ -788,9 +850,15 @@ export class CreateTournamentDto {
     return parsed.map((item: any) => {
       if (typeof item === 'string') return item;
       return {
+        id: item.id || item.sponsorId,
+        sponsorId: item.id || item.sponsorId,
         name: item.name || 'Sponsor',
         logo: item.logo || item.logoUrl,
+        logoUrl: item.logo || item.logoUrl,
         website: item.website,
+        contact: item.contact,
+        tier: item.tier || (item.priorityOrder === 1 ? 'GOLD' : 'SILVER'),
+        status: item.status,
         value:
           item.value !== undefined
             ? Number(item.value)
@@ -830,7 +898,11 @@ export class CreateTournamentDto {
     return parsed.map((item: any) => {
       if (typeof item === 'string') return item;
       return {
-        costCategory: item.costCategory || item.category || 'Cost',
+        id: item.id || item.manageEventCostId,
+        manageEventCostId: item.id || item.manageEventCostId,
+        name: item.name || item.costCategory || item.category || 'Cost',
+        category: item.category || item.costCategory || item.name || 'Cost',
+        costCategory: item.costCategory || item.category || item.name || 'Cost',
         amount: Number(item.amount) || 0,
       };
     });
@@ -860,11 +932,34 @@ export class CreateTournamentDto {
       }
     }
     if (!Array.isArray(parsed)) parsed = [parsed];
-    return parsed.map((item: any) => {
+    return parsed.map((item: any, idx: number) => {
       if (typeof item === 'string') return item;
       return {
-        prizeCategory: item.prizeCategory || item.category || 'Prize',
-        amount: Number(item.amount) || 0,
+        id: item.id || item.manageEventPrizeId,
+        manageEventPrizeId: item.id || item.manageEventPrizeId,
+        place: item.place !== undefined ? Number(item.place) : idx + 1,
+        payout:
+          item.payout !== undefined
+            ? Number(item.payout)
+            : Number(item.amount) || 0,
+        label:
+          item.label ||
+          item.prizeCategory ||
+          `Place ${item.place || idx + 1}`,
+        percentage:
+          item.percentage !== undefined ? Number(item.percentage) : undefined,
+        prizeCategory:
+          item.prizeCategory ||
+          item.label ||
+          item.category ||
+          `Place ${item.place || idx + 1}`,
+        category:
+          item.category ||
+          item.prizeCategory ||
+          item.label ||
+          `Place ${item.place || idx + 1}`,
+        amount:
+          Number(item.amount !== undefined ? item.amount : item.payout) || 0,
       };
     });
   })
