@@ -49,7 +49,7 @@ ENV NODE_ENV=production
 
 EXPOSE 3000
 
-CMD ["bash", "-c", "\
+CMD ["bash", "-c", "set -e; \
   echo '⚙️  Generating Prisma Client...'; \
   npx prisma generate; \
   echo '📦 Running Prisma Migrations...'; \
