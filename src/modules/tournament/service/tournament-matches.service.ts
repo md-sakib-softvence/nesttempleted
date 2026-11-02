@@ -2455,7 +2455,7 @@ export class TournamentMatchesService {
           isAllocated ||
           isCompleted ||
             match.status === 'UNDER_REVIEW' ||
-            (match as any).resumeRequired ||
+            match.resumeRequired ||
           match.isAutoAdvance ||
           match.conditional ||
           match.isSchedulable === false

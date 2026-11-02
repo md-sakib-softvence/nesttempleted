@@ -68,7 +68,12 @@ export interface TournamentMatchEntity {
   player2Name?: string;
   score1: number | null;
   score2: number | null;
-  status: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  status: 'SCHEDULED' | 'PLAYERS_READY' | 'IN_PROGRESS' | 'UNDER_REVIEW' | 'NO_SHOW' | 'COMPLETED' | 'CANCELLED';
+  resumeRequired?: boolean;
+  activeDisputeId?: string | null;
+  incidentResolution?: { disputeId: string; notes: string; resolvedAt: string; resolvedBy: string };
+  checkIns?: Array<{ playerId: string; checkedInAt: string; checkedInByRole?: string }>;
+  resumedAt?: string;
   isAutoAdvance?: boolean;
   isSchedulable?: boolean;
   conditional?: boolean;
