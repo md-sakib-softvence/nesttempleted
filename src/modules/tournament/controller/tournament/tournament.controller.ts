@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Patch,
+  Put,
   Delete,
   Body,
   Param,
@@ -36,6 +37,8 @@ import { RolesGuard } from '../../../../common/guards/roles.guard';
 import { Roles } from '../../../../common/decorators/roles.decorator';
 import { Public } from '../../../../common/decorators/public.decorator';
 import { UpdateTournamentStatusDto } from '../../dto/tournament/update-tournament-status.dto';
+import { UpdateMatchScoreDto } from '../../dto/tournament/update-match-score.dto';
+import { MatchCheckInDto } from '../../dto/tournament/match-check-in.dto';
 import { RegistrationSelectionDto } from '../../dto/tournament/registration-selection.dto';
 import { QueryTournamentRegistrationDto } from '../../dto/tournament/query-registration.dto';
 import { UpdateTournamentFinancialsDto } from '../../dto/tournament/update-financials.dto';
@@ -66,6 +69,8 @@ export class TournamentController {
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'canvasImage', maxCount: 1 },
+      { name: 'bannerUrl', maxCount: 1 },
+      { name: 'banner', maxCount: 1 },
       { name: 'fanPassArtUrl', maxCount: 1 },
       { name: 'playerOrgUrl', maxCount: 1 },
       { name: 'organizerLogo', maxCount: 1 },
@@ -84,6 +89,8 @@ export class TournamentController {
     @UploadedFiles()
     files: {
       canvasImage?: Express.Multer.File[];
+      bannerUrl?: Express.Multer.File[];
+      banner?: Express.Multer.File[];
       fanPassArtUrl?: Express.Multer.File[];
       playerOrgUrl?: Express.Multer.File[];
       organizerLogo?: Express.Multer.File[];
@@ -102,6 +109,8 @@ export class TournamentController {
     if (uploadedFiles.canvasImage) {
       createDto.canvasImage = uploadedFiles.canvasImage;
       createDto.fanPassArtUrl = uploadedFiles.canvasImage;
+    } else if (createDto.bannerUrl && typeof createDto.bannerUrl === 'string') {
+      createDto.canvasImage = createDto.bannerUrl;
     }
 
     if (uploadedFiles.playerOrgUrl) {
@@ -114,11 +123,15 @@ export class TournamentController {
 
     if (uploadedFiles.tournamentLogoUrl) {
       createDto.tournamentLogoUrl = uploadedFiles.tournamentLogoUrl;
+    } else if (createDto.logo && typeof createDto.logo === 'string') {
+      createDto.tournamentLogoUrl = createDto.logo;
     }
     delete (createDto as any).tournamentLogo;
 
     if (uploadedFiles.rules.length > 0) {
       createDto.rules = uploadedFiles.rules;
+    } else if (createDto.rulesUrl && typeof createDto.rulesUrl === 'string') {
+      createDto.rules = [createDto.rulesUrl];
     } else {
       createDto.rules = normalizeStringArray(createDto.rules);
     }
@@ -126,6 +139,12 @@ export class TournamentController {
     if (uploadedFiles.tsAndTc.length > 0) {
       createDto.termsAndConditions = uploadedFiles.tsAndTc;
       createDto.tsAndTc = uploadedFiles.tsAndTc;
+    } else if (
+      createDto.termsAndConditionsUrl &&
+      typeof createDto.termsAndConditionsUrl === 'string'
+    ) {
+      createDto.termsAndConditions = [createDto.termsAndConditionsUrl];
+      createDto.tsAndTc = [createDto.termsAndConditionsUrl];
     } else {
       createDto.termsAndConditions = normalizeStringArray(
         createDto.termsAndConditions || createDto.tsAndTc,
@@ -194,6 +213,22 @@ export class TournamentController {
     });
   }
 
+  @Get('prediction-fixtures')
+  @Public()
+  @ApiOperation({ summary: 'Get real, unresolved prediction fixtures from live tournaments' })
+  async getAllPredictionFixtures() {
+    const data = await this.tournamentService.getAllLivePredictionFixtures();
+    return sendResponse({ message: 'Live prediction fixtures retrieved successfully', data });
+  }
+
+  @Get('my-predictions')
+  @Roles(Role.FAN, 'fan')
+  @ApiOperation({ summary: 'Get the authenticated fan prediction history and current coin balance' })
+  async getMyPredictions(@Req() req: any) {
+    const data = await this.tournamentService.getFanPredictionHistory(req?.user?.userId);
+    return sendResponse({ message: 'Prediction history retrieved successfully', data });
+  }
+
   @Get(':id')
   @Public()
   @ApiOperation({ summary: 'Get a Tournament by ID' })
@@ -219,6 +254,8 @@ export class TournamentController {
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'canvasImage', maxCount: 1 },
+      { name: 'bannerUrl', maxCount: 1 },
+      { name: 'banner', maxCount: 1 },
       { name: 'fanPassArtUrl', maxCount: 1 },
       { name: 'playerOrgUrl', maxCount: 1 },
       { name: 'organizerLogo', maxCount: 1 },
@@ -238,6 +275,8 @@ export class TournamentController {
     @UploadedFiles()
     files: {
       canvasImage?: Express.Multer.File[];
+      bannerUrl?: Express.Multer.File[];
+      banner?: Express.Multer.File[];
       fanPassArtUrl?: Express.Multer.File[];
       playerOrgUrl?: Express.Multer.File[];
       organizerLogo?: Express.Multer.File[];
@@ -256,6 +295,8 @@ export class TournamentController {
     if (uploadedFiles.canvasImage) {
       updateDto.canvasImage = uploadedFiles.canvasImage;
       updateDto.fanPassArtUrl = uploadedFiles.canvasImage;
+    } else if (updateDto.bannerUrl && typeof updateDto.bannerUrl === 'string') {
+      updateDto.canvasImage = updateDto.bannerUrl;
     }
 
     if (uploadedFiles.playerOrgUrl) {
@@ -268,11 +309,15 @@ export class TournamentController {
 
     if (uploadedFiles.tournamentLogoUrl) {
       updateDto.tournamentLogoUrl = uploadedFiles.tournamentLogoUrl;
+    } else if (updateDto.logo && typeof updateDto.logo === 'string') {
+      updateDto.tournamentLogoUrl = updateDto.logo;
     }
     delete (updateDto as any).tournamentLogo;
 
     if (uploadedFiles.rules.length > 0) {
       updateDto.rules = uploadedFiles.rules;
+    } else if (updateDto.rulesUrl && typeof updateDto.rulesUrl === 'string') {
+      updateDto.rules = [updateDto.rulesUrl];
     } else if (updateDto.rules !== undefined) {
       updateDto.rules = normalizeStringArray(updateDto.rules);
     }
@@ -280,6 +325,12 @@ export class TournamentController {
     if (uploadedFiles.tsAndTc.length > 0) {
       updateDto.termsAndConditions = uploadedFiles.tsAndTc;
       updateDto.tsAndTc = uploadedFiles.tsAndTc;
+    } else if (
+      updateDto.termsAndConditionsUrl &&
+      typeof updateDto.termsAndConditionsUrl === 'string'
+    ) {
+      updateDto.termsAndConditions = [updateDto.termsAndConditionsUrl];
+      updateDto.tsAndTc = [updateDto.termsAndConditionsUrl];
     } else if (
       updateDto.termsAndConditions !== undefined ||
       updateDto.tsAndTc !== undefined
@@ -393,6 +444,108 @@ export class TournamentController {
       data,
       meta: data.meta,
     });
+  }
+
+  @Post(':id/matches/:matchId/check-in/verify')
+  @Roles(Role.EMPLOYEE, Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'employee', 'manager', 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Verify a participant QR pass for an assigned tournament match without checking them in' })
+  async verifyMatchCheckIn(
+    @Param('id') id: string,
+    @Param('matchId') matchId: string,
+    @Body() body: MatchCheckInDto,
+    @Req() req: any,
+  ) {
+    const data = await this.tournamentService.verifyTournamentMatchCheckIn(
+      id,
+      matchId,
+      body.qrToken,
+      body.expectedPlayerId,
+      req.user,
+    );
+    return sendResponse({ message: 'Player QR verified for this match', data });
+  }
+
+  @Post(':id/matches/:matchId/check-in')
+  @Roles(Role.EMPLOYEE, Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'employee', 'manager', 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Confirm participant check-in; automatically starts the match after both players check in' })
+  async checkInMatch(
+    @Param('id') id: string,
+    @Param('matchId') matchId: string,
+    @Body() body: MatchCheckInDto,
+    @Req() req: any,
+  ) {
+    const data = await this.tournamentService.checkInTournamentMatch(
+      id,
+      matchId,
+      body.qrToken,
+      body.expectedPlayerId,
+      req.user,
+    );
+    return sendResponse({
+      message: data.matchStarted ? 'Both players checked in; match started' : 'Player checked in; waiting for the other participant',
+      data,
+    });
+  }
+
+  @Post(':id/matches/:matchId/score')
+  @Roles(Role.EMPLOYEE, Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'employee', 'manager', 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Submit the final score for a started match assigned to the current employee' })
+  async submitMatchScore(
+    @Param('id') id: string,
+    @Param('matchId') matchId: string,
+    @Body() body: UpdateMatchScoreDto,
+    @Req() req: any,
+  ) {
+    const data = await this.tournamentService.submitAssignedMatchScore(
+      id,
+      matchId,
+      body,
+      req.user,
+    );
+    return sendResponse({ message: 'Final score submitted and tournament result updated', data });
+  }
+
+  @Get(':id/staff-assignments')
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'manager', 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Get persisted employee assignments for a tournament' })
+  async getStaffAssignments(@Param('id') id: string) {
+    const data = await this.tournamentService.getTournamentStaffAssignments(id);
+    return sendResponse({ message: 'Tournament staff assignments retrieved', data });
+  }
+
+  @Put(':id/matches/:matchId/staff-assignment')
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'manager', 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Assign an active employee to a tournament match' })
+  async assignMatchStaff(
+    @Param('id') id: string,
+    @Param('matchId') matchId: string,
+    @Body() body: { employeeId: string },
+  ) {
+    const data = await this.tournamentService.assignTournamentMatchStaff(
+      id,
+      matchId,
+      body?.employeeId,
+    );
+    return sendResponse({ message: 'Employee assigned to match', data });
+  }
+
+  @Delete(':id/matches/:matchId/staff-assignment')
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'manager', 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Remove employee assignment from a tournament match' })
+  async unassignMatchStaff(
+    @Param('id') id: string,
+    @Param('matchId') matchId: string,
+  ) {
+    const data = await this.tournamentService.unassignTournamentMatchStaff(id, matchId);
+    return sendResponse({ message: 'Employee unassigned from match', data });
+  }
+
+  @Post(':id/staff-assignments/auto-assign')
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'manager', 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Round-robin assign active employees to unassigned matches' })
+  async autoAssignStaff(@Param('id') id: string) {
+    const data = await this.tournamentService.autoAssignTournamentStaff(id);
+    return sendResponse({ message: 'Active employees assigned to open matches', data });
   }
 
   @Post(':id/matches/:matchId/self-book')
@@ -546,7 +699,7 @@ export class TournamentController {
   }
 
   @Post(':id/predict')
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.FAN, 'fan', Role.PLAYER, 'player')
+  @Roles(Role.FAN, 'fan')
   @ApiOperation({
     summary: 'Lock in coin prediction for a live tournament match',
   })

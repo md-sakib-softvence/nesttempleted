@@ -55,7 +55,23 @@ model Tournament {
   ticketTiers       TicketTier[]
   payments          Payment[]
   fanApplications   FanTournamentApplication[]
+  predictions       FanPrediction[]
   guidelines        TournamentGuideline[]
+  staffAssignments  TournamentStaffAssignment[]
+}
+
+model TournamentStaffAssignment {
+  id           String     @id @default(uuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+  employeeId   String
+  employee     Employee   @relation(fields: [employeeId], references: [employeeId], onDelete: Restrict)
+  matchId      String
+  assignedAt   DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([tournamentId, matchId])
+  @@index([employeeId, tournamentId])
 }
 
 /// Structured rules, terms, and policy content for a tournament.
@@ -359,6 +375,10 @@ model MatchDispute {
   matchId      String
   tournamentId String?
   reason       String
+  notes        String?
+  reportedBy   String?
+  reportedByRole String?
+  reportedByName String?
   status       DisputeStatus @default(OPEN)
   resolution   String?
   resolvedAt   DateTime?
@@ -366,6 +386,9 @@ model MatchDispute {
   version      Int           @default(1)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
+
+  @@index([tournamentId, matchId, status])
+  @@index([status, createdAt])
 }
 
 enum DisputeStatus {

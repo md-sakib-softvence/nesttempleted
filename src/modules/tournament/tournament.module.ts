@@ -1,4 +1,9 @@
 import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { ConfigModule } from '@nestjs/config';
+import { MatchIncidentGateway } from './gateway/match-incident.gateway';
+import { MatchIncidentService } from './service/match-incident.service';
+import { MatchIncidentController } from './controller/match/match-incident.controller';
 import { ManageEventCostController } from './controller/manage-event-cost/manage-event-cost.controller';
 import { ManageEventCostService } from './service/manage-event-cost.service';
 import { ManageEventPrizeController } from './controller/manage-event-prize/manage-event-prize.controller';
@@ -30,7 +35,9 @@ import { TournamentGuidelineController } from './controller/tournament/tournamen
 import { TournamentGuidelineService } from './service/tournament-guideline.service';
 
 @Module({
+  imports: [ConfigModule, JwtModule.register({})],
   controllers: [
+    MatchIncidentController,
     RaffleController,
     TournamentController,
     TournamentTabsController,
@@ -44,6 +51,8 @@ import { TournamentGuidelineService } from './service/tournament-guideline.servi
     SponsorController,
   ],
   providers: [
+    MatchIncidentGateway,
+    MatchIncidentService,
     TournamentService,
     TournamentTabsService,
     TournamentGuidelineService,

@@ -4,6 +4,7 @@ import {
   Optional,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TournamentScheduleService } from './tournament-schedule.service';
@@ -94,6 +95,156 @@ export class TournamentService {
 
   async getTournamentById(id: string, include?: string) {
     return this.core.getTournamentById(id, include);
+  }
+
+  async getTournamentStaffAssignments(tournamentId: string) {
+    const tournament = await this.prisma.tournament.findFirst({
+      where: { tournamentId, isDeleted: false },
+      select: { tournamentId: true },
+    });
+    if (!tournament) throw new NotFoundException('Tournament not found');
+
+    return this.prisma.tournamentStaffAssignment.findMany({
+      where: { tournamentId },
+      include: {
+        employee: {
+          select: {
+            employeeId: true,
+            showEmployeeId: true,
+            name: true,
+            email: true,
+            role: true,
+            state: true,
+            profileImage: true,
+          },
+        },
+      },
+      orderBy: { assignedAt: 'asc' },
+    });
+  }
+
+  async assignTournamentMatchStaff(
+    tournamentId: string,
+    matchId: string,
+    employeeId: string,
+  ) {
+    if (!employeeId?.trim()) throw new BadRequestException('Employee is required');
+    const tournament = await this.prisma.tournament.findFirst({
+      where: { tournamentId, isDeleted: false },
+      select: { tournamentId: true, schedule: true },
+    });
+    if (!tournament) throw new NotFoundException('Tournament not found');
+
+    const matches = this.getAssignableScheduleMatches(tournament.schedule);
+    if (!matches.some((match) => String(match.id) === matchId)) {
+      throw new NotFoundException('Match does not belong to this tournament schedule');
+    }
+
+    const employee = await this.prisma.employee.findFirst({
+      where: {
+        employeeId,
+        state: 'ACTIVE',
+        isDeleted: false,
+      },
+      select: { employeeId: true },
+    });
+    if (!employee) {
+      throw new BadRequestException('Select an active employee account');
+    }
+
+    return this.prisma.tournamentStaffAssignment.upsert({
+      where: { tournamentId_matchId: { tournamentId, matchId } },
+      create: { tournamentId, matchId, employeeId: employee.employeeId },
+      update: { employeeId: employee.employeeId },
+      include: {
+        employee: {
+          select: {
+            employeeId: true,
+            showEmployeeId: true,
+            name: true,
+            email: true,
+            role: true,
+            state: true,
+            profileImage: true,
+          },
+        },
+      },
+    });
+  }
+
+  async unassignTournamentMatchStaff(tournamentId: string, matchId: string) {
+    const tournament = await this.prisma.tournament.findFirst({
+      where: { tournamentId, isDeleted: false },
+      select: { tournamentId: true },
+    });
+    if (!tournament) throw new NotFoundException('Tournament not found');
+
+    await this.prisma.tournamentStaffAssignment.deleteMany({
+      where: { tournamentId, matchId },
+    });
+    return { tournamentId, matchId, assigned: false };
+  }
+
+  async autoAssignTournamentStaff(tournamentId: string) {
+    const tournament = await this.prisma.tournament.findFirst({
+      where: { tournamentId, isDeleted: false },
+      select: { tournamentId: true, schedule: true },
+    });
+    if (!tournament) throw new NotFoundException('Tournament not found');
+
+    const matches = this.getAssignableScheduleMatches(tournament.schedule);
+    if (matches.length === 0) {
+      throw new BadRequestException('Generate and publish tournament matches before assigning staff');
+    }
+    const employees = await this.prisma.employee.findMany({
+      where: { state: 'ACTIVE', isDeleted: false },
+      select: { employeeId: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (employees.length === 0) {
+      throw new BadRequestException('There are no active employees available to assign');
+    }
+
+    const existing = await this.prisma.tournamentStaffAssignment.findMany({
+      where: { tournamentId },
+      select: { matchId: true },
+    });
+    const assignedIds = new Set(existing.map((assignment) => assignment.matchId));
+    const unassigned = matches.filter((match) => !assignedIds.has(String(match.id)));
+
+    const creates = unassigned.map((match: any, index: number) =>
+      this.prisma.tournamentStaffAssignment.create({
+        data: {
+          tournamentId,
+          matchId: String(match.id),
+          employeeId: employees[index % employees.length].employeeId,
+        },
+      }),
+    );
+    if (creates.length > 0) await this.prisma.$transaction(creates);
+
+    return {
+      assignedCount: unassigned.length,
+      assignments: await this.getTournamentStaffAssignments(tournamentId),
+    };
+  }
+
+  private getAssignableScheduleMatches(scheduleValue: unknown): any[] {
+    const schedule = scheduleValue as any;
+    if (Array.isArray(schedule)) {
+      return schedule.flatMap((venue: any) =>
+        (venue?.screens || []).flatMap((screen: any) =>
+          (screen?.days || []).flatMap((day: any) =>
+            (day?.timeslots || [])
+              .map((slot: any) => slot?.game)
+              .filter((match: any) => match?.id),
+          ),
+        ),
+      );
+    }
+    const canonical = schedule?.structure?.matches || schedule?.matches;
+    if (Array.isArray(canonical)) return canonical.filter((match: any) => match?.id);
+    return [];
   }
 
   async updateTournament(id: string, updateTournamentDto: UpdateTournamentDto) {
@@ -207,6 +358,47 @@ export class TournamentService {
     return this.matches.getTournamentMatches(tournamentId, filter);
   }
 
+  async verifyTournamentMatchCheckIn(
+    tournamentId: string,
+    matchId: string,
+    qrToken: string,
+    expectedPlayerId: string | undefined,
+    actor: { userId: string; role: string },
+  ) {
+    return this.matches.verifyTournamentMatchCheckIn(
+      tournamentId,
+      matchId,
+      qrToken,
+      expectedPlayerId,
+      actor,
+    );
+  }
+
+  async checkInTournamentMatch(
+    tournamentId: string,
+    matchId: string,
+    qrToken: string,
+    expectedPlayerId: string | undefined,
+    actor: { userId: string; role: string },
+  ) {
+    return this.matches.checkInTournamentMatch(
+      tournamentId,
+      matchId,
+      qrToken,
+      expectedPlayerId,
+      actor,
+    );
+  }
+
+  async submitAssignedMatchScore(
+    tournamentId: string,
+    matchId: string,
+    dto: UpdateMatchScoreDto,
+    actor: { userId: string; role: string },
+  ) {
+    return this.matches.submitAssignedMatchScore(tournamentId, matchId, dto, actor);
+  }
+
   async getTournamentCalendar(id: string) {
     return this.matches.getTournamentCalendar(id);
   }
@@ -255,12 +447,12 @@ export class TournamentService {
     return this.matches.correctMatchScore(matchId, dto);
   }
 
-  async disputeMatch(matchId: string, dto: CreateMatchDisputeDto) {
-    return this.matches.disputeMatch(matchId, dto);
+  async disputeMatch(matchId: string, dto: CreateMatchDisputeDto, actor: { userId: string; role: string }) {
+    return this.matches.disputeMatch(matchId, dto, actor);
   }
 
-  async resolveMatchDispute(disputeId: string, dto: UpdateMatchDisputeDto) {
-    return this.matches.resolveMatchDispute(disputeId, dto);
+  async resolveMatchDispute(disputeId: string, dto: UpdateMatchDisputeDto, actor: { userId: string; role: string }) {
+    return this.matches.resolveMatchDispute(disputeId, dto, actor);
   }
 
   async reconcileScheduleCapacity(
@@ -387,6 +579,24 @@ export class TournamentService {
     }
 
     const isLive = tournament.status === 'IN_PROGRESS';
+    return {
+      tournamentId: tournament.tournamentId,
+      tournamentName: tournament.name,
+      isLive,
+      fixtures: isLive ? this.toPredictionFixtures(tournament) : [],
+    };
+  }
+
+  async getAllLivePredictionFixtures() {
+    const tournaments = await this.prisma.tournament.findMany({
+      where: { status: 'IN_PROGRESS', isDeleted: false },
+      orderBy: { startDate: 'asc' },
+    });
+
+    return tournaments.flatMap((tournament) => this.toPredictionFixtures(tournament));
+  }
+
+  private toPredictionFixtures(tournament: any) {
     const schedule = (tournament.schedule as any) || {};
     const matches: any[] =
       schedule.structure?.matches || schedule.matches || [];
@@ -394,33 +604,35 @@ export class TournamentService {
     const activeFixtures = matches
       .filter(
         (m: any) =>
+          m.id &&
+          m.player1Id &&
+          m.player2Id &&
           m.status !== 'COMPLETED' &&
-          (m.score1 === null || m.score1 === undefined),
+          m.status !== 'CANCELLED' &&
+          m.status !== 'NO_SHOW' &&
+          m.score1 == null &&
+          m.score2 == null,
       )
       .map((m: any) => ({
-        matchId: m.id || `${tournament.tournamentId}-${m.time}`,
+        matchId: m.id,
+        tournamentId: tournament.tournamentId,
         tournamentName: tournament.name,
-        time: m.time || '10:35',
+        time: m.startTime || m.time || '',
+        date: m.scheduledDate || m.date || '',
+        round: m.round || m.stage || '',
         player1: {
           id: m.player1Id,
-          gamertag: m.player1Name || m.participant1Ref?.name || 'GamerTag83',
-          odds: 1.85,
+          gamertag: m.player1Name || m.participant1Ref?.name || 'TBD',
         },
         player2: {
           id: m.player2Id,
-          gamertag: m.player2Name || m.participant2Ref?.name || 'GamerTag84',
-          odds: 2.1,
+          gamertag: m.player2Name || m.participant2Ref?.name || 'TBD',
         },
-        drawOdds: 3.1,
-        status: 'OPEN_FOR_PREDICTION',
+        odds: 2,
+        status: 'OPEN',
       }));
 
-    return {
-      tournamentId: tournament.tournamentId,
-      tournamentName: tournament.name,
-      isLive,
-      fixtures: activeFixtures,
-    };
+    return activeFixtures;
   }
 
   async lockPrediction(
@@ -435,13 +647,9 @@ export class TournamentService {
       throw new NotFoundException(`Tournament #${tournamentId} not found`);
     }
 
-    // Restriction: Predictions allowed on Live tournaments only
-    if (
-      tournament.status !== 'IN_PROGRESS' &&
-      tournament.status !== 'UPCOMING'
-    ) {
+    if (tournament.status !== 'IN_PROGRESS') {
       throw new BadRequestException(
-        'Predictions are strictly restricted to active Live tournaments only.',
+        'Predictions are only open while the tournament is live.',
       );
     }
 
@@ -449,19 +657,16 @@ export class TournamentService {
     const schedule = (tournament.schedule as any) || {};
     const matches: any[] =
       schedule.structure?.matches || schedule.matches || [];
-    const match = matches.find(
-      (m: any) => m.id === dto.matchId || String(m.id).includes(dto.matchId),
-    );
+    const match = matches.find((m: any) => m.id === dto.matchId);
 
-    if (match) {
-      if (
-        match.status === 'COMPLETED' ||
-        (match.score1 !== null && match.score1 !== undefined)
-      ) {
-        throw new BadRequestException(
-          'Match is already completed. Predictions are closed for this fixture.',
-        );
-      }
+    if (!match || !match.player1Id || !match.player2Id) {
+      throw new NotFoundException('Prediction fixture not found or missing competitors');
+    }
+    if (match.status === 'COMPLETED' || match.status === 'CANCELLED' || match.score1 != null || match.score2 != null) {
+      throw new BadRequestException('Match is already completed. Predictions are closed for this fixture.');
+    }
+    if (![match.player1Id, match.player2Id, 'DRAW'].includes(dto.predictedWinnerId)) {
+      throw new BadRequestException('Select one of the competitors or DRAW.');
     }
 
     // Fetch fan profile and balance
@@ -475,22 +680,59 @@ export class TournamentService {
       );
     }
 
-    const availableCoins = fan.coins || 0;
-    if (availableCoins < dto.wagerPoints) {
-      throw new BadRequestException(
-        `Insufficient coins! You currently have ${availableCoins} coins, but this wager requires ${dto.wagerPoints} coins.`,
-      );
+    if (!Number.isInteger(dto.wagerCoins) || dto.wagerCoins < 20 || dto.wagerCoins > 500) {
+      throw new BadRequestException('Coin stake must be a whole number between 20 and 500.');
     }
 
-    // Deduct wagered coins
-    const updatedFan = await this.prisma.fan.update({
-      where: { fanId: fan.fanId },
-      data: {
-        coins: { decrement: dto.wagerPoints },
-      },
-    });
+    const odds = 2;
+    const potentialPayout = dto.wagerCoins * odds;
+    let prediction: { saved: any; remainingCoins: number };
+    try {
+      prediction = await this.prisma.$transaction(async (tx) => {
+      const debit = await tx.fan.updateMany({
+        where: { fanId: fan.fanId, coins: { gte: dto.wagerCoins } },
+        data: { coins: { decrement: dto.wagerCoins } },
+      });
+      if (debit.count !== 1) {
+        throw new BadRequestException('Insufficient coins for this prediction.');
+      }
 
-    const potentialPayout = Math.round(dto.wagerPoints * dto.odds);
+      const updatedFan = await tx.fan.findUniqueOrThrow({ where: { fanId: fan.fanId } });
+      const saved = await tx.fanPrediction.create({
+        data: {
+          fanId: fan.fanId,
+          tournamentId: tournament.tournamentId,
+          matchId: match.id,
+          matchTitle: `${match.player1Name || match.participant1Ref?.name || match.player1Id} vs ${match.player2Name || match.participant2Ref?.name || match.player2Id}`,
+          predictedWinnerId: dto.predictedWinnerId,
+          predictedWinnerName: dto.predictedWinnerId === 'DRAW'
+            ? 'Draw'
+            : dto.predictedWinnerId === match.player1Id
+              ? match.player1Name || match.participant1Ref?.name || match.player1Id
+              : match.player2Name || match.participant2Ref?.name || match.player2Id,
+          stakeCoins: dto.wagerCoins,
+          odds,
+          potentialPayout,
+        },
+      });
+      await tx.fanCoinTransaction.create({
+        data: {
+          fanId: fan.fanId,
+          predictionId: saved.id,
+          type: 'PREDICTION_STAKE',
+          amount: -dto.wagerCoins,
+          balanceAfter: updatedFan.coins,
+          description: `Prediction stake: ${tournament.name}`,
+        },
+      });
+        return { saved, remainingCoins: updatedFan.coins };
+      });
+    } catch (error: any) {
+      if (error?.code === 'P2002') {
+        throw new ConflictException('You already placed a prediction on this match.');
+      }
+      throw error;
+    }
 
     return {
       message: 'Prediction successfully locked in!',
@@ -498,13 +740,37 @@ export class TournamentService {
       tournamentName: tournament.name,
       matchId: dto.matchId,
       predictedWinnerId: dto.predictedWinnerId,
-      wagerPoints: dto.wagerPoints,
-      odds: dto.odds,
+      wagerCoins: dto.wagerCoins,
+      predictedWinnerName: prediction.saved.predictedWinnerName,
+      odds,
       potentialPayout,
-      remainingCoins: Math.max(0, updatedFan.coins || 0),
-      status: 'LOCKED',
-      timestamp: new Date().toISOString(),
+      remainingCoins: Math.max(0, prediction.remainingCoins || 0),
+      status: prediction.saved.status,
+      timestamp: prediction.saved.createdAt.toISOString(),
+      predictionId: prediction.saved.id,
     };
+  }
+
+  async getFanPredictionHistory(fanId: string) {
+    if (!fanId) throw new BadRequestException('Fan authentication is required.');
+    const fan = await this.prisma.fan.findUnique({
+      where: { fanId },
+      select: { fanId: true, coins: true },
+    });
+    if (!fan) throw new NotFoundException('Fan account not found.');
+    const [predictions, coinTransactions] = await Promise.all([
+      this.prisma.fanPrediction.findMany({
+        where: { fanId },
+        include: { tournament: { select: { name: true } } },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.fanCoinTransaction.findMany({
+        where: { fanId },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+    ]);
+    return { coins: fan.coins, predictions, coinTransactions };
   }
 
   // ==========================================

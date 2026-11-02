@@ -350,17 +350,42 @@ export class EmployeeController {
     });
   }
 
-  @Get(':id')
-  @ApiOperation({ summary: 'Get a specific Employee by ID' })
-  async getEmployeeById(@Param('id') id: string) {
-    const data = await this.employeeService.getEmployeeById(id);
+  @Get('my-tournament-assignments')
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, ...Object.values(EmployeeRole))
+  @ApiOperation({ summary: 'Get tournament matches assigned to the logged-in employee' })
+  async getMyTournamentAssignments(
+    @Req() req: Request & { user: { userId: string } },
+  ) {
+    const data = await this.employeeService.getMyTournamentStaffAssignments(
+      req.user.userId,
+    );
     return sendResponse({
-      message: 'Employee retrieved successfully',
+      message: 'Your tournament match assignments retrieved successfully',
       data,
     });
   }
 
+  @Get(':id')
+  @Public()
+  @ApiOperation({ summary: 'Get public profile information for an employee by ID' })
+  async getEmployeeById(@Param('id') id: string) {
+    const data = await this.employeeService.getPublicEmployeeById(id);
+    return sendResponse({
+      message: 'Public employee profile retrieved successfully',
+      data,
+    });
+  }
+
+  @Get(':id/private')
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Get full employee record for authorized administration' })
+  async getEmployeeDetailsById(@Param('id') id: string) {
+    const data = await this.employeeService.getEmployeeById(id);
+    return sendResponse({ message: 'Employee record retrieved successfully', data });
+  }
+
   @Get()
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.MANAGER)
   @ApiOperation({ summary: 'Get all Employees' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })

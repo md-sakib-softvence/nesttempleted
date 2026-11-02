@@ -21,6 +21,22 @@ export enum SponsorPriority {
 }
 
 export class CreateSponsorDto {
+  @ApiPropertyOptional({
+    description: 'Sponsor ID (for updates)',
+    example: 'sp-1',
+  })
+  @IsOptional()
+  @IsString()
+  id?: string;
+
+  @ApiPropertyOptional({
+    description: 'Sponsor ID alias (for updates)',
+    example: 'sp-1',
+  })
+  @IsOptional()
+  @IsString()
+  sponsorId?: string;
+
   @ApiProperty({
     description: 'Sponsor name',
     example: 'Red Bull',
@@ -32,10 +48,26 @@ export class CreateSponsorDto {
   @ApiPropertyOptional({
     type: 'string',
     format: 'binary',
-    description: 'Sponsor logo image file (choose file)',
+    description: 'Sponsor logo image file or URL (choose file)',
   })
   @IsOptional()
   logo?: any;
+
+  @ApiPropertyOptional({
+    description: 'Sponsor logo URL alias',
+    example: 'https://cdn.tapegaming.com/sponsors/redbull.png',
+  })
+  @IsOptional()
+  @IsString()
+  logoUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'Sponsor tier (e.g. GOLD, SILVER, BRONZE)',
+    example: 'GOLD',
+  })
+  @IsOptional()
+  @IsString()
+  tier?: string;
 
   @ApiPropertyOptional({
     description: 'Sponsor website URL',

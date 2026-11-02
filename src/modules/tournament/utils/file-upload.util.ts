@@ -3,6 +3,8 @@ import { uploadImageToS3, deleteImageFromS3 } from '../../utils/s3.util';
 
 export async function uploadTournamentFiles(files: {
   canvasImage?: Express.Multer.File[];
+  bannerUrl?: Express.Multer.File[];
+  banner?: Express.Multer.File[];
   fanPassArtUrl?: Express.Multer.File[];
   playerOrgUrl?: Express.Multer.File[];
   organizerLogo?: Express.Multer.File[];
@@ -32,7 +34,11 @@ export async function uploadTournamentFiles(files: {
   const s3TsAndTcFilenames: string[] = [];
 
   try {
-    const canvasFile = files?.canvasImage?.[0] || files?.fanPassArtUrl?.[0];
+    const canvasFile =
+      files?.canvasImage?.[0] ||
+      files?.bannerUrl?.[0] ||
+      files?.banner?.[0] ||
+      files?.fanPassArtUrl?.[0];
     if (canvasFile) {
       s3CanvasImage = await uploadImageToS3(canvasFile);
     }

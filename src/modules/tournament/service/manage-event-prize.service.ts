@@ -8,8 +8,22 @@ export class ManageEventPrizeService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateManageEventPrizeDto) {
+    const prizeCategory =
+      dto.prizeCategory ||
+      dto.label ||
+      dto.category ||
+      (dto.place ? `Place ${dto.place}` : 'Prize');
+    const amount =
+      dto.amount !== undefined
+        ? Number(dto.amount)
+        : dto.payout !== undefined
+          ? Number(dto.payout)
+          : 0;
     return this.prisma.manageEventPrize.create({
-      data: dto,
+      data: {
+        prizeCategory,
+        amount,
+      },
       include: {
         tournament: {
           select: {
