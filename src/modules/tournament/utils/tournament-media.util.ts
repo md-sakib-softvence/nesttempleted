@@ -86,6 +86,21 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
   // Prevent leaking massive 15MB+ raw schedule payload (matches, slots) into HTTP responses
   delete formatted.schedulePayload;
 
+  // Claim QR tokens are returned only by the authenticated participant's
+  // raffle endpoint. Tournament listings/details must never expose them.
+  if (Array.isArray(formatted.raffles)) {
+    formatted.raffles = formatted.raffles.map((raffle: any) => {
+      const winners = Array.isArray(raffle.winners) ? raffle.winners : [];
+      return {
+        ...raffle,
+        winners: winners.map(({ qrCodeString, ...winner }: any) => ({
+          ...winner,
+          claimAvailable: Boolean(qrCodeString),
+        })),
+      };
+    });
+  }
+
   // Canonical Frontend Fields
   formatted.id = formatted.tournamentId;
   formatted.teams = formatted.numberOfTeams;

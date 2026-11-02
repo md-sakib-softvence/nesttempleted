@@ -108,6 +108,22 @@ export class RaffleController {
     });
   }
 
+  @Get('mine')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get raffles joined by the authenticated fan or player' })
+  async getMyRaffles(
+    @Req() req: Request & { user: { userId: string; role?: string } },
+  ) {
+    const data = await this.raffleService.getMyRaffles(
+      req.user.userId,
+      req.user.role,
+    );
+    return sendResponse({
+      message: 'Your raffle entries retrieved successfully',
+      data,
+    });
+  }
+
   @Get(':id')
   @Public()
   @ApiOperation({ summary: 'Get a single raffle by ID' })

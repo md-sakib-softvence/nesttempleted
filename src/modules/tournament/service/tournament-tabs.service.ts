@@ -908,37 +908,36 @@ export class TournamentTabsService {
   async patchRafflesTab(tournamentId: string, dto: UpdateRafflesTabDto) {
     await this.findTournamentOrThrow(tournamentId);
 
-    if (dto.raffleId) {
-      const data: Prisma.RaffleUpdateInput = {};
-      if (dto.name !== undefined) data.name = dto.name;
-      if (dto.prizeDescription !== undefined)
-        data.prizeDescription = dto.prizeDescription;
-      if (dto.numberOfWinners !== undefined)
-        data.numberOfWinners = dto.numberOfWinners;
-      if (dto.status !== undefined) data.status = dto.status;
-      if (dto.drawDate !== undefined) data.drawDate = new Date(dto.drawDate);
-      if (dto.registrationCloseDate !== undefined)
-        data.registrationCloseDate = new Date(dto.registrationCloseDate);
-
-      await this.prisma.raffle.update({
-        where: { raffleId: dto.raffleId },
-        data,
-      });
-    } else if (dto.name && dto.prizeDescription) {
-      await this.prisma.raffle.create({
-        data: {
-          tournamentId,
-          name: dto.name,
-          prizeDescription: dto.prizeDescription,
-          numberOfWinners: dto.numberOfWinners || 1,
-          status: dto.status || 'OPEN',
-          drawDate: dto.drawDate ? new Date(dto.drawDate) : null,
-          registrationCloseDate: dto.registrationCloseDate
-            ? new Date(dto.registrationCloseDate)
-            : null,
-        },
-      });
+    if (!dto.raffleId) {
+      throw new BadRequestException(
+        'raffleId is required when updating a raffle. Use the create raffle endpoint for new raffles.',
+      );
     }
+
+    const existingRaffle = await this.prisma.raffle.findFirst({
+      where: { raffleId: dto.raffleId, tournamentId },
+    });
+    if (!existingRaffle) {
+      throw new NotFoundException(
+        `Raffle #${dto.raffleId} was not found in tournament #${tournamentId}`,
+      );
+    }
+
+    const data: Prisma.RaffleUpdateInput = {};
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.prizeDescription !== undefined)
+      data.prizeDescription = dto.prizeDescription;
+    if (dto.numberOfWinners !== undefined)
+      data.numberOfWinners = dto.numberOfWinners;
+    if (dto.status !== undefined) data.status = dto.status;
+    if (dto.drawDate !== undefined) data.drawDate = new Date(dto.drawDate);
+    if (dto.registrationCloseDate !== undefined)
+      data.registrationCloseDate = new Date(dto.registrationCloseDate);
+
+    await this.prisma.raffle.update({
+      where: { raffleId: dto.raffleId },
+      data,
+    });
 
     return this.getRafflesTab(tournamentId);
   }

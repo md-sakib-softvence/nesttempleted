@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -19,6 +19,8 @@ import { createActivities } from '../../utils/activity.util';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
@@ -105,11 +107,20 @@ export class AuthService {
         );
     }
 
-    // Record the login activity
-    const title = 'User Authentication';
-    const description = `User ${result.user.name} (${loginDto.email}) successfully authenticated and logged in with the role of '${loginDto.role}'.`;
-
-    await createActivities(this.prisma, title, description, loginDto.role);
+    // Audit logging must not prevent an otherwise valid login. If the audit
+    // table/schema is temporarily unavailable, keep authentication successful
+    // and surface the database problem in the server logs for repair.
+    try {
+      const title = 'User Authentication';
+      const description = `User ${result.user.name} (${loginDto.email}) successfully authenticated and logged in with the role of '${loginDto.role}'.`;
+      await createActivities(this.prisma, title, description, loginDto.role);
+    } catch (error) {
+      this.logger.warn(
+        `Login audit log could not be recorded for ${loginDto.email}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
 
     return result;
   }
