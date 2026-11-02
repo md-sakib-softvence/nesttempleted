@@ -4,6 +4,7 @@ import {
   BadRequestException,
   UnauthorizedException,
   ConflictException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -856,6 +857,126 @@ export class TicketService {
         this.logger.error('Failed to log or broadcast ticket scan', logErr);
       }
     };
+
+    // Raffle claim QR codes share the venue scanner, but use a one-time
+    // redemption path instead of being treated as ordinary admission tickets.
+    if (trimmedToken.startsWith('RAFFLE:')) {
+      const role = String(guardRole).toUpperCase();
+      const allowedRoles = [
+        'SECURITY',
+        'SECURITY_GUARD',
+        'EMPLOYEE',
+        'MANAGER',
+        'ADMIN',
+        'SUPER_ADMIN',
+      ];
+      if (!allowedRoles.includes(role)) {
+        throw new ForbiddenException(
+          'Only venue security, employees, managers, and admins can verify raffle claims.',
+        );
+      }
+
+      const raffleId = trimmedToken.split(':')[1];
+      const redemption = await this.prisma.$transaction(async (tx) => {
+        // Lock the raffle row so two scanners cannot redeem the same winner
+        // concurrently while the winner list is stored as JSON.
+        await tx.$queryRaw`SELECT "raffleId" FROM "Raffle" WHERE "raffleId" = ${raffleId} FOR UPDATE`;
+        const raffle = await tx.raffle.findUnique({
+          where: { raffleId },
+          include: { tournament: { select: { tournamentId: true, name: true } } },
+        });
+        if (!raffle) return { kind: 'INVALID' as const };
+
+        const winners = Array.isArray(raffle.winners)
+          ? (raffle.winners as any[])
+          : [];
+        const winnerIndex = winners.findIndex(
+          (winner) => winner?.qrCodeString === trimmedToken,
+        );
+        if (winnerIndex < 0) return { kind: 'INVALID' as const };
+
+        const winner = winners[winnerIndex];
+        const scanTicket = {
+          ticketId: raffle.raffleId,
+          showTicketId: winner.ticketNumber || raffle.raffleId,
+          type: 'RAFFLE_PRIZE_CLAIM',
+        };
+        if (winner.redeemed || winner.claimedAt || winner.redeemedAt) {
+          return {
+            kind: 'ALREADY_CLAIMED' as const,
+            raffle,
+            winner,
+            scanTicket,
+          };
+        }
+
+        const redeemedAt = new Date();
+        const updatedWinners = [...winners];
+        updatedWinners[winnerIndex] = {
+          ...winner,
+          redeemed: true,
+          redeemedAt: redeemedAt.toISOString(),
+          redeemedBy: guardId,
+          redeemedByName: guardName,
+          redeemedByRole: role,
+          redemptionVenueId: dto.venueId || null,
+          redemptionScreenId: dto.screenId || null,
+        };
+        await tx.raffle.update({
+          where: { raffleId },
+          data: { winners: updatedWinners as any },
+        });
+
+        return {
+          kind: 'VALID' as const,
+          raffle,
+          winner: updatedWinners[winnerIndex],
+          scanTicket,
+          redeemedAt,
+        };
+      });
+
+      if (redemption.kind === 'INVALID') {
+        const message = 'Invalid raffle claim QR. No matching winner was found.';
+        await logAndBroadcast('INVALID', message);
+        throw new NotFoundException(message);
+      }
+      if (redemption.kind === 'ALREADY_CLAIMED') {
+        const message = 'This raffle prize has already been claimed.';
+        await logAndBroadcast(
+          'ALREADY_CHECKED_IN',
+          message,
+          redemption.scanTicket,
+          redemption.winner?.name,
+        );
+        throw new ConflictException(message);
+      }
+
+      const winnerName = redemption.winner?.name || 'Raffle winner';
+      const message = `Raffle prize claim verified for ${redemption.raffle.name}.`;
+      const ticket = {
+        ...redemption.scanTicket,
+        purchaserName: winnerName,
+        attendeeName: winnerName,
+        tournamentName: redemption.raffle.tournament.name,
+        seatNumber: redemption.raffle.prizeDescription,
+        totalScanCount: 1,
+      };
+      await logAndBroadcast('VALID', message, ticket, winnerName);
+      return {
+        success: true,
+        raffleRedemption: true,
+        message,
+        raffle: {
+          raffleId: redemption.raffle.raffleId,
+          name: redemption.raffle.name,
+          prizeDescription: redemption.raffle.prizeDescription,
+          tournamentName: redemption.raffle.tournament.name,
+        },
+        ticket,
+        checkedInAt: redemption.redeemedAt,
+      };
+    }
 
     // Look up ticket by exact qrToken, ticketId, showTicketId, or parsed token
     let ticket = await this.prisma.ticket.findFirst({
