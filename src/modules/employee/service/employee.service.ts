@@ -314,7 +314,7 @@ export class EmployeeService {
               gender: true,
               ageRange: true,
               status: true,
-              topPoint: true,
+              coins: true,
               favoriteGame: true,
               profileImage: true,
               username: true,

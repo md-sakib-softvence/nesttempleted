@@ -156,6 +156,26 @@ export class FanFollowController {
     });
   }
 
+  @Get('players/:playerId/details')
+  @ApiOperation({
+    summary: 'Get complete player details for the fan player modal',
+    description:
+      'Returns player profile, computed results, recent tournament log, and upcoming match details.',
+  })
+  async getPlayerDetails(
+    @Param('playerId') playerId: string,
+    @Req() req: Request & { user?: { userId: string } },
+  ) {
+    const data = await this.followerService.getPlayerProfileDetails(
+      playerId,
+      req.user?.userId,
+    );
+    return sendResponse({
+      message: 'Player details retrieved successfully',
+      data,
+    });
+  }
+
   @Get(':id/following')
   @ApiOperation({ summary: 'Get followed accounts for a specific user ID' })
   @ApiQuery({ name: 'page', required: false, type: Number })

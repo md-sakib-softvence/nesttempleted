@@ -72,7 +72,7 @@ export async function seedStaffAndFans(prisma: PrismaClient) {
       gender: 'Other',
       ageRange: '25-34',
       status: FanStatus.ACTIVE,
-      topPoint: 1200,
+      coins: 1200,
       favoriteGame: 'EAFC 25',
       password: hashedPassword,
     },
@@ -84,7 +84,7 @@ export async function seedStaffAndFans(prisma: PrismaClient) {
       gender: 'Male',
       ageRange: '18-24',
       status: FanStatus.ACTIVE,
-      topPoint: 100,
+      coins: 100,
       favoriteGame: 'Tekken 8',
       password: hashedPassword,
     },
@@ -107,7 +107,7 @@ export async function seedStaffAndFans(prisma: PrismaClient) {
         where: { email: fan.email },
         data: {
           password: fan.password,
-          topPoint: fan.topPoint,
+          coins: fan.coins,
           status: fan.status,
         },
       });

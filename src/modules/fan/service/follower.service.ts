@@ -642,6 +642,157 @@ export class FollowerService {
   }
 
   /**
+   * Complete public player details used by the fan player-profile modal.
+   * Stats and schedules are calculated from canonical tournament schedules.
+   */
+  async getPlayerProfileDetails(playerId: string, viewerId?: string) {
+    if (!playerId) throw new BadRequestException('Player ID is required');
+
+    const player = await this.prisma.player.findFirst({
+      where: { playerId, isDeleted: false },
+      select: {
+        playerId: true,
+        showPlayerId: true,
+        firstName: true,
+        lastName: true,
+        gamerTag: true,
+        profilePicture: true,
+        preferredPlatform: true,
+        favoriteTeam: true,
+        status: true,
+      },
+    });
+    if (!player) throw new NotFoundException('Player not found');
+
+    const isFollowing = viewerId
+      ? Boolean(await this.prisma.follower.findFirst({
+          where: { fanId: viewerId, targetPlayerId: playerId },
+          select: { followerId: true },
+        }))
+      : false;
+
+    const registrations = await this.prisma.tournamentRegistration.findMany({
+      where: { playerId },
+      select: {
+        tournament: {
+          select: {
+            tournamentId: true,
+            name: true,
+            gameTitle: true,
+            venues: { select: { venueId: true, name: true, screens: true } },
+            schedule: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const completed: any[] = [];
+    const upcoming: any[] = [];
+    const seen = new Set<string>();
+
+    const addMatch = (raw: any, tournament: any, context: any = {}) => {
+      if (!raw) return;
+      const p1Id = raw.player1Id || raw.participant1Ref?.id || raw.participant1Ref?.value;
+      const p2Id = raw.player2Id || raw.participant2Ref?.id || raw.participant2Ref?.value;
+      const isP1 = p1Id === playerId;
+      const isP2 = p2Id === playerId;
+      if (!isP1 && !isP2) return;
+
+      const matchId = String(raw.id || raw.canonicalMatchId || `${tournament.tournamentId}-${raw.date || ''}-${raw.time || ''}`);
+      if (seen.has(matchId)) return;
+      seen.add(matchId);
+
+      const score1 = raw.score1;
+      const score2 = raw.score2;
+      const hasScore = score1 !== null && score1 !== undefined && score2 !== null && score2 !== undefined;
+      const isCompleted = raw.status === 'COMPLETED' || hasScore;
+      const myScore = isP1 ? Number(score1) : Number(score2);
+      const opponentScore = isP1 ? Number(score2) : Number(score1);
+      const opponent = isP1
+        ? raw.player2Name || raw.participant2Ref?.name || 'Awaiting Competitor'
+        : raw.player1Name || raw.participant1Ref?.name || 'Awaiting Competitor';
+      const venueName = raw.venueName || context.venueName || tournament.venues?.[0]?.name || 'Main Arena';
+      const screenName = raw.screenName || context.screenName || tournament.venues?.[0]?.screens?.[0]?.screenName || 'Screen 1';
+      const item = {
+        matchId,
+        tournamentId: tournament.tournamentId,
+        tournamentName: tournament.name,
+        gameTitle: tournament.gameTitle,
+        round: raw.round || raw.stage || null,
+        opponent,
+        playerScore: hasScore ? myScore : null,
+        opponentScore: hasScore ? opponentScore : null,
+        date: raw.date || context.date || null,
+        time: raw.time || context.time || null,
+        venueName,
+        screenName,
+        status: raw.status || (isCompleted ? 'COMPLETED' : 'SCHEDULED'),
+      };
+
+      if (isCompleted) {
+        const result = myScore > opponentScore ? 'W' : myScore < opponentScore ? 'L' : 'D';
+        completed.push({ ...item, result, score: `${myScore} - ${opponentScore}` });
+      } else {
+        upcoming.push(item);
+      }
+    };
+
+    for (const registration of registrations) {
+      const tournament = registration.tournament;
+      const schedule: any = tournament.schedule || {};
+      const directMatches: any[] = schedule.structure?.matches || schedule.matches || [];
+      directMatches.forEach((match) => addMatch(match, tournament));
+
+      const calendar: any[] = Array.isArray(schedule)
+        ? schedule
+        : Array.isArray(schedule.calendar) ? schedule.calendar : [];
+      for (const venueSchedule of calendar) {
+        const venue = tournament.venues?.find((v: any) => v.venueId === venueSchedule.venueId || v.name === venueSchedule.venueName);
+        for (const screenSchedule of venueSchedule.screens || []) {
+          const screen = venue?.screens?.find((s: any) => s.screenId === screenSchedule.screenId || s.screenName === screenSchedule.screenName);
+          for (const day of screenSchedule.days || []) {
+            for (const timeslot of day.timeslots || []) {
+              addMatch(timeslot.game || timeslot.match, tournament, {
+                date: day.date,
+                time: timeslot.time,
+                venueName: venue?.name || venueSchedule.venueName,
+                screenName: screen?.screenName || screenSchedule.screenName,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    const byDate = (a: any, b: any) => new Date(`${a.date || '2999-12-31'}T${a.time || '23:59'}`).getTime() - new Date(`${b.date || '2999-12-31'}T${b.time || '23:59'}`).getTime();
+    upcoming.sort(byDate);
+    completed.sort((a, b) => byDate(b, a));
+    const wins = completed.filter((m) => m.result === 'W').length;
+    const losses = completed.filter((m) => m.result === 'L').length;
+    const draws = completed.filter((m) => m.result === 'D').length;
+
+    return {
+      player: {
+        id: player.playerId,
+        showPlayerId: player.showPlayerId,
+        gamerTag: player.gamerTag,
+        firstName: player.firstName,
+        lastName: player.lastName,
+        profilePicture: player.profilePicture,
+        preferredPlatform: player.preferredPlatform,
+        favoriteTeam: player.favoriteTeam,
+        status: player.status,
+      },
+      isFollowing,
+      stats: { wins, losses, draws, points: wins * 3 + draws, played: completed.length },
+      recentTournamentLog: completed.slice(0, 3),
+      upcomingMatch: upcoming[0] || null,
+      upcomingMatches: upcoming.slice(0, 10),
+    };
+  }
+
+  /**
    * Get upcoming matches of followed players for the authenticated fan
    */
   async getFollowedUpcomingMatches(userId: string) {

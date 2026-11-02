@@ -475,18 +475,18 @@ export class TournamentService {
       );
     }
 
-    const availablePoints = (fan.topPoint || 0) + (fan.coins || 0);
-    if (availablePoints < dto.wagerPoints) {
+    const availableCoins = fan.coins || 0;
+    if (availableCoins < dto.wagerPoints) {
       throw new BadRequestException(
-        `Insufficient points! You currently have ${availablePoints} pts, but this wager requires ${dto.wagerPoints} pts.`,
+        `Insufficient coins! You currently have ${availableCoins} coins, but this wager requires ${dto.wagerPoints} coins.`,
       );
     }
 
-    // Deduct wagered points
+    // Deduct wagered coins
     const updatedFan = await this.prisma.fan.update({
       where: { fanId: fan.fanId },
       data: {
-        topPoint: { decrement: dto.wagerPoints },
+        coins: { decrement: dto.wagerPoints },
       },
     });
 
@@ -501,10 +501,7 @@ export class TournamentService {
       wagerPoints: dto.wagerPoints,
       odds: dto.odds,
       potentialPayout,
-      remainingPoints: Math.max(
-        0,
-        (updatedFan.topPoint || 0) + (updatedFan.coins || 0),
-      ),
+      remainingCoins: Math.max(0, updatedFan.coins || 0),
       status: 'LOCKED',
       timestamp: new Date().toISOString(),
     };
