@@ -1183,6 +1183,11 @@ export class TicketService {
       await logAndBroadcast('INVALID', errMsg, ticket, attendeeName);
       throw new BadRequestException(errMsg);
     }
+    if (ticket.status === TicketStatus.TRANSFERRED) {
+      const errMsg = 'This ticket was transferred and its QR code is no longer valid.';
+      await logAndBroadcast('INVALID', errMsg, ticket, attendeeName);
+      throw new BadRequestException(errMsg);
+    }
 
     let newStatus = ticket.status;
 
@@ -1720,42 +1725,62 @@ export class TicketService {
       throw new BadRequestException('Cancelled tickets cannot be transferred.');
     }
 
-    // Clean recipient phone
-    const cleanPhone = dto.recipientPhone.replace(/[\s\-()]/g, '');
-
-    // Search recipient Fan
-    const recipientFan = await this.prisma.fan.findFirst({
-      where: {
-        OR: [
-          { phoneNumber: { contains: cleanPhone } },
-          { phoneNumber: dto.recipientPhone },
-          ...(dto.recipientEmail ? [{ email: dto.recipientEmail }] : []),
-        ],
-        isDeleted: false,
-      },
-    });
-
-    let recipientPlayer: any = null;
-    if (!recipientFan) {
-      recipientPlayer = await this.prisma.player.findFirst({
-        where: {
-          OR: [
-            { phoneNumber: { contains: cleanPhone } },
-            { phoneNumber: dto.recipientPhone },
-            ...(dto.recipientEmail ? [{ email: dto.recipientEmail }] : []),
-          ],
-          isDeleted: false,
-        },
-      });
+    const normalizePhone = (value?: string | null) =>
+      String(value || '').replace(/\D/g, '');
+    const cleanPhone = normalizePhone(dto.recipientPhone);
+    if (cleanPhone.length < 7) {
+      throw new BadRequestException('Enter a valid recipient phone number.');
     }
 
-    const recipientRole = recipientFan
-      ? 'FAN'
-      : recipientPlayer
-        ? 'PLAYER'
-        : 'GUEST';
-    const recipientId =
-      recipientFan?.fanId || recipientPlayer?.playerId || `guest-${Date.now()}`;
+    // Search by a short suffix first, then compare normalized full numbers so
+    // formatting differences do not accidentally select a different account.
+    const phoneSuffix = cleanPhone.slice(-4);
+    const [fanCandidates, playerCandidates] = await Promise.all([
+      this.prisma.fan.findMany({
+        where: {
+          isDeleted: false,
+          OR: [
+            { phoneNumber: { contains: phoneSuffix } },
+            ...(dto.recipientEmail
+              ? [{ email: { equals: dto.recipientEmail.trim(), mode: 'insensitive' as const } }]
+              : []),
+          ],
+        },
+        take: 500,
+      }),
+      this.prisma.player.findMany({
+        where: {
+          isDeleted: false,
+          OR: [
+            { phoneNumber: { contains: phoneSuffix } },
+            ...(dto.recipientEmail
+              ? [{ email: { equals: dto.recipientEmail.trim(), mode: 'insensitive' as const } }]
+              : []),
+          ],
+        },
+        take: 500,
+      }),
+    ]);
+    const recipientMatches = [
+      ...fanCandidates
+        .filter((candidate) => normalizePhone(candidate.phoneNumber) === cleanPhone)
+        .map((fan) => ({ role: 'FAN' as const, id: fan.fanId, fan, player: null })),
+      ...playerCandidates
+        .filter((candidate) => normalizePhone(candidate.phoneNumber) === cleanPhone)
+        .map((player) => ({ role: 'PLAYER' as const, id: player.playerId, fan: null, player })),
+    ];
+    if (recipientMatches.length !== 1) {
+      throw new BadRequestException(
+        recipientMatches.length > 1
+          ? 'This phone number matches more than one account. Ask the recipient to use a unique phone number or contact support.'
+          : 'The recipient must have an active Fan or Player account with this phone number before you can transfer the ticket.',
+      );
+    }
+
+    const { role: recipientRole, id: recipientId, fan: recipientFan, player: recipientPlayer } = recipientMatches[0];
+    if (recipientId === currentUser.userId) {
+      throw new BadRequestException('You cannot transfer a ticket to yourself.');
+    }
     const recipientName = recipientFan
       ? `${recipientFan.firstName} ${recipientFan.surname || ''}`.trim()
       : recipientPlayer
@@ -1765,73 +1790,120 @@ export class TicketService {
     const newShowTicketId = `TCK-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
     const newQrToken = `${recipientRole}:${ticket.tournamentId}:${recipientId}:${crypto.randomUUID()}`;
 
-    // Perform atomic transaction:
-    // 1. Mark current ticket as TRANSFERRED (locks ticket access for sender)
-    // 2. Create new ACTIVE ticket for recipient
-    const [transferredOldTicket, newIssuedTicket] =
-      await this.prisma.$transaction([
-        this.prisma.ticket.update({
-          where: { ticketId: ticket.ticketId },
-          data: {
-            status: TicketStatus.TRANSFERRED,
-            metadata: {
-              ...(typeof ticket.metadata === 'object' && ticket.metadata
-                ? (ticket.metadata as object)
-                : {}),
-              transferredAt: new Date().toISOString(),
-              transferredToPhone: dto.recipientPhone,
-              transferredToName: recipientName,
-              transferredToUserId: recipientId,
-              transferredFromUserId: currentUser.userId,
+    const transferredAt = new Date();
+    const oldMetadata =
+      typeof ticket.metadata === 'object' && ticket.metadata
+        ? (ticket.metadata as Record<string, any>)
+        : {};
+    const transferHistory = Array.isArray(oldMetadata.transferHistory)
+      ? oldMetadata.transferHistory
+      : [];
+    const transferEvent = {
+      fromUserId: currentUser.userId,
+      toUserId: recipientId,
+      toPhone: dto.recipientPhone,
+      toName: recipientName,
+      transferredAt: transferredAt.toISOString(),
+    };
+    const lineageMetadata = {
+      ...oldMetadata,
+      transferCount: Number(oldMetadata.transferCount || 0) + 1,
+      transferHistory: [...transferHistory, transferEvent],
+    };
+
+    // Conditional update makes the sender's pass single-use even if two
+    // transfer requests arrive at nearly the same time. The new wallet pass
+    // is created in the same transaction, so either both changes persist or
+    // neither does. The recipient can later transfer this new active pass.
+    const newIssuedTicket = await this.prisma.$transaction(async (tx) => {
+      const latestTicket = await tx.ticket.findUnique({
+        where: { ticketId: ticket.ticketId },
+        select: { status: true, checkedIn: true },
+      });
+      if (!latestTicket || latestTicket.status !== TicketStatus.ACTIVE || latestTicket.checkedIn) {
+        throw new ConflictException('This ticket is no longer available to transfer.');
+      }
+
+      const recipientHasPass = await tx.ticket.findFirst({
+        where: {
+          tournamentId: ticket.tournamentId,
+          status: { in: [TicketStatus.ACTIVE, TicketStatus.USED] },
+          OR: [
+            { purchasedBy: recipientId },
+            ...(recipientFan ? [{ fanId: recipientFan.fanId }] : []),
+            ...(recipientPlayer ? [{ playerId: recipientPlayer.playerId }] : []),
+          ],
+        },
+        select: { showTicketId: true },
+      });
+      if (recipientHasPass) {
+        throw new ConflictException('The recipient already has a ticket for this tournament.');
+      }
+
+      const locked = await tx.ticket.updateMany({
+        where: {
+          ticketId: ticket.ticketId,
+          status: TicketStatus.ACTIVE,
+          checkedIn: false,
+        },
+        data: {
+          status: TicketStatus.TRANSFERRED,
+          metadata: {
+            ...lineageMetadata,
+            ...transferEvent,
+            transferredToUserId: recipientId,
+          } as any,
+        },
+      });
+      if (locked.count !== 1) {
+        throw new ConflictException('This ticket was already transferred. Refresh your wallet.');
+      }
+
+      return tx.ticket.create({
+        data: {
+          showTicketId: newShowTicketId,
+          tournamentId: ticket.tournamentId,
+          type: ticket.type,
+          pricePaid: ticket.pricePaid,
+          currency: ticket.currency,
+          seatNumber: ticket.seatNumber,
+          status: TicketStatus.ACTIVE,
+          checkedIn: false,
+          qrToken: newQrToken,
+          purchasedBy: recipientId,
+          purchaserRole: recipientRole,
+          fanId: recipientFan?.fanId || null,
+          playerId: recipientPlayer?.playerId || null,
+          paymentReference: `TRANSFER-${ticket.ticketId.slice(0, 8)}-${Date.now()}`,
+          metadata: {
+            ...lineageMetadata,
+            transferredFromTicketId: ticket.ticketId,
+            transferredFromShowTicketId: ticket.showTicketId,
+            transferredFromUserId: currentUser.userId,
+            originalPurchaseDate: ticket.createdAt.toISOString(),
+          } as any,
+        },
+        include: {
+          tournament: {
+            select: {
+              tournamentId: true,
+              name: true,
+              tournamentLogoUrl: true,
             },
           },
-        }),
-        this.prisma.ticket.create({
-          data: {
-            showTicketId: newShowTicketId,
-            tournamentId: ticket.tournamentId,
-            type: ticket.type,
-            pricePaid: ticket.pricePaid,
-            currency: ticket.currency,
-            seatNumber: ticket.seatNumber,
-            status: TicketStatus.ACTIVE,
-            checkedIn: false,
-            qrToken: newQrToken,
-            purchasedBy: recipientId,
-            purchaserRole: recipientRole,
-            fanId: recipientFan?.fanId || null,
-            playerId: recipientPlayer?.playerId || null,
-            paymentReference: `TRANSFER-${ticket.ticketId.slice(0, 8)}-${Date.now()}`,
-            metadata: {
-              ...(typeof ticket.metadata === 'object' && ticket.metadata
-                ? (ticket.metadata as object)
-                : {}),
-              transferredFromTicketId: ticket.ticketId,
-              transferredFromShowTicketId: ticket.showTicketId,
-              transferredFromUserId: currentUser.userId,
-              originalPurchaseDate: ticket.createdAt,
-            },
-          },
-          include: {
-            tournament: {
-              select: {
-                tournamentId: true,
-                name: true,
-                tournamentLogoUrl: true,
-              },
-            },
-          },
-        }),
-      ]);
+        },
+      });
+    });
 
     return {
       message: `Ticket successfully transferred to recipient (${recipientName || dto.recipientPhone}). Your ticket access has been locked.`,
-      originalTicketId: transferredOldTicket.ticketId,
-      originalTicketStatus: transferredOldTicket.status,
+      originalTicketId: ticket.ticketId,
+      originalTicketStatus: TicketStatus.TRANSFERRED,
       recipientTicketId: newIssuedTicket.ticketId,
       recipientShowTicketId: newIssuedTicket.showTicketId,
       recipientName,
       recipientPhone: dto.recipientPhone,
+      transferCount: lineageMetadata.transferCount,
       tournamentName: ticket.tournament?.name,
       seatNumber: ticket.seatNumber,
     };

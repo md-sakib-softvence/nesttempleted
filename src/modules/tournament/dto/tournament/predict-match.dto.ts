@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsNumber, IsString, Min, Max } from 'class-validator';
+import { IsNotEmpty, IsInt, IsString, Min, Max } from 'class-validator';
 
 export class PredictMatchDto {
   @ApiProperty({
@@ -19,20 +19,12 @@ export class PredictMatchDto {
   predictedWinnerId: string;
 
   @ApiProperty({
-    description: 'Points/coins wagered on this prediction (min 20, max 500)',
+    description: 'Prediction coins wagered (min 20, max 500)',
     example: 100,
   })
-  @IsNumber()
+  @IsInt()
   @Min(20)
   @Max(500)
-  wagerPoints: number;
+  wagerCoins: number;
 
-  @ApiProperty({
-    description:
-      'Odds multiplier for the selected outcome (e.g. 1.85, 2.10, 3.10)',
-    example: 1.85,
-  })
-  @IsNumber()
-  @Min(1.0)
-  odds: number;
 }

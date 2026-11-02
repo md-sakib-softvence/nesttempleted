@@ -55,6 +55,7 @@ model Tournament {
   ticketTiers       TicketTier[]
   payments          Payment[]
   fanApplications   FanTournamentApplication[]
+  predictions       FanPrediction[]
   guidelines        TournamentGuideline[]
 }
 

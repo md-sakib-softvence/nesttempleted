@@ -25,6 +25,8 @@ model Fan {
   tickets                Ticket[]
   wallet                 Wallet?
   tournamentApplications FanTournamentApplication[]
+  predictions            FanPrediction[]
+  coinTransactions       FanCoinTransaction[]
 
   @@index([gamerTag])
 }

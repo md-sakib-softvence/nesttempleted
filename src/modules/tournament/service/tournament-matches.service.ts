@@ -1110,7 +1110,84 @@ export class TournamentMatchesService {
       data: { schedule: schedule },
     });
 
+    if (match.status === 'COMPLETED' && match.score1 !== null && match.score2 !== null) {
+      await this.settleFanPredictions(tournament.tournamentId, match);
+    } else if (match.status === 'CANCELLED') {
+      await this.voidFanPredictions(tournament.tournamentId, match.id);
+    }
+
     return match;
+  }
+
+  private async settleFanPredictions(tournamentId: string, match: any) {
+    const resolvedWinnerId = match.score1 === match.score2
+      ? 'DRAW'
+      : match.score1 > match.score2
+        ? match.player1Id
+        : match.player2Id;
+    const pending = await this.prisma.fanPrediction.findMany({
+      where: { tournamentId, matchId: match.id, status: 'PENDING' },
+    });
+    if (!pending.length) return;
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const prediction of pending) {
+        const won = prediction.predictedWinnerId === resolvedWinnerId;
+        const result = await tx.fanPrediction.updateMany({
+          where: { id: prediction.id, status: 'PENDING' },
+          data: { status: won ? 'WON' : 'LOST', settledAt: new Date() },
+        });
+        if (result.count !== 1 || !won) continue;
+
+        const fan = await tx.fan.update({
+          where: { fanId: prediction.fanId },
+          data: { coins: { increment: prediction.potentialPayout } },
+          select: { coins: true },
+        });
+        await tx.fanCoinTransaction.create({
+          data: {
+            fanId: prediction.fanId,
+            predictionId: prediction.id,
+            type: 'PREDICTION_PAYOUT',
+            amount: prediction.potentialPayout,
+            balanceAfter: fan.coins,
+            description: `Prediction won: ${match.id}`,
+          },
+        });
+      }
+    });
+  }
+
+  private async voidFanPredictions(tournamentId: string, matchId: string) {
+    const pending = await this.prisma.fanPrediction.findMany({
+      where: { tournamentId, matchId, status: 'PENDING' },
+    });
+    if (!pending.length) return;
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const prediction of pending) {
+        const updated = await tx.fanPrediction.updateMany({
+          where: { id: prediction.id, status: 'PENDING' },
+          data: { status: 'VOID', settledAt: new Date() },
+        });
+        if (updated.count !== 1) continue;
+        const fan = await tx.fan.update({
+          where: { fanId: prediction.fanId },
+          data: { coins: { increment: prediction.stakeCoins } },
+          select: { coins: true },
+        });
+        await tx.fanCoinTransaction.create({
+          data: {
+            fanId: prediction.fanId,
+            predictionId: prediction.id,
+            type: 'PREDICTION_REFUND',
+            amount: prediction.stakeCoins,
+            balanceAfter: fan.coins,
+            description: `Prediction refunded: match ${matchId} was cancelled`,
+          },
+        });
+      }
+    });
   }
 
   /**
@@ -1297,6 +1374,8 @@ export class TournamentMatchesService {
         version: { increment: 1 },
       },
     });
+
+    await this.settleFanPredictions(foundTourn.tournamentId, foundMatch);
 
     return {
       match: {

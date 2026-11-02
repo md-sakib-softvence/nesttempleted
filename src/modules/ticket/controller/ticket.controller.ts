@@ -155,7 +155,15 @@ export class TicketController {
   }
 
   @Get('recent-scans')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    Role.SECURITY_GUARD,
+    Role.EMPLOYEE,
+    Role.MANAGER,
+    'SECURITY',
+  )
   @ApiOperation({
     summary: 'Get recent venue entrance scan logs across all security guards',
   })

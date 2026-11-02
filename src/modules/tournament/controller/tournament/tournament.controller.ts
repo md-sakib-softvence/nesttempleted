@@ -194,6 +194,22 @@ export class TournamentController {
     });
   }
 
+  @Get('prediction-fixtures')
+  @Public()
+  @ApiOperation({ summary: 'Get real, unresolved prediction fixtures from live tournaments' })
+  async getAllPredictionFixtures() {
+    const data = await this.tournamentService.getAllLivePredictionFixtures();
+    return sendResponse({ message: 'Live prediction fixtures retrieved successfully', data });
+  }
+
+  @Get('my-predictions')
+  @Roles(Role.FAN, 'fan')
+  @ApiOperation({ summary: 'Get the authenticated fan prediction history and current coin balance' })
+  async getMyPredictions(@Req() req: any) {
+    const data = await this.tournamentService.getFanPredictionHistory(req?.user?.userId);
+    return sendResponse({ message: 'Prediction history retrieved successfully', data });
+  }
+
   @Get(':id')
   @Public()
   @ApiOperation({ summary: 'Get a Tournament by ID' })
@@ -546,7 +562,7 @@ export class TournamentController {
   }
 
   @Post(':id/predict')
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.FAN, 'fan', Role.PLAYER, 'player')
+  @Roles(Role.FAN, 'fan')
   @ApiOperation({
     summary: 'Lock in coin prediction for a live tournament match',
   })
