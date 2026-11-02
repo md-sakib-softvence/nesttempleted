@@ -49,6 +49,12 @@ ENV NODE_ENV=production
 
 EXPOSE 3000
 
+# Startup migration policy:
+# - Generate the Prisma Client and apply pending migrations on every container start.
+# - Stop immediately if a migration fails; do not start the API against an outdated schema.
+# - Docker restart retries cannot force past a failed Prisma migration (for example P3009).
+#   Resolve the failed migration safely, then restart the container. Never reset production data here.
+# Do not run `npx prisma migrate deploy --force`; Prisma Migrate has no --force option.
 CMD ["bash", "-c", "set -e; \
   echo '⚙️  Generating Prisma Client...'; \
   npx prisma generate; \
