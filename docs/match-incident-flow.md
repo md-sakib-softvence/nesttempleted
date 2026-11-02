@@ -18,14 +18,14 @@ Resolving an incident never starts or completes the match automatically. Existin
 
 All routes use the `/api/v1` prefix and bearer authentication.
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| POST | `/tournaments/:id/matches/:matchId/disputes` | Report with `{ "reason": "Hardware failure", "notes": "Controller disconnected" }` |
-| GET | `/disputes?tournamentId=:id` | Review list; tournament filter is optional |
-| GET | `/disputes/:id` | Full persisted report details |
-| PATCH | `/disputes/:id` | Resolve with `{ "resolution": "RESOLVED", "reason": "Controller replaced", "expectedVersion": 1 }` |
-| POST | `/tournaments/:id/matches/:matchId/resume` | Explicitly restart the cleared match |
-| POST | `/tournaments/:id/matches/:matchId/score` | Submit the final score after restart |
+| Method | Route                                        | Purpose                                                                                            |
+| ------ | -------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| POST   | `/tournaments/:id/matches/:matchId/disputes` | Report with `{ "reason": "Hardware failure", "notes": "Controller disconnected" }`                 |
+| GET    | `/disputes?tournamentId=:id`                 | Review list; tournament filter is optional                                                         |
+| GET    | `/disputes/:id`                              | Full persisted report details                                                                      |
+| PATCH  | `/disputes/:id`                              | Resolve with `{ "resolution": "RESOLVED", "reason": "Controller replaced", "expectedVersion": 1 }` |
+| POST   | `/tournaments/:id/matches/:matchId/resume`   | Explicitly restart the cleared match                                                               |
+| POST   | `/tournaments/:id/matches/:matchId/score`    | Submit the final score after restart                                                               |
 
 ## Socket delivery
 
