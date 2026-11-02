@@ -628,7 +628,7 @@ export class TournamentMatchesService {
     }
 
     const schedule = tournament.schedule as any;
-    let matches: any[] = schedule?.structure?.matches || [];
+    let matches: any[] = schedule?.structure?.matches || schedule?.matches || [];
     const summary = schedule?.structure?.summary || {};
 
     if (filter) {

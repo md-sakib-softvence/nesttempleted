@@ -57,6 +57,21 @@ model Tournament {
   fanApplications   FanTournamentApplication[]
   predictions       FanPrediction[]
   guidelines        TournamentGuideline[]
+  staffAssignments  TournamentStaffAssignment[]
+}
+
+model TournamentStaffAssignment {
+  id           String     @id @default(uuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+  employeeId   String
+  employee     Employee   @relation(fields: [employeeId], references: [employeeId], onDelete: Restrict)
+  matchId      String
+  assignedAt   DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([tournamentId, matchId])
+  @@index([employeeId, tournamentId])
 }
 
 /// Structured rules, terms, and policy content for a tournament.

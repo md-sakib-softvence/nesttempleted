@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Patch,
+  Put,
   Delete,
   Body,
   Param,
@@ -409,6 +410,49 @@ export class TournamentController {
       data,
       meta: data.meta,
     });
+  }
+
+  @Get(':id/staff-assignments')
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'manager', 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Get persisted employee assignments for a tournament' })
+  async getStaffAssignments(@Param('id') id: string) {
+    const data = await this.tournamentService.getTournamentStaffAssignments(id);
+    return sendResponse({ message: 'Tournament staff assignments retrieved', data });
+  }
+
+  @Put(':id/matches/:matchId/staff-assignment')
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'manager', 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Assign an active employee to a tournament match' })
+  async assignMatchStaff(
+    @Param('id') id: string,
+    @Param('matchId') matchId: string,
+    @Body() body: { employeeId: string },
+  ) {
+    const data = await this.tournamentService.assignTournamentMatchStaff(
+      id,
+      matchId,
+      body?.employeeId,
+    );
+    return sendResponse({ message: 'Employee assigned to match', data });
+  }
+
+  @Delete(':id/matches/:matchId/staff-assignment')
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'manager', 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Remove employee assignment from a tournament match' })
+  async unassignMatchStaff(
+    @Param('id') id: string,
+    @Param('matchId') matchId: string,
+  ) {
+    const data = await this.tournamentService.unassignTournamentMatchStaff(id, matchId);
+    return sendResponse({ message: 'Employee unassigned from match', data });
+  }
+
+  @Post(':id/staff-assignments/auto-assign')
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'manager', 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Round-robin assign active employees to unassigned matches' })
+  async autoAssignStaff(@Param('id') id: string) {
+    const data = await this.tournamentService.autoAssignTournamentStaff(id);
+    return sendResponse({ message: 'Active employees assigned to open matches', data });
   }
 
   @Post(':id/matches/:matchId/self-book')

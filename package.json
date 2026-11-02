@@ -18,6 +18,7 @@
     "seed:schedule-demo": "ts-node prisma/seeds/schedule-demo.seed.ts",
     "seed:overview-demo": "ts-node prisma/seeds/overview-demo.seed.ts",
     "seed:prediction-demo": "ts-node prisma/seeds/prediction-demo.seed.ts",
+    "seed:match-assignments-demo": "ts-node prisma/seeds/match-assignment-demo.seed.ts",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "postinstall": "prisma generate",
     "test": "jest",

@@ -97,6 +97,156 @@ export class TournamentService {
     return this.core.getTournamentById(id, include);
   }
 
+  async getTournamentStaffAssignments(tournamentId: string) {
+    const tournament = await this.prisma.tournament.findFirst({
+      where: { tournamentId, isDeleted: false },
+      select: { tournamentId: true },
+    });
+    if (!tournament) throw new NotFoundException('Tournament not found');
+
+    return this.prisma.tournamentStaffAssignment.findMany({
+      where: { tournamentId },
+      include: {
+        employee: {
+          select: {
+            employeeId: true,
+            showEmployeeId: true,
+            name: true,
+            email: true,
+            role: true,
+            state: true,
+            profileImage: true,
+          },
+        },
+      },
+      orderBy: { assignedAt: 'asc' },
+    });
+  }
+
+  async assignTournamentMatchStaff(
+    tournamentId: string,
+    matchId: string,
+    employeeId: string,
+  ) {
+    if (!employeeId?.trim()) throw new BadRequestException('Employee is required');
+    const tournament = await this.prisma.tournament.findFirst({
+      where: { tournamentId, isDeleted: false },
+      select: { tournamentId: true, schedule: true },
+    });
+    if (!tournament) throw new NotFoundException('Tournament not found');
+
+    const matches = this.getAssignableScheduleMatches(tournament.schedule);
+    if (!matches.some((match) => String(match.id) === matchId)) {
+      throw new NotFoundException('Match does not belong to this tournament schedule');
+    }
+
+    const employee = await this.prisma.employee.findFirst({
+      where: {
+        employeeId,
+        state: 'ACTIVE',
+        isDeleted: false,
+      },
+      select: { employeeId: true },
+    });
+    if (!employee) {
+      throw new BadRequestException('Select an active employee account');
+    }
+
+    return this.prisma.tournamentStaffAssignment.upsert({
+      where: { tournamentId_matchId: { tournamentId, matchId } },
+      create: { tournamentId, matchId, employeeId: employee.employeeId },
+      update: { employeeId: employee.employeeId },
+      include: {
+        employee: {
+          select: {
+            employeeId: true,
+            showEmployeeId: true,
+            name: true,
+            email: true,
+            role: true,
+            state: true,
+            profileImage: true,
+          },
+        },
+      },
+    });
+  }
+
+  async unassignTournamentMatchStaff(tournamentId: string, matchId: string) {
+    const tournament = await this.prisma.tournament.findFirst({
+      where: { tournamentId, isDeleted: false },
+      select: { tournamentId: true },
+    });
+    if (!tournament) throw new NotFoundException('Tournament not found');
+
+    await this.prisma.tournamentStaffAssignment.deleteMany({
+      where: { tournamentId, matchId },
+    });
+    return { tournamentId, matchId, assigned: false };
+  }
+
+  async autoAssignTournamentStaff(tournamentId: string) {
+    const tournament = await this.prisma.tournament.findFirst({
+      where: { tournamentId, isDeleted: false },
+      select: { tournamentId: true, schedule: true },
+    });
+    if (!tournament) throw new NotFoundException('Tournament not found');
+
+    const matches = this.getAssignableScheduleMatches(tournament.schedule);
+    if (matches.length === 0) {
+      throw new BadRequestException('Generate and publish tournament matches before assigning staff');
+    }
+    const employees = await this.prisma.employee.findMany({
+      where: { state: 'ACTIVE', isDeleted: false },
+      select: { employeeId: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (employees.length === 0) {
+      throw new BadRequestException('There are no active employees available to assign');
+    }
+
+    const existing = await this.prisma.tournamentStaffAssignment.findMany({
+      where: { tournamentId },
+      select: { matchId: true },
+    });
+    const assignedIds = new Set(existing.map((assignment) => assignment.matchId));
+    const unassigned = matches.filter((match) => !assignedIds.has(String(match.id)));
+
+    const creates = unassigned.map((match: any, index: number) =>
+      this.prisma.tournamentStaffAssignment.create({
+        data: {
+          tournamentId,
+          matchId: String(match.id),
+          employeeId: employees[index % employees.length].employeeId,
+        },
+      }),
+    );
+    if (creates.length > 0) await this.prisma.$transaction(creates);
+
+    return {
+      assignedCount: unassigned.length,
+      assignments: await this.getTournamentStaffAssignments(tournamentId),
+    };
+  }
+
+  private getAssignableScheduleMatches(scheduleValue: unknown): any[] {
+    const schedule = scheduleValue as any;
+    if (Array.isArray(schedule)) {
+      return schedule.flatMap((venue: any) =>
+        (venue?.screens || []).flatMap((screen: any) =>
+          (screen?.days || []).flatMap((day: any) =>
+            (day?.timeslots || [])
+              .map((slot: any) => slot?.game)
+              .filter((match: any) => match?.id),
+          ),
+        ),
+      );
+    }
+    const canonical = schedule?.structure?.matches || schedule?.matches;
+    if (Array.isArray(canonical)) return canonical.filter((match: any) => match?.id);
+    return [];
+  }
+
   async updateTournament(id: string, updateTournamentDto: UpdateTournamentDto) {
     return this.core.updateTournament(id, updateTournamentDto);
   }
