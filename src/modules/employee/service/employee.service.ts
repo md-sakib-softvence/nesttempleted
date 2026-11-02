@@ -233,6 +233,33 @@ export class EmployeeService {
     };
   }
 
+  async getPublicEmployeeById(id: string) {
+    if (!id) throw new NotFoundException('Employee ID is required');
+
+    const employee = await this.prisma.employee.findFirst({
+      where: {
+        OR: [{ employeeId: id }, { showEmployeeId: id }],
+        isDeleted: false,
+      },
+      select: {
+        employeeId: true,
+        showEmployeeId: true,
+        name: true,
+        role: true,
+        state: true,
+        profileImage: true,
+      },
+    });
+
+    if (!employee) throw new NotFoundException('Employee not found');
+    return {
+      ...employee,
+      profileImage: employee.profileImage
+        ? await getPreSignedUrl(employee.profileImage)
+        : null,
+    };
+  }
+
   async getEmployeePass(id: string) {
     const employee = await this.getEmployeeById(id);
     const qrToken = `STAFF:${employee.role}:${employee.employeeId}:${employee.showEmployeeId}`;
@@ -255,6 +282,30 @@ export class EmployeeService {
             : 'Event Logistics & Umpire Desk',
       status: employee.state,
     };
+  }
+
+  async getMyTournamentStaffAssignments(employeeId: string) {
+    const employee = await this.prisma.employee.findFirst({
+      where: { employeeId, isDeleted: false, state: 'ACTIVE' },
+      select: { employeeId: true },
+    });
+    if (!employee) throw new NotFoundException('Active employee account not found');
+
+    return this.prisma.tournamentStaffAssignment.findMany({
+      where: { employeeId: employee.employeeId },
+      include: {
+        tournament: {
+          select: {
+            tournamentId: true,
+            name: true,
+            gameTitle: true,
+            startDate: true,
+            schedule: true,
+          },
+        },
+      },
+      orderBy: { assignedAt: 'asc' },
+    });
   }
 
   async getEmployeeMarketingData(id: string, query: QueryOptions = {}) {
@@ -314,7 +365,7 @@ export class EmployeeService {
               gender: true,
               ageRange: true,
               status: true,
-              topPoint: true,
+              coins: true,
               favoriteGame: true,
               profileImage: true,
               username: true,

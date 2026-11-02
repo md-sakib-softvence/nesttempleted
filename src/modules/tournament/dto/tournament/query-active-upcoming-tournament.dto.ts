@@ -1,7 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
-import { TournamentStatus } from '@prisma/client';
+import { TournamentGameType, TournamentStatus } from '@prisma/client';
 import { QueryOptions } from '../../../utils/query.util';
 
 export class QueryActiveUpcomingTournamentDto implements QueryOptions {
@@ -34,6 +34,11 @@ export class QueryActiveUpcomingTournamentDto implements QueryOptions {
   })
   @IsOptional()
   status?: TournamentStatus | 'ALL';
+
+  @ApiPropertyOptional({ enum: TournamentGameType })
+  @IsOptional()
+  @IsEnum(TournamentGameType)
+  gameType?: TournamentGameType;
 
   @ApiPropertyOptional({
     description: 'Field to sort by (e.g. startDate, name, createdAt)',

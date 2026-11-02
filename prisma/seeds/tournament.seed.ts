@@ -6,6 +6,7 @@ import {
   RegistrationCutOffMode,
   FrequencyStatus,
   TournamentStatus,
+  TournamentGameType,
   SchedulingMode,
   TicketType
 } from '@prisma/client';
@@ -17,6 +18,7 @@ export const seedTournaments = async (prisma: PrismaClient) => {
     {
       name: 'EA SPORTS FC 26 Championship Cup',
       gameTitle: 'FC 26',
+      gameType: TournamentGameType.FOOTBALL,
       tournamentFormat: TournamentFormat.LEAGUE_AND_KNOCKOUT,
       numberOfTeams: 16,
       entryFee: 25.0,
@@ -95,6 +97,7 @@ export const seedTournaments = async (prisma: PrismaClient) => {
     {
       name: 'Valorant Champions Invitational 2026',
       gameTitle: 'Valorant',
+      gameType: TournamentGameType.OTHER,
       tournamentFormat: TournamentFormat.SINGLE_ELIMINATION,
       numberOfTeams: 8,
       entryFee: 50.0,
@@ -173,6 +176,7 @@ export const seedTournaments = async (prisma: PrismaClient) => {
     {
       name: 'eFootball 2026 Super Clash',
       gameTitle: 'eFootball 2026',
+      gameType: TournamentGameType.FOOTBALL,
       tournamentFormat: TournamentFormat.LEAGUE,
       numberOfTeams: 12,
       entryFee: 15.0,
@@ -251,6 +255,7 @@ export const seedTournaments = async (prisma: PrismaClient) => {
     {
       name: 'Tekken 8 King of Iron Fist Tour',
       gameTitle: 'Tekken 8',
+      gameType: TournamentGameType.OTHER,
       tournamentFormat: TournamentFormat.DOUBLE_ELIMINATION,
       numberOfTeams: 16,
       entryFee: 20.0,
@@ -329,6 +334,10 @@ export const seedTournaments = async (prisma: PrismaClient) => {
       });
       console.log(`✅ Seeded tournament: "${created.name}" (${created.gameTitle} - ${created.status})`);
     } else {
+      await prisma.tournament.update({
+        where: { tournamentId: existing.tournamentId },
+        data: { gameType: t.gameType },
+      });
       console.log(`ℹ️ Tournament "${t.name}" already exists, skipping.`);
     }
   }

@@ -24,6 +24,7 @@ import {
   FrequencyStatus,
   TournamentStatus,
   SchedulingMode,
+  TournamentGameType,
 } from '@prisma/client';
 import { CreateSponsorDto } from '../sponsor/create-sponsor.dto';
 import { CreateVenueDto } from '../venue/create-venue.dto';
@@ -102,6 +103,12 @@ export class CreateTournamentDto {
   @IsString()
   @IsOptional()
   gameTitle?: string;
+
+  @ApiProperty({ enum: TournamentGameType, default: TournamentGameType.OTHER })
+  @Transform(({ value }) => value || TournamentGameType.OTHER)
+  @IsEnum(TournamentGameType)
+  @IsOptional()
+  gameType?: TournamentGameType;
 
   @ApiPropertyOptional({ description: 'Game Title Alias', example: 'EAFC 25' })
   @IsOptional()

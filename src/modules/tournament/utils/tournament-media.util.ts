@@ -1,5 +1,15 @@
 import { getPreSignedUrl } from '../../utils/s3.util';
 
+const isHttpUrl = (value: string) => /^https?:\/\//i.test(value);
+const isStoredDocumentKey = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.[a-z0-9]+$/i.test(value) ||
+  /\.(pdf|doc|docx|txt|rtf|png|jpe?g)$/i.test(value);
+
+const presignLegacyDocument = async (value: string) => {
+  if (isHttpUrl(value) || !isStoredDocumentKey(value)) return value;
+  return getPreSignedUrl(value);
+};
+
 /**
  * Normalizes tournament media, venues, costs, prizes, registrations, and schedule settings
  * into consistent canonical frontend types.
@@ -45,23 +55,13 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
 
   if (formatted.rules && Array.isArray(formatted.rules)) {
     formatted.rules = await Promise.all(
-      formatted.rules.map(async (rule: string) => {
-        if (rule.includes('http://') || rule.includes('https://')) {
-          return rule;
-        }
-        return getPreSignedUrl(rule);
-      }),
+      formatted.rules.map((rule: string) => presignLegacyDocument(rule)),
     );
   }
 
   if (formatted.tsAndTc && Array.isArray(formatted.tsAndTc)) {
     formatted.tsAndTc = await Promise.all(
-      formatted.tsAndTc.map(async (doc: string) => {
-        if (doc.includes('http://') || doc.includes('https://')) {
-          return doc;
-        }
-        return getPreSignedUrl(doc);
-      }),
+      formatted.tsAndTc.map((doc: string) => presignLegacyDocument(doc)),
     );
   }
 
@@ -85,6 +85,21 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
 
   // Prevent leaking massive 15MB+ raw schedule payload (matches, slots) into HTTP responses
   delete formatted.schedulePayload;
+
+  // Claim QR tokens are returned only by the authenticated participant's
+  // raffle endpoint. Tournament listings/details must never expose them.
+  if (Array.isArray(formatted.raffles)) {
+    formatted.raffles = formatted.raffles.map((raffle: any) => {
+      const winners = Array.isArray(raffle.winners) ? raffle.winners : [];
+      return {
+        ...raffle,
+        winners: winners.map(({ qrCodeString, ...winner }: any) => ({
+          ...winner,
+          claimAvailable: Boolean(qrCodeString),
+        })),
+      };
+    });
+  }
 
   // Canonical Frontend Fields
   formatted.id = formatted.tournamentId;
@@ -129,13 +144,41 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
         : 70,
   };
 
+  // `prizePool` is a calculated value, not a column on Tournament. Expose the
+  // calculated amount on list responses so clients do not have to guess it.
+  if (formatted.prizePoolAmount === undefined) {
+    const confirmedRegistrations = Array.isArray(formatted.registrations)
+      ? formatted.registrations.filter(
+          (registration: any) =>
+            String(registration?.status || '').toUpperCase() === 'CONFIRMED',
+        ).length
+      : 0;
+    const entryFee = Number(formatted.entryFee || 0);
+    const percentage = Number(formatted.percentage ?? 70);
+    const fixedPrizeTotal = Array.isArray(formatted.manageEventPrizes)
+      ? formatted.manageEventPrizes.reduce(
+          (sum: number, prize: any) => sum + Number(prize?.amount || 0),
+          0,
+        )
+      : 0;
+
+    formatted.prizePoolAmount =
+      formatted.prizeRule === 'FIXED_AMOUNT'
+        ? fixedPrizeTotal
+        : (confirmedRegistrations * entryFee * percentage) / 100;
+    formatted.prizePoolCurrency = formatted.currency;
+  }
+
   formatted.logo = formatted.tournamentLogoUrl || formatted.canvasImage || null;
   formatted.organizerLogo = formatted.playerOrgUrl || formatted.prOrgUrl || '';
   formatted.secondaryOrganizerLogo = formatted.secondaryOrganizerLogo || null;
   formatted.fanPassArtUrl = formatted.canvasImage || null;
-  formatted.rulesUrl = (formatted.rules && formatted.rules[0]) || '';
+  formatted.rulesUrl =
+    (formatted.rules && formatted.rules.find((value: string) => isHttpUrl(value))) ||
+    '';
   formatted.termsAndConditionsUrl =
-    (formatted.tsAndTc && formatted.tsAndTc[0]) || '';
+    (formatted.tsAndTc && formatted.tsAndTc.find((value: string) => isHttpUrl(value))) ||
+    '';
   formatted.termsAndConditions = formatted.tsAndTc || [];
   formatted.seriesId =
     formatted.seriesTournaments?.[0]?.seriesId || formatted.seriesId || null;

@@ -52,12 +52,12 @@ export class TicketController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Initialize ticket purchase with Flutterwave checkout URL & seat calculation',
+      'Initialize ticket purchase with Flutterwave checkout URL & capacity check',
   })
   @ApiResponse({
     status: 200,
     description:
-      'Returns Flutterwave paymentLink, txRef, price calculation, and seat number',
+      'Returns Flutterwave paymentLink, txRef, price calculation, and capacity information',
   })
   async purchaseTicket(@Req() req: Request, @Body() dto: PurchaseTicketDto) {
     const user = (req as any).user;
@@ -139,7 +139,15 @@ export class TicketController {
    * 5. QR Code Venue Check-In (Scanner Parity with QRScannerModal)
    */
   @Post('check-in')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    Role.SECURITY_GUARD,
+    Role.EMPLOYEE,
+    Role.MANAGER,
+    'SECURITY',
+  )
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
@@ -155,7 +163,15 @@ export class TicketController {
   }
 
   @Get('recent-scans')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    Role.SECURITY_GUARD,
+    Role.EMPLOYEE,
+    Role.MANAGER,
+    'SECURITY',
+  )
   @ApiOperation({
     summary: 'Get recent venue entrance scan logs across all security guards',
   })
@@ -228,7 +244,7 @@ export class TicketController {
   @Public()
   @ApiOperation({
     summary:
-      'Get seat capacity, remaining seats, revenue, and tier breakdown for a tournament',
+      'Get ticket capacity, remaining passes, revenue, and tier breakdown for a tournament',
   })
   @ApiParam({ name: 'tournamentId', description: 'Tournament ID' })
   async getTournamentSummary(@Param('tournamentId') tournamentId: string) {
@@ -237,7 +253,7 @@ export class TicketController {
         tournamentId,
       );
     return sendResponse({
-      message: 'Tournament ticket and seat calculations retrieved successfully',
+      message: 'Tournament ticket capacity calculations retrieved successfully',
       data,
     });
   }

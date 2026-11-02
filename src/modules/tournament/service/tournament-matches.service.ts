@@ -5,6 +5,7 @@ import {
   ConflictException,
   ForbiddenException,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
@@ -34,6 +35,7 @@ import {
 import { SchedulingMode, Prisma, Role } from '@prisma/client';
 import { presignTournamentMedia } from '../utils/tournament-media.util';
 import { createActivities } from '../../utils/activity.util';
+import { MatchIncidentService } from './match-incident.service';
 
 @Injectable()
 export class TournamentMatchesService {
@@ -42,6 +44,7 @@ export class TournamentMatchesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tournamentScheduleService: TournamentScheduleService,
+    @Optional() private readonly incidents?: MatchIncidentService,
   ) {}
 
   /**
@@ -628,7 +631,7 @@ export class TournamentMatchesService {
     }
 
     const schedule = tournament.schedule as any;
-    let matches: any[] = schedule?.structure?.matches || [];
+    let matches: any[] = schedule?.structure?.matches || schedule?.matches || [];
     const summary = schedule?.structure?.summary || {};
 
     if (filter) {
@@ -676,6 +679,256 @@ export class TournamentMatchesService {
       pagination: meta,
       meta,
     };
+  }
+
+  async verifyTournamentMatchCheckIn(
+    tournamentId: string,
+    matchId: string,
+    qrToken: string,
+    expectedPlayerId: string | undefined,
+    actor: { userId: string; role: string },
+  ) {
+    const tournament = await this.prisma.tournament.findFirst({
+      where: { tournamentId, isDeleted: false },
+      select: { tournamentId: true, schedule: true, entryFee: true },
+    });
+    if (!tournament) throw new NotFoundException('Tournament not found');
+
+    const matches: any[] = (tournament.schedule as any)?.structure?.matches ||
+      (tournament.schedule as any)?.matches || [];
+    const match = matches.find((item) => item.id === matchId || item.canonicalMatchId === matchId);
+    if (!match) throw new NotFoundException('Match not found in this tournament');
+    await this.assertMatchOperator(tournamentId, matchId, actor);
+
+    const registration = await this.resolveRegisteredPlayerFromQr(
+      tournamentId,
+      qrToken,
+      tournament.entryFee <= 0,
+    );
+    const playerId = registration.playerId;
+    if (playerId !== match.player1Id && playerId !== match.player2Id) {
+      throw new BadRequestException('This player is not a participant in the selected match');
+    }
+    if (expectedPlayerId && playerId !== expectedPlayerId) {
+      throw new BadRequestException('Scanned pass does not match the selected player');
+    }
+    if (['COMPLETED', 'CANCELLED', 'UNDER_REVIEW', 'NO_SHOW'].includes(match.status)) {
+      throw new ConflictException(`This match cannot accept check-ins while ${String(match.status).replaceAll('_', ' ').toLowerCase()}`);
+    }
+
+    const checkIns: any[] = Array.isArray(match.checkIns) ? match.checkIns : [];
+    const existingCheckIn = checkIns.find((item) => item.playerId === playerId);
+    return {
+      tournamentId,
+      matchId: match.id,
+      player: {
+        playerId,
+        name: `${registration.player.firstName} ${registration.player.lastName}`.trim() || registration.player.gamerTag || registration.player.username || 'Player',
+        gamerTag: registration.player.gamerTag || registration.player.username || null,
+      },
+      matchStatus: match.status || 'SCHEDULED',
+      alreadyCheckedIn: Boolean(existingCheckIn),
+      checkedInAt: existingCheckIn?.checkedInAt || null,
+      confirmedParticipant: true,
+    };
+  }
+
+  async checkInTournamentMatch(
+    tournamentId: string,
+    matchId: string,
+    qrToken: string,
+    expectedPlayerId: string | undefined,
+    actor: { userId: string; role: string },
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const tournament = await tx.tournament.findFirst({
+        where: { tournamentId, isDeleted: false },
+        select: { tournamentId: true, schedule: true, version: true, entryFee: true },
+      });
+      if (!tournament) throw new NotFoundException('Tournament not found');
+
+      const schedule: any = tournament.schedule || {};
+      const matches: any[] = schedule.structure?.matches || schedule.matches || [];
+      const matchIndex = matches.findIndex((item) => item.id === matchId || item.canonicalMatchId === matchId);
+      if (matchIndex < 0) throw new NotFoundException('Match not found in this tournament');
+      await this.assertMatchOperator(tournamentId, matchId, actor, tx);
+
+      const registration = await this.resolveRegisteredPlayerFromQr(
+        tournamentId,
+        qrToken,
+        tournament.entryFee <= 0,
+        tx,
+      );
+      const match = matches[matchIndex];
+      const playerId = registration.playerId;
+      if (playerId !== match.player1Id && playerId !== match.player2Id) {
+        throw new BadRequestException('This player is not a participant in the selected match');
+      }
+      if (expectedPlayerId && playerId !== expectedPlayerId) {
+        throw new BadRequestException('Scanned pass does not match the selected player');
+      }
+      if (['COMPLETED', 'CANCELLED', 'UNDER_REVIEW', 'NO_SHOW'].includes(match.status)) {
+        throw new ConflictException(`This match cannot accept check-ins while ${String(match.status).replaceAll('_', ' ').toLowerCase()}`);
+      }
+
+      const checkIns: any[] = Array.isArray(match.checkIns) ? match.checkIns : [];
+      const alreadyCheckedIn = checkIns.some((item) => item.playerId === playerId);
+      const checkedInAt = alreadyCheckedIn
+        ? checkIns.find((item) => item.playerId === playerId).checkedInAt
+        : new Date().toISOString();
+      if (!alreadyCheckedIn) {
+        checkIns.push({ playerId, checkedInAt, checkedInByRole: actor.role });
+      }
+
+      const player1CheckedIn = checkIns.some((item) => item.playerId === match.player1Id);
+      const player2CheckedIn = checkIns.some((item) => item.playerId === match.player2Id);
+      match.checkIns = checkIns;
+      if (player1CheckedIn && player2CheckedIn) {
+        match.status = match.resumeRequired ? 'PLAYERS_READY' : 'IN_PROGRESS';
+      }
+      matches[matchIndex] = match;
+      if (schedule.structure) schedule.structure.matches = matches;
+      if (Array.isArray(schedule.matches) || !schedule.structure) schedule.matches = matches;
+      this.syncMatchIntoCalendar(schedule, match);
+
+      const persisted = await tx.tournament.updateMany({
+        where: { tournamentId, version: tournament.version },
+        data: { schedule, version: { increment: 1 } },
+      });
+      if (persisted.count !== 1) {
+        throw new ConflictException('The tournament schedule changed while checking in. Refresh and scan the pass again.');
+      }
+
+      const checkedInCount = Number(player1CheckedIn) + Number(player2CheckedIn);
+      return {
+        tournamentId,
+        matchId: match.id,
+        player: {
+          playerId,
+          name: `${registration.player.firstName} ${registration.player.lastName}`.trim() || registration.player.gamerTag || registration.player.username || 'Player',
+          gamerTag: registration.player.gamerTag || registration.player.username || null,
+        },
+        alreadyCheckedIn,
+        checkedInAt,
+        checkedInCount,
+        playersRequired: 2,
+        allPlayersCheckedIn: checkedInCount === 2,
+        matchStarted: match.status === 'IN_PROGRESS',
+        matchStatus: match.status || 'SCHEDULED',
+      };
+    });
+  }
+
+  async submitAssignedMatchScore(
+    tournamentId: string,
+    matchId: string,
+    dto: UpdateMatchScoreDto,
+    actor: { userId: string; role: string },
+  ) {
+    const tournament = await this.prisma.tournament.findFirst({
+      where: { tournamentId, isDeleted: false },
+      select: { tournamentId: true, schedule: true, tournamentFormat: true },
+    });
+    if (!tournament) throw new NotFoundException('Tournament not found');
+
+    const matches: any[] = (tournament.schedule as any)?.structure?.matches ||
+      (tournament.schedule as any)?.matches || [];
+    const match = matches.find((item) => item.id === matchId || item.canonicalMatchId === matchId);
+    if (!match) throw new NotFoundException('Match not found in this tournament');
+    await this.assertMatchOperator(tournamentId, matchId, actor);
+    if (match.status !== 'IN_PROGRESS') {
+      throw new ConflictException('A match can only receive a final score after it has started');
+    }
+    const checkIns: any[] = Array.isArray(match.checkIns) ? match.checkIns : [];
+    const bothCheckedIn = [match.player1Id, match.player2Id].every((playerId) =>
+      checkIns.some((item) => item.playerId === playerId),
+    );
+    if (!bothCheckedIn) throw new ConflictException('Both participants must be checked in before submitting a score');
+    if (
+      ['SINGLE_ELIMINATION', 'DOUBLE_ELIMINATION'].includes(tournament.tournamentFormat) &&
+      dto.score1 === dto.score2
+    ) {
+      throw new BadRequestException('A knockout match must have a decisive result');
+    }
+
+    return this.updateMatchScore(tournamentId, matchId, {
+      ...dto,
+      status: 'COMPLETED',
+    });
+  }
+
+  private async assertMatchOperator(
+    tournamentId: string,
+    matchId: string,
+    actor: { userId: string; role: string },
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const role = String(actor.role || '').toUpperCase();
+    if (role !== 'EMPLOYEE') return;
+    const assignment = await db.tournamentStaffAssignment.findUnique({
+      where: { tournamentId_matchId: { tournamentId, matchId } },
+      select: { employeeId: true },
+    });
+    if (!assignment || assignment.employeeId !== actor.userId) {
+      throw new ForbiddenException('You can only operate matches assigned to your employee account');
+    }
+  }
+
+  private async resolveRegisteredPlayerFromQr(
+    tournamentId: string,
+    qrToken: string,
+    freeEntry = false,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const token = String(qrToken || '').trim();
+    if (!token) throw new BadRequestException('Player QR token is required');
+    const canonical = /^PLAYER:([^:]+):([^:]+)$/.exec(token);
+    let registration: any = null;
+    if (canonical) {
+      if (canonical[1] !== tournamentId) {
+        throw new BadRequestException('This QR pass belongs to a different tournament');
+      }
+      registration = await db.tournamentRegistration.findFirst({
+        where: { tournamentId, playerId: canonical[2] },
+        include: { player: { select: { playerId: true, firstName: true, lastName: true, gamerTag: true, username: true } } },
+      });
+      if (registration?.qrCodeString && registration.qrCodeString !== token) {
+        throw new BadRequestException('The player QR pass is invalid or expired');
+      }
+    } else {
+      registration = await db.tournamentRegistration.findFirst({
+        where: { tournamentId, qrCodeString: token },
+        include: { player: { select: { playerId: true, firstName: true, lastName: true, gamerTag: true, username: true } } },
+      });
+    }
+    if (!registration || !registration.player) {
+      throw new BadRequestException('No registered player was found for this QR pass');
+    }
+    const registrationConfirmed = registration.status === 'CONFIRMED' ||
+      (freeEntry && registration.status === 'REGISTERED');
+    const paymentConfirmed = ['PAID', 'CONFIRMED'].includes(String(registration.paymentStatus).toUpperCase()) ||
+      (freeEntry && String(registration.paymentStatus).toUpperCase() === 'PENDING');
+    if (!registrationConfirmed || !paymentConfirmed) {
+      throw new ForbiddenException('Only confirmed, paid tournament participants can check in');
+    }
+    return registration;
+  }
+
+  private syncMatchIntoCalendar(schedule: any, match: any) {
+    const venueList = schedule.calendar?.venues || schedule.venueSchedules || [];
+    if (!Array.isArray(venueList)) return;
+    for (const venue of venueList) {
+      for (const screen of venue.screens || []) {
+        for (const day of screen.days || []) {
+          for (const slot of day.timeslots || []) {
+            if (slot.game && (slot.game.id === match.id || slot.game.canonicalMatchId === match.id)) {
+              slot.game.status = match.status;
+              slot.game.checkIns = match.checkIns;
+            }
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -922,9 +1175,11 @@ export class TournamentMatchesService {
     matchId: string,
     dto: UpdateMatchScoreDto,
   ) {
-    const tournament = await this.prisma.tournament.findUnique({
-      where: { tournamentId },
-    });
+    const tournament = tournamentId
+      ? await this.prisma.tournament.findUnique({
+          where: { tournamentId },
+        })
+      : await this.resolveTournamentForMatch(undefined, matchId);
 
     if (!tournament) {
       throw new NotFoundException(`Tournament #${tournamentId} not found`);
@@ -945,6 +1200,9 @@ export class TournamentMatchesService {
     }
 
     const match = matches[matchIndex];
+    if (match.status === 'UNDER_REVIEW' || match.resumeRequired) {
+      throw new ConflictException('Resolve the incident and restart the match before submitting its score');
+    }
     match.score1 = dto.score1;
     match.score2 = dto.score2;
     match.status = dto.status || 'COMPLETED';
@@ -1099,16 +1357,101 @@ export class TournamentMatchesService {
     matches[matchIndex] = match;
     if (schedule.structure) {
       schedule.structure.matches = matches;
-    } else {
+    }
+    if (Array.isArray(schedule.matches) || !schedule.structure) {
       schedule.matches = matches;
     }
 
-    await this.prisma.tournament.update({
-      where: { tournamentId },
-      data: { schedule: schedule },
+    const saved = await this.prisma.tournament.updateMany({
+      where: { tournamentId: tournament.tournamentId, version: tournament.version },
+      data: { schedule, version: { increment: 1 } },
     });
+    if (saved.count !== 1) throw new ConflictException('The match changed while submitting its score. Refresh and try again.');
+
+    if (match.status === 'COMPLETED' && match.score1 !== null && match.score2 !== null) {
+      await this.settleFanPredictions(tournament.tournamentId, match);
+    } else if (match.status === 'CANCELLED') {
+      await this.voidFanPredictions(tournament.tournamentId, match.id);
+    }
+
+    try {
+      await this.incidents?.publishMatchUpdate(tournament.tournamentId, match.id, match.status);
+    } catch (error: any) {
+      this.logger.warn(`Score saved; live match update could not be delivered: ${error?.message || error}`);
+    }
 
     return match;
+  }
+
+  private async settleFanPredictions(tournamentId: string, match: any) {
+    const resolvedWinnerId = match.score1 === match.score2
+      ? 'DRAW'
+      : match.score1 > match.score2
+        ? match.player1Id
+        : match.player2Id;
+    const pending = await this.prisma.fanPrediction.findMany({
+      where: { tournamentId, matchId: match.id, status: 'PENDING' },
+    });
+    if (!pending.length) return;
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const prediction of pending) {
+        const won = prediction.predictedWinnerId === resolvedWinnerId;
+        const result = await tx.fanPrediction.updateMany({
+          where: { id: prediction.id, status: 'PENDING' },
+          data: { status: won ? 'WON' : 'LOST', settledAt: new Date() },
+        });
+        if (result.count !== 1 || !won) continue;
+
+        const fan = await tx.fan.update({
+          where: { fanId: prediction.fanId },
+          data: { coins: { increment: prediction.potentialPayout } },
+          select: { coins: true },
+        });
+        await tx.fanCoinTransaction.create({
+          data: {
+            fanId: prediction.fanId,
+            predictionId: prediction.id,
+            type: 'PREDICTION_PAYOUT',
+            amount: prediction.potentialPayout,
+            balanceAfter: fan.coins,
+            description: `Prediction won: ${match.id}`,
+          },
+        });
+      }
+    });
+  }
+
+  private async voidFanPredictions(tournamentId: string, matchId: string) {
+    const pending = await this.prisma.fanPrediction.findMany({
+      where: { tournamentId, matchId, status: 'PENDING' },
+    });
+    if (!pending.length) return;
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const prediction of pending) {
+        const updated = await tx.fanPrediction.updateMany({
+          where: { id: prediction.id, status: 'PENDING' },
+          data: { status: 'VOID', settledAt: new Date() },
+        });
+        if (updated.count !== 1) continue;
+        const fan = await tx.fan.update({
+          where: { fanId: prediction.fanId },
+          data: { coins: { increment: prediction.stakeCoins } },
+          select: { coins: true },
+        });
+        await tx.fanCoinTransaction.create({
+          data: {
+            fanId: prediction.fanId,
+            predictionId: prediction.id,
+            type: 'PREDICTION_REFUND',
+            amount: prediction.stakeCoins,
+            balanceAfter: fan.coins,
+            description: `Prediction refunded: match ${matchId} was cancelled`,
+          },
+        });
+      }
+    });
   }
 
   /**
@@ -1296,6 +1639,8 @@ export class TournamentMatchesService {
       },
     });
 
+    await this.settleFanPredictions(foundTourn.tournamentId, foundMatch);
+
     return {
       match: {
         id: foundMatch.id,
@@ -1312,105 +1657,17 @@ export class TournamentMatchesService {
   /**
    * File a dispute for a match
    */
-  async disputeMatch(matchId: string, dto: CreateMatchDisputeDto) {
-    const tournaments = await this.prisma.tournament.findMany({
-      where: { schedule: { not: Prisma.JsonNull } },
-    });
-
-    let foundTourn: any = null;
-    let foundMatch: any = null;
-
-    for (const t of tournaments) {
-      const schedule = (t.schedule as any) || {};
-      const matches: any[] = schedule.matches || [];
-      const match = matches.find((m: any) => m.id === matchId);
-      if (match) {
-        foundTourn = t;
-        foundMatch = match;
-        break;
-      }
-    }
-
-    if (!foundTourn || !foundMatch) {
-      throw new NotFoundException(`Match with ID '${matchId}' not found`);
-    }
-
-    foundMatch.status = 'UNDER_REVIEW';
-    foundMatch.version = (foundMatch.version || 1) + 1;
-
-    await this.prisma.tournament.update({
-      where: { tournamentId: foundTourn.tournamentId },
-      data: {
-        schedule: foundTourn.schedule,
-      },
-    });
-
-    const dispute = await this.prisma.matchDispute.create({
-      data: {
-        matchId,
-        tournamentId: foundTourn.tournamentId,
-        reason: dto.reason,
-        status: 'UNDER_REVIEW',
-      },
-    });
-
-    return {
-      matchId: foundMatch.id,
-      status: 'UNDER_REVIEW',
-      disputeId: dispute.disputeId,
-    };
+  async disputeMatch(matchId: string, dto: CreateMatchDisputeDto, actor: { userId: string; role: string }) {
+    if (!this.incidents) throw new BadRequestException('Match incident service is unavailable');
+    return this.incidents.create(undefined, matchId, dto, actor);
   }
 
   /**
    * Resolves a match dispute with outcome status
    */
-  async resolveMatchDispute(disputeId: string, dto: UpdateMatchDisputeDto) {
-    const dispute = await this.prisma.matchDispute.findUnique({
-      where: { disputeId },
-    });
-    if (!dispute) {
-      throw new NotFoundException(`Dispute with ID '${disputeId}' not found`);
-    }
-
-    const updatedDispute = await this.prisma.matchDispute.update({
-      where: { disputeId },
-      data: {
-        status: dto.resolution,
-        resolution: dto.reason,
-        resolvedAt: new Date(),
-        version: { increment: 1 },
-      },
-    });
-
-    if (dispute.tournamentId) {
-      const tourn = await this.prisma.tournament.findUnique({
-        where: { tournamentId: dispute.tournamentId },
-      });
-      if (tourn && tourn.schedule) {
-        const schedule = tourn.schedule as any;
-        const match = (schedule.matches || []).find(
-          (m: any) => m.id === dispute.matchId,
-        );
-        if (match) {
-          match.status =
-            match.score1 !== null && match.score2 !== null
-              ? 'COMPLETED'
-              : 'SCHEDULED';
-          match.version = (match.version || 1) + 1;
-          await this.prisma.tournament.update({
-            where: { tournamentId: tourn.tournamentId },
-            data: { schedule },
-          });
-        }
-      }
-    }
-
-    return {
-      disputeId: updatedDispute.disputeId,
-      status: updatedDispute.status,
-      resolution: updatedDispute.resolution,
-      resolvedAt: updatedDispute.resolvedAt,
-    };
+  async resolveMatchDispute(disputeId: string, dto: UpdateMatchDisputeDto, actor: { userId: string; role: string }) {
+    if (!this.incidents) throw new BadRequestException('Match incident service is unavailable');
+    return this.incidents.resolve(disputeId, dto, actor);
   }
 
   /**
@@ -2197,6 +2454,8 @@ export class TournamentMatchesService {
         if (
           isAllocated ||
           isCompleted ||
+            match.status === 'UNDER_REVIEW' ||
+            match.resumeRequired ||
           match.isAutoAdvance ||
           match.conditional ||
           match.isSchedulable === false

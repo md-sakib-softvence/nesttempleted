@@ -38,6 +38,7 @@ import {
   RegistrationCutOffMode,
   FrequencyStatus,
   TournamentStatus,
+  TournamentGameType,
 } from '@prisma/client';
 import { normalizeStringArray } from '../utils/file-upload.util';
 
@@ -189,6 +190,7 @@ export class TournamentCoreService {
           createTournamentDto.gameTitle ||
           (createTournamentDto as any).game ||
           'EAFC 25',
+        gameType: createTournamentDto.gameType || TournamentGameType.OTHER,
         tournamentFormat:
           createTournamentDto.tournamentFormat ||
           TournamentFormat.SINGLE_ELIMINATION,
@@ -506,6 +508,7 @@ export class TournamentCoreService {
           tournamentId: true,
           name: true,
           gameTitle: true,
+          gameType: true,
           status: true,
           numberOfTeams: true,
           capacity: true,
@@ -558,6 +561,7 @@ export class TournamentCoreService {
         tournamentId: t.tournamentId,
         name: t.name,
         gameTitle: t.gameTitle,
+        gameType: t.gameType,
         status: t.status,
         roster,
         currentRoster,

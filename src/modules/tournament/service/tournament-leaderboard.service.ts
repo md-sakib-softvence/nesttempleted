@@ -134,6 +134,14 @@ export class TournamentLeaderboardService {
       getOrInitStats(p.id, p.name || p.displayName || p.id);
     }
 
+    // Registrations are the source of truth for the public standings table.
+    // A newly generated schedule may not yet contain a participants array, and
+    // knockout tournaments commonly have no completed results at first. Keep
+    // those confirmed/registered players visible with zeroed statistics.
+    for (const [id, info] of playerMap.entries()) {
+      getOrInitStats(id, info.gamertag || info.name || id);
+    }
+
     // Process completed matches
     for (const match of matches) {
       if (

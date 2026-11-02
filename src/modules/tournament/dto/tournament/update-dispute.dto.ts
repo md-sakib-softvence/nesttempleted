@@ -5,6 +5,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { DisputeStatus } from '@prisma/client';
@@ -24,6 +25,7 @@ export class UpdateMatchDisputeDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(5000)
   reason?: string;
 
   @ApiPropertyOptional({

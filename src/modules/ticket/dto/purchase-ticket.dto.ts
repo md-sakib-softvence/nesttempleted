@@ -45,11 +45,4 @@ export class PurchaseTicketDto {
   @IsOptional()
   quantity?: number;
 
-  @ApiPropertyOptional({
-    description: 'Requested seat number or designation (e.g. A-12)',
-    example: 'A-12',
-  })
-  @IsString()
-  @IsOptional()
-  seatNumber?: string;
 }

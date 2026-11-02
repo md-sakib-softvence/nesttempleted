@@ -18,6 +18,7 @@ import {
   SchedulingMode,
   RaffleStatus,
   TournamentRegistrationStatus,
+  TournamentGameType,
 } from '@prisma/client';
 
 export class UpdateDetailsTabDto {
@@ -30,6 +31,11 @@ export class UpdateDetailsTabDto {
   @IsOptional()
   @IsString()
   gameTitle?: string;
+
+  @ApiPropertyOptional({ enum: TournamentGameType })
+  @IsOptional()
+  @IsEnum(TournamentGameType)
+  gameType?: TournamentGameType;
 
   @ApiPropertyOptional({ enum: TournamentFormat })
   @IsOptional()
@@ -384,6 +390,11 @@ export class UpdateSettingsTabDto {
   @IsString()
   gameTitle?: string;
 
+  @ApiPropertyOptional({ enum: TournamentGameType })
+  @IsOptional()
+  @IsEnum(TournamentGameType)
+  gameType?: TournamentGameType;
+
   @ApiPropertyOptional({ enum: TournamentFormat })
   @IsOptional()
   @IsEnum(TournamentFormat)
@@ -652,6 +663,15 @@ export class QueryTabLeaderboardsDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @ApiPropertyOptional({
+    enum: ['table', 'goals', 'metrics'],
+    default: 'table',
+    description: 'Leaderboard projection to return',
+  })
+  @IsOptional()
+  @IsString()
+  filter?: 'table' | 'goals' | 'metrics' = 'table';
 }
 
 export class QueryTabRafflesDto {

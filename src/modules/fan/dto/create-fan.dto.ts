@@ -39,11 +39,11 @@ export class CreateFanDto {
   @IsNotEmpty()
   ageRange: string;
 
-  @ApiPropertyOptional({ description: 'Top Point', type: Number })
+  @ApiPropertyOptional({ description: 'Initial coin balance', type: Number })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
-  topPoint?: number;
+  coins?: number;
 
   @ApiProperty({ description: 'Favorite Game' })
   @IsString()

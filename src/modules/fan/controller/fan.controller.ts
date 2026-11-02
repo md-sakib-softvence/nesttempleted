@@ -22,8 +22,12 @@ import {
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { FanService } from '../service/fan.service';
+import { FanPlayerRegistrationService } from '../service/fan-player-registration.service';
 import { CreateFanDto } from '../dto/create-fan.dto';
 import { UpdateFanDto } from '../dto/update-fan.dto';
+import { CompleteFanTournamentApplicationDto } from '../dto/complete-fan-tournament-application.dto';
+import { VerifyFanTournamentPaymentDto } from '../dto/verify-fan-tournament-payment.dto';
+import { CreateFanTournamentApplicationDto } from '../dto/create-fan-tournament-application.dto';
 import { sendResponse } from '../../utils/response.util';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
@@ -42,7 +46,121 @@ import { Role } from '@prisma/client';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'fan', Role.FAN, Role.PLAYER, 'player')
 export class FanController {
-  constructor(private readonly fanService: FanService) {}
+  constructor(
+    private readonly fanService: FanService,
+    private readonly fanPlayerRegistrationService: FanPlayerRegistrationService,
+  ) {}
+
+  @Post('tournaments/:id/registrations')
+  @Roles(Role.FAN, 'fan')
+  @ApiOperation({
+    summary: 'Create a fan tournament application and initialize entry payment',
+  })
+  async createFanTournamentApplication(
+    @Param('id') tournamentId: string,
+    @Req() req: Request & { user: { userId: string } },
+    @Body() dto: CreateFanTournamentApplicationDto,
+  ) {
+    const data = await this.fanPlayerRegistrationService.createTournamentApplication(
+      req.user.userId,
+      tournamentId,
+      dto,
+    );
+    return sendResponse({
+      message: data.requiresPayment
+        ? 'Tournament application created; payment is pending'
+        : 'Payment confirmed; complete your player profile to register',
+      data,
+    });
+  }
+
+  @Get('tournaments/:id/registrations/me')
+  @Roles(Role.FAN, 'fan')
+  @ApiOperation({ summary: 'Resume the authenticated fan tournament application' })
+  async getMyTournamentApplication(
+    @Param('id') tournamentId: string,
+    @Req() req: Request & { user: { userId: string } },
+  ) {
+    const data = await this.fanPlayerRegistrationService.getMyTournamentApplication(
+      req.user.userId,
+      tournamentId,
+    );
+    return sendResponse({ message: 'Tournament application retrieved', data });
+  }
+
+  @Get('tournament-payment-return-context')
+  @Roles(Role.FAN, 'fan')
+  @ApiOperation({
+    summary: 'Find the tournament associated with a returning fan payment',
+  })
+  @ApiQuery({ name: 'txRef', required: true, type: String })
+  async getTournamentForPaymentReturn(
+    @Query('txRef') txRef: string,
+    @Req() req: Request & { user: { userId: string } },
+  ) {
+    const data = await this.fanPlayerRegistrationService.getTournamentForPaymentReturn(
+      req.user.userId,
+      txRef,
+    );
+    return sendResponse({
+      message: 'Tournament payment return context retrieved',
+      data,
+    });
+  }
+
+  @Get('player-gamertag-availability')
+  @Roles(Role.FAN, 'fan')
+  @ApiOperation({ summary: 'Check whether a player Gamer Tag is available' })
+  @ApiQuery({ name: 'gamerTag', required: true, type: String })
+  async checkPlayerGamerTagAvailability(@Query('gamerTag') gamerTag: string) {
+    const data = await this.fanPlayerRegistrationService.checkGamerTagAvailability(
+      gamerTag,
+    );
+    return sendResponse({ message: 'Gamer Tag availability checked', data });
+  }
+
+  @Post('tournaments/:id/registrations/:applicationId/verify-payment')
+  @Roles(Role.FAN, 'fan')
+  @ApiOperation({
+    summary: 'Verify Flutterwave payment for the authenticated fan application',
+  })
+  async verifyFanTournamentApplicationPayment(
+    @Param('id') tournamentId: string,
+    @Param('applicationId') applicationId: string,
+    @Req() req: Request & { user: { userId: string } },
+    @Body() dto: VerifyFanTournamentPaymentDto,
+  ) {
+    const data = await this.fanPlayerRegistrationService.verifyApplicationPayment(
+      req.user.userId,
+      tournamentId,
+      applicationId,
+      dto.txRef,
+    );
+    return sendResponse({ message: 'Tournament payment verified', data });
+  }
+
+  @Post('tournaments/:id/registrations/:applicationId/complete')
+  @Roles(Role.FAN, 'fan')
+  @ApiOperation({
+    summary: 'Create the player account and paid tournament registration after payment',
+  })
+  async completeFanTournamentApplication(
+    @Param('id') tournamentId: string,
+    @Param('applicationId') applicationId: string,
+    @Req() req: Request & { user: { userId: string } },
+    @Body() dto: CompleteFanTournamentApplicationDto,
+  ) {
+    const data = await this.fanPlayerRegistrationService.completeApplication(
+      req.user.userId,
+      tournamentId,
+      applicationId,
+      dto,
+    );
+    return sendResponse({
+      message: 'Player profile created and tournament registration completed',
+      data,
+    });
+  }
 
   @Public()
   @Post()

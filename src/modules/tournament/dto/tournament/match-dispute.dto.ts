@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class CreateMatchDisputeDto {
   @ApiProperty({
@@ -8,7 +8,14 @@ export class CreateMatchDisputeDto {
   })
   @IsString()
   @IsNotEmpty()
+  @MaxLength(500)
   reason: string;
+
+  @ApiPropertyOptional({ description: 'Additional observations from the match operator' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  notes?: string;
 
   @ApiPropertyOptional({
     description: 'Expected Match Version for optimistic concurrency',

@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateRaffleDto } from '../dto/tournament/create-raffle.dto';
 import { RaffleStatus } from '@prisma/client';
+import * as crypto from 'crypto';
 import {
   buildPrismaQuery,
   calculatePaginationMeta,
@@ -79,6 +80,10 @@ export class RaffleService {
         : [];
       return {
         ...raffle,
+        winners: winners.map(({ qrCodeString, ...winner }) => ({
+          ...winner,
+          claimAvailable: Boolean(qrCodeString),
+        })),
         totalEntries: entries.length,
         totalWinners: winners.length,
       };
@@ -106,6 +111,10 @@ export class RaffleService {
         : [];
       return {
         ...raffle,
+        winners: winners.map(({ qrCodeString, ...winner }) => ({
+          ...winner,
+          claimAvailable: Boolean(qrCodeString),
+        })),
         totalEntries: entries.length,
         totalWinners: winners.length,
       };
@@ -143,9 +152,73 @@ export class RaffleService {
 
     return {
       ...raffle,
+      winners: winners.map(({ qrCodeString, ...winner }) => ({
+        ...winner,
+        claimAvailable: Boolean(qrCodeString),
+      })),
       totalEntries: entries.length,
       totalWinners: winners.length,
     };
+  }
+
+  /**
+   * Return only the raffles the authenticated participant entered. Winner and
+   * ticket data are filtered to that participant so this endpoint does not
+   * expose other fans' private entry details.
+   */
+  async getMyRaffles(userId: string, role?: string) {
+    if (!userId) {
+      throw new BadRequestException('Authenticated user ID is required');
+    }
+
+    const expectedUserType = String(role || '').toUpperCase().includes('PLAYER')
+      ? 'PLAYER'
+      : 'FAN';
+
+    const raffles = await this.prisma.raffle.findMany({
+      include: {
+        tournament: {
+          select: {
+            tournamentId: true,
+            name: true,
+            gameTitle: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return raffles
+      .map((raffle) => {
+        const entries = Array.isArray(raffle.entries)
+          ? (raffle.entries as any[])
+          : [];
+        const winners = Array.isArray(raffle.winners)
+          ? (raffle.winners as any[])
+          : [];
+        const myEntries = entries.filter(
+          (entry) =>
+            entry.userId === userId &&
+            (!entry.userType || entry.userType === expectedUserType),
+        );
+        const myWinners = winners.filter(
+          (winner) =>
+            winner.userId === userId &&
+            (!winner.userType || winner.userType === expectedUserType),
+        );
+
+        if (myEntries.length === 0 && myWinners.length === 0) return null;
+
+        return {
+          ...raffle,
+          entries: myEntries,
+          winners: myWinners,
+          totalEntries: entries.length,
+          totalWinners: winners.length,
+          isWinner: myWinners.length > 0,
+        };
+      })
+      .filter(Boolean);
   }
 
   /**
@@ -233,7 +306,8 @@ export class RaffleService {
       throw new BadRequestException('You have already joined this raffle');
     }
 
-    // 4. Resolve participant name and role (Player or Fan)
+    // 4. Resolve participant name and role (Player or Fan). Do not create
+    // anonymous entries: a raffle entry must always belong to a real account.
     let userType: 'PLAYER' | 'FAN' = 'FAN';
     let participantName = 'Participant';
     let gamerTag = '';
@@ -292,6 +366,12 @@ export class RaffleService {
       }
     }
 
+    if (participantName === 'Participant') {
+      throw new BadRequestException(
+        'Only an active fan or player account can join this raffle',
+      );
+    }
+
     // 5. Generate a unique ticket number
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
     const ticketNumber = `TICK-${raffleId.slice(-4).toUpperCase()}-${randomSuffix}`;
@@ -343,6 +423,21 @@ export class RaffleService {
       throw new NotFoundException(`Raffle #${raffleId} not found`);
     }
 
+    const existingWinners = Array.isArray(raffle.winners)
+      ? (raffle.winners as any[])
+      : [];
+
+    // A completed draw is immutable once its winner payload is persisted.
+    // Older records may have DRAWN status without winners; those records are
+    // allowed to complete once so the result is not permanently blank.
+    if (raffle.status === RaffleStatus.DRAWN && existingWinners.length > 0) {
+      return raffle;
+    }
+
+    if (raffle.status === RaffleStatus.CANCELLED) {
+      throw new BadRequestException('A cancelled raffle cannot be drawn');
+    }
+
     const entries = Array.isArray(raffle.entries)
       ? (raffle.entries as any[])
       : [];
@@ -353,12 +448,19 @@ export class RaffleService {
     // Shuffle entries
     const shuffled = [...entries].sort(() => 0.5 - Math.random());
     const count = Math.min(raffle.numberOfWinners, shuffled.length);
+    const drawnAt = new Date().toISOString();
     const winners = shuffled.slice(0, count).map((entry, index) => ({
       position: index + 1,
       userId: entry.userId,
+      userType: entry.userType,
       name: entry.name,
+      gamerTag: entry.gamerTag || '',
       ticketNumber: entry.ticketNumber,
-      drawnAt: new Date().toISOString(),
+      drawnAt,
+      wonAt: drawnAt,
+      redeemed: false,
+      // Unpredictable claim token; the scanner validates and consumes it once.
+      qrCodeString: `RAFFLE:${raffle.raffleId}:${crypto.randomBytes(32).toString('base64url')}`,
     }));
 
     return this.prisma.raffle.update({

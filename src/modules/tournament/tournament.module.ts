@@ -1,4 +1,9 @@
 import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { ConfigModule } from '@nestjs/config';
+import { MatchIncidentGateway } from './gateway/match-incident.gateway';
+import { MatchIncidentService } from './service/match-incident.service';
+import { MatchIncidentController } from './controller/match/match-incident.controller';
 import { ManageEventCostController } from './controller/manage-event-cost/manage-event-cost.controller';
 import { ManageEventCostService } from './service/manage-event-cost.service';
 import { ManageEventPrizeController } from './controller/manage-event-prize/manage-event-prize.controller';
@@ -26,12 +31,17 @@ import { SelfScheduleWorkerService } from './service/self-schedule-worker.servic
 
 import { TournamentTabsController } from './controller/tournament/tournament-tabs.controller';
 import { TournamentTabsService } from './service/tournament-tabs.service';
+import { TournamentGuidelineController } from './controller/tournament/tournament-guideline.controller';
+import { TournamentGuidelineService } from './service/tournament-guideline.service';
 
 @Module({
+  imports: [ConfigModule, JwtModule.register({})],
   controllers: [
+    MatchIncidentController,
     RaffleController,
     TournamentController,
     TournamentTabsController,
+    TournamentGuidelineController,
     AdminMatchController,
     AdminDisputeController,
     AdminRegistrationController,
@@ -41,8 +51,11 @@ import { TournamentTabsService } from './service/tournament-tabs.service';
     SponsorController,
   ],
   providers: [
+    MatchIncidentGateway,
+    MatchIncidentService,
     TournamentService,
     TournamentTabsService,
+    TournamentGuidelineService,
     TournamentCoreService,
     TournamentRegistrationService,
     TournamentMatchesService,
@@ -58,6 +71,7 @@ import { TournamentTabsService } from './service/tournament-tabs.service';
   exports: [
     TournamentService,
     TournamentTabsService,
+    TournamentGuidelineService,
     TournamentCoreService,
     TournamentRegistrationService,
     TournamentMatchesService,

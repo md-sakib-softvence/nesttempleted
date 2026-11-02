@@ -167,11 +167,13 @@ export class TournamentTabsService {
       basicInformation: {
         name: tournament.name,
         gameTitle: tournament.gameTitle,
+        gameType: tournament.gameType,
         format: tournament.tournamentFormat,
         status: tournament.status,
         capacity: tournament.capacity,
         numberOfTeams: tournament.numberOfTeams,
         registrationMode: tournament.registrationCutOffMode,
+        registrationOpen: tournament.registrationOpen,
         linkedGroup,
         possibleMatchCount,
         playedCount,
@@ -198,6 +200,11 @@ export class TournamentTabsService {
         prizePoolAmount,
         platformFeeAmount,
         netEarningsPercent,
+        prizePayouts: tournament.manageEventPrizes.map((prize) => ({
+          id: prize.manageEventPrizeId,
+          category: prize.prizeCategory,
+          amount: prize.amount,
+        })),
       },
       venueUtilization: {
         venues: tournament.venues.map((v) => ({
@@ -224,6 +231,7 @@ export class TournamentTabsService {
     const data: Prisma.TournamentUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.gameTitle !== undefined) data.gameTitle = dto.gameTitle;
+    if (dto.gameType !== undefined) data.gameType = dto.gameType;
     if (dto.tournamentFormat !== undefined)
       data.tournamentFormat = dto.tournamentFormat;
     if (dto.capacity !== undefined) data.capacity = dto.capacity;
@@ -737,7 +745,7 @@ export class TournamentTabsService {
 
     const leaderboard = await this.leaderboardService.getTournamentLeaderboard(
       tournamentId,
-      'table',
+      query?.filter || 'table',
       { page, limit },
     );
 
@@ -774,6 +782,26 @@ export class TournamentTabsService {
 
     const schedule = (tournament.schedule as any) || {};
     const rulesConfig = schedule.leaderboardRules || {};
+
+    // The leaderboard service also exposes goal and analytics projections.
+    // Return those projections without forcing the public client to rebuild
+    // them from the schedule JSON.
+    if (query?.filter && query.filter !== 'table') {
+      return {
+        tournamentId: tournament.tournamentId,
+        tournamentName: tournament.name,
+        tournamentFormat: tournament.tournamentFormat,
+        rulesVersion: rulesConfig.rulesVersion || 1,
+        tieBreakerRule: rulesConfig.tieBreakerRule || 'GOAL_DIFFERENCE',
+        pointAdjustments: rulesConfig.pointAdjustments || {
+          win: 3,
+          draw: 1,
+          loss: 0,
+        },
+        tournamentGroup,
+        ...(leaderboard as any),
+      };
+    }
 
     return {
       tournamentId: tournament.tournamentId,
@@ -880,37 +908,36 @@ export class TournamentTabsService {
   async patchRafflesTab(tournamentId: string, dto: UpdateRafflesTabDto) {
     await this.findTournamentOrThrow(tournamentId);
 
-    if (dto.raffleId) {
-      const data: Prisma.RaffleUpdateInput = {};
-      if (dto.name !== undefined) data.name = dto.name;
-      if (dto.prizeDescription !== undefined)
-        data.prizeDescription = dto.prizeDescription;
-      if (dto.numberOfWinners !== undefined)
-        data.numberOfWinners = dto.numberOfWinners;
-      if (dto.status !== undefined) data.status = dto.status;
-      if (dto.drawDate !== undefined) data.drawDate = new Date(dto.drawDate);
-      if (dto.registrationCloseDate !== undefined)
-        data.registrationCloseDate = new Date(dto.registrationCloseDate);
-
-      await this.prisma.raffle.update({
-        where: { raffleId: dto.raffleId },
-        data,
-      });
-    } else if (dto.name && dto.prizeDescription) {
-      await this.prisma.raffle.create({
-        data: {
-          tournamentId,
-          name: dto.name,
-          prizeDescription: dto.prizeDescription,
-          numberOfWinners: dto.numberOfWinners || 1,
-          status: dto.status || 'OPEN',
-          drawDate: dto.drawDate ? new Date(dto.drawDate) : null,
-          registrationCloseDate: dto.registrationCloseDate
-            ? new Date(dto.registrationCloseDate)
-            : null,
-        },
-      });
+    if (!dto.raffleId) {
+      throw new BadRequestException(
+        'raffleId is required when updating a raffle. Use the create raffle endpoint for new raffles.',
+      );
     }
+
+    const existingRaffle = await this.prisma.raffle.findFirst({
+      where: { raffleId: dto.raffleId, tournamentId },
+    });
+    if (!existingRaffle) {
+      throw new NotFoundException(
+        `Raffle #${dto.raffleId} was not found in tournament #${tournamentId}`,
+      );
+    }
+
+    const data: Prisma.RaffleUpdateInput = {};
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.prizeDescription !== undefined)
+      data.prizeDescription = dto.prizeDescription;
+    if (dto.numberOfWinners !== undefined)
+      data.numberOfWinners = dto.numberOfWinners;
+    if (dto.status !== undefined) data.status = dto.status;
+    if (dto.drawDate !== undefined) data.drawDate = new Date(dto.drawDate);
+    if (dto.registrationCloseDate !== undefined)
+      data.registrationCloseDate = new Date(dto.registrationCloseDate);
+
+    await this.prisma.raffle.update({
+      where: { raffleId: dto.raffleId },
+      data,
+    });
 
     return this.getRafflesTab(tournamentId);
   }
@@ -1277,6 +1304,7 @@ export class TournamentTabsService {
       tournamentId: tournament.tournamentId,
       name: tournament.name,
       gameTitle: tournament.gameTitle,
+      gameType: tournament.gameType,
       format: tournament.tournamentFormat,
       tournamentFormat: tournament.tournamentFormat,
       registrationMode: tournament.registrationCutOffMode,
@@ -1337,6 +1365,7 @@ export class TournamentTabsService {
     const data: Prisma.TournamentUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.gameTitle !== undefined) data.gameTitle = dto.gameTitle;
+    if (dto.gameType !== undefined) data.gameType = dto.gameType;
     if (dto.format !== undefined) data.tournamentFormat = dto.format;
     if (dto.tournamentFormat !== undefined)
       data.tournamentFormat = dto.tournamentFormat;
