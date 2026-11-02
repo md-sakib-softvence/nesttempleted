@@ -206,7 +206,11 @@ export class MatchIncidentService {
       await this.saveSchedule(db, tournament, schedule, matches, match);
       return match;
     });
-    this.gateway.publish('match:updated', { tournamentId, matchId: match.id, status: match.status }, await this.targets(tournamentId, match.id));
+    await this.publishMatchUpdate(tournamentId, match.id, match.status);
     return match;
+  }
+
+  async publishMatchUpdate(tournamentId: string, matchId: string, status: string) {
+    this.gateway.publish('match:updated', { tournamentId, matchId, status }, await this.targets(tournamentId, matchId));
   }
 }

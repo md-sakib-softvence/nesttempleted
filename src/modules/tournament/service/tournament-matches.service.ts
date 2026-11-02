@@ -1374,6 +1374,12 @@ export class TournamentMatchesService {
       await this.voidFanPredictions(tournament.tournamentId, match.id);
     }
 
+    try {
+      await this.incidents?.publishMatchUpdate(tournament.tournamentId, match.id, match.status);
+    } catch (error: any) {
+      this.logger.warn(`Score saved; live match update could not be delivered: ${error?.message || error}`);
+    }
+
     return match;
   }
 
@@ -2448,6 +2454,8 @@ export class TournamentMatchesService {
         if (
           isAllocated ||
           isCompleted ||
+            match.status === 'UNDER_REVIEW' ||
+            (match as any).resumeRequired ||
           match.isAutoAdvance ||
           match.conditional ||
           match.isSchedulable === false
