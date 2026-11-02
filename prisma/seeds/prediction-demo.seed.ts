@@ -164,6 +164,31 @@ async function main() {
     });
   }
 
+  // Keep the seeded match participants eligible for the real employee QR check-in flow.
+  for (const player of players) {
+    const qrCodeString = `PLAYER:${DEMO_TOURNAMENT_ID}:${player.playerId}`;
+    await prisma.tournamentRegistration.upsert({
+      where: {
+        tournamentId_playerId: {
+          tournamentId: DEMO_TOURNAMENT_ID,
+          playerId: player.playerId,
+        },
+      },
+      update: {
+        status: 'CONFIRMED',
+        paymentStatus: 'PAID',
+        qrCodeString,
+      },
+      create: {
+        tournamentId: DEMO_TOURNAMENT_ID,
+        playerId: player.playerId,
+        status: 'CONFIRMED',
+        paymentStatus: 'PAID',
+        qrCodeString,
+      },
+    });
+  }
+
   console.log('Prediction demo seed is ready.');
   console.log(`Fan login: ${DEMO_FAN_EMAIL} / ${DEMO_FAN_PASSWORD}`);
   console.log(`Fan coins: ${updatedFan.coins}`);

@@ -24,6 +24,13 @@ const DEMO_EMPLOYEES = [
     phoneNumber: '+8801700000102',
   },
 ] as const;
+const DEMO_MANAGER = {
+  employeeId: 'emp-match-manager-001',
+  showEmployeeId: 'MATCH-MANAGER-001',
+  name: 'Demo Tournament Manager',
+  email: 'match.manager@tape.test',
+  phoneNumber: '+8801700000103',
+} as const;
 
 async function main() {
   const tournament = await prisma.tournament.findUnique({
@@ -59,6 +66,25 @@ async function main() {
     });
     employees.push(employee);
   }
+
+  const manager = await prisma.employee.upsert({
+    where: { email: DEMO_MANAGER.email },
+    update: {
+      name: DEMO_MANAGER.name,
+      role: EmployeeRole.MANAGER,
+      state: EmployeeState.ACTIVE,
+      isDeleted: false,
+    },
+    create: {
+      ...DEMO_MANAGER,
+      role: EmployeeRole.MANAGER,
+      state: EmployeeState.ACTIVE,
+      password,
+      document: [],
+      qrCode: [],
+    },
+    select: { employeeId: true, email: true },
+  });
 
   const now = new Date();
   const demoMatches = Array.from({ length: 4 }, (_, index) => {
@@ -154,6 +180,7 @@ async function main() {
   console.log('Seeded assignments: 2 assigned, 2 left unassigned.');
   console.log('Demo employees (password for both: password123):');
   for (const employee of employees) console.log(`- ${employee.email}`);
+  console.log(`Demo manager: ${manager.email} (password: password123)`);
 }
 
 main()

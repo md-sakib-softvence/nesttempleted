@@ -858,6 +858,130 @@ export class TicketService {
       }
     };
 
+    const checkInCompetitorRegistration = async (reg: any) => {
+      const attendeeName = reg.player
+        ? `${reg.player.firstName} ${reg.player.lastName} (${reg.player.gamerTag || 'Player'})`.trim()
+        : 'Player Competitor';
+      const paymentStatus = String(reg.paymentStatus || '').toUpperCase();
+      const isPaid = ['PAID', 'SUCCESS'].includes(paymentStatus);
+      const entryFee = Number(reg.tournament?.entryFee || 0);
+
+      if (dto.tournamentId && reg.tournamentId !== dto.tournamentId) {
+        const message = `Wrong Tournament: this pass belongs to "${reg.tournament?.name || 'another tournament'}".`;
+        await logAndBroadcast('INVALID', message, undefined, attendeeName);
+        throw new BadRequestException(message);
+      }
+      if (String(reg.status).toUpperCase() !== 'CONFIRMED' || (entryFee > 0 && !isPaid)) {
+        const message = entryFee > 0
+          ? 'Tournament registration is not confirmed or payment has not been completed.'
+          : 'Tournament registration is not confirmed.';
+        await logAndBroadcast('INVALID', message, undefined, attendeeName);
+        throw new ForbiddenException(message);
+      }
+      if (reg.checkedInVenue) {
+        const message = `Competitor pass for "${reg.player?.gamerTag || 'Player'}" was already scanned and checked in. Duplicate entry denied.`;
+        await logAndBroadcast('ALREADY_CHECKED_IN', message, undefined, attendeeName);
+        throw new ConflictException(message);
+      }
+
+      const registrationWhere: any = {
+        registrationId: reg.registrationId,
+        checkedInVenue: false,
+        status: 'CONFIRMED',
+      };
+      if (entryFee > 0) registrationWhere.paymentStatus = { in: ['PAID', 'SUCCESS'] };
+
+      const checkedIn = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.tournamentRegistration.updateMany({
+          where: registrationWhere,
+          data: { checkedInVenue: true },
+        });
+        if (updated.count !== 1) return null;
+
+        return tx.ticket.upsert({
+          where: { qrToken: reg.qrCodeString || trimmedToken },
+          update: {
+            checkedIn: true,
+            checkedInAt: now,
+            lastScannedAt: now,
+            checkedInBy: guardId || 'STAFF',
+            checkedInVenue: dto.venueId || null,
+            screenId: dto.screenId || null,
+            status: TicketStatus.USED,
+          },
+          create: {
+            tournamentId: reg.tournamentId,
+            playerId: reg.playerId,
+            purchasedBy: reg.playerId,
+            purchaserRole: 'PLAYER',
+            type: TicketType.DAY_PASS,
+            pricePaid: entryFee,
+            currency: reg.tournament?.currency || 'NGN',
+            status: TicketStatus.USED,
+            qrToken: reg.qrCodeString || trimmedToken,
+            checkedIn: true,
+            checkedInAt: now,
+            checkedInBy: guardId || 'STAFF',
+            checkedInVenue: dto.venueId || null,
+            screenId: dto.screenId || null,
+            showTicketId: `PASS-${reg.registrationId.slice(0, 8).toUpperCase()}`,
+          },
+          include: { tournament: true, player: true },
+        });
+      });
+
+      if (!checkedIn) {
+        const latest = await this.prisma.tournamentRegistration.findUnique({
+          where: { registrationId: reg.registrationId },
+          select: { checkedInVenue: true },
+        });
+        if (latest?.checkedInVenue) {
+          const message = 'This competitor pass has already been checked in.';
+          await logAndBroadcast('ALREADY_CHECKED_IN', message, undefined, attendeeName);
+          throw new ConflictException(message);
+        }
+        const message = 'Registration or payment status changed. Refresh and verify the pass again.';
+        await logAndBroadcast('INVALID', message, undefined, attendeeName);
+        throw new ForbiddenException(message);
+      }
+
+      const message = `Competitor Pass verified for ${reg.tournament.name}`;
+      await logAndBroadcast('VALID', message, checkedIn, attendeeName);
+      return {
+        success: true,
+        message: 'Competitor pass verified and checked in successfully',
+        ticket: {
+          ticketId: reg.registrationId,
+          showTicketId: `COMP-${reg.registrationId.slice(0, 8).toUpperCase()}`,
+          purchaserName: attendeeName,
+          attendeeName,
+          purchaserRole: 'PLAYER',
+          type: 'COMPETITOR_PASS',
+          status: 'USED',
+          checkedIn: true,
+          checkedInAt: now,
+          tournamentName: reg.tournament.name,
+        },
+        tournament: { tournamentId: reg.tournamentId, name: reg.tournament.name },
+        checkedInAt: now,
+      };
+    };
+
+    // Competitor registration QR tokens have the exact PLAYER:<tournament>:<player> form.
+    // Resolve these before the mirror Ticket row so its status cannot bypass registration/payment checks.
+    if (trimmedToken.startsWith('PLAYER:') && trimmedToken.split(':').length === 3) {
+      const registration = await this.prisma.tournamentRegistration.findFirst({
+        where: { qrCodeString: trimmedToken },
+        include: { tournament: true, player: true },
+      });
+      if (!registration) {
+        const message = 'Competitor registration QR was not found.';
+        await logAndBroadcast('INVALID', message);
+        throw new NotFoundException(message);
+      }
+      return checkInCompetitorRegistration(registration);
+    }
+
     // Raffle claim QR codes share the venue scanner, but use a one-time
     // redemption path instead of being treated as ordinary admission tickets.
     if (trimmedToken.startsWith('RAFFLE:')) {
@@ -886,6 +1010,9 @@ export class TicketService {
           include: { tournament: { select: { tournamentId: true, name: true } } },
         });
         if (!raffle) return { kind: 'INVALID' as const };
+        if (dto.tournamentId && raffle.tournamentId !== dto.tournamentId) {
+          return { kind: 'WRONG_TOURNAMENT' as const, raffle };
+        }
 
         const winners = Array.isArray(raffle.winners)
           ? (raffle.winners as any[])
@@ -940,6 +1067,11 @@ export class TicketService {
         const message = 'Invalid raffle claim QR. No matching winner was found.';
         await logAndBroadcast('INVALID', message);
         throw new NotFoundException(message);
+      }
+      if (redemption.kind === 'WRONG_TOURNAMENT') {
+        const message = `This raffle claim belongs to "${redemption.raffle.tournament.name}", not the current tournament.`;
+        await logAndBroadcast('INVALID', message);
+        throw new BadRequestException(message);
       }
       if (redemption.kind === 'ALREADY_CLAIMED') {
         const message = 'This raffle prize has already been claimed.';
@@ -1027,77 +1159,7 @@ export class TicketService {
         },
       });
 
-      if (reg) {
-        const attendeeName = reg.player
-          ? `${reg.player.firstName} ${reg.player.lastName} (${reg.player.gamerTag || 'Player'})`.trim()
-          : 'Player Competitor';
-
-        if (reg.checkedInVenue) {
-          const errMsg = `Competitor pass for "${reg.player?.gamerTag || 'Player'}" was already scanned and checked in. Duplicate entry denied.`;
-          await logAndBroadcast(
-            'ALREADY_CHECKED_IN',
-            errMsg,
-            undefined,
-            attendeeName,
-          );
-          throw new BadRequestException(errMsg);
-        }
-
-        await this.prisma.tournamentRegistration.update({
-          where: { registrationId: reg.registrationId },
-          data: { checkedInVenue: true },
-        });
-
-        // Ensure active ticket is upserted for reporting parity
-        ticket = await this.prisma.ticket.upsert({
-          where: { qrToken: reg.qrCodeString || trimmedToken },
-          update: { checkedIn: true, checkedInAt: now },
-          create: {
-            tournamentId: reg.tournamentId,
-            playerId: reg.playerId,
-            purchasedBy: reg.playerId,
-            purchaserRole: 'PLAYER',
-            type: TicketType.DAY_PASS,
-            pricePaid: reg.tournament?.entryFee || 0,
-            currency: reg.tournament?.currency || 'NGN',
-            status: TicketStatus.USED,
-            qrToken: reg.qrCodeString || trimmedToken,
-            checkedIn: true,
-            checkedInAt: now,
-            showTicketId: `PASS-${reg.registrationId.slice(0, 8).toUpperCase()}`,
-          },
-          include: {
-            tournament: true,
-            fan: true,
-            player: true,
-          },
-        });
-
-        await logAndBroadcast(
-          'VALID',
-          `Competitor Pass verified for ${reg.tournament.name}`,
-          ticket,
-          attendeeName,
-        );
-
-        return {
-          ticket: {
-            ...ticket,
-            ticketId: reg.registrationId,
-            showTicketId: `COMP-${reg.registrationId.slice(0, 8).toUpperCase()}`,
-            type: 'COMPETITOR_PASS',
-            status: 'ACTIVE',
-            checkedIn: true,
-            tournamentName: reg.tournament.name,
-            attendeeName,
-            purchaserName: attendeeName,
-            seatNumber: 'Main Stage Competitor',
-          },
-          tournament: reg.tournament,
-          checkedInAt: now,
-          message: 'Competitor Pass verified and checked in successfully',
-        };
-      }
+      if (reg) return checkInCompetitorRegistration(reg);
 
       // Check if this token belongs to an Employee (Security Guard, Manager, Event Staff)
       let employeeLookupId = trimmedToken;
@@ -1187,6 +1249,11 @@ export class TicketService {
       const errMsg = 'This ticket was transferred and its QR code is no longer valid.';
       await logAndBroadcast('INVALID', errMsg, ticket, attendeeName);
       throw new BadRequestException(errMsg);
+    }
+    if (!['PAID', 'SUCCESS'].includes(String(ticket.paymentStatus || '').toUpperCase())) {
+      const errMsg = 'Payment for this ticket has not been confirmed.';
+      await logAndBroadcast('INVALID', errMsg, ticket, attendeeName);
+      throw new ForbiddenException(errMsg);
     }
 
     let newStatus = ticket.status;

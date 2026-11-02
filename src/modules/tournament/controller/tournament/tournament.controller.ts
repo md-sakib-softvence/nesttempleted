@@ -37,6 +37,8 @@ import { RolesGuard } from '../../../../common/guards/roles.guard';
 import { Roles } from '../../../../common/decorators/roles.decorator';
 import { Public } from '../../../../common/decorators/public.decorator';
 import { UpdateTournamentStatusDto } from '../../dto/tournament/update-tournament-status.dto';
+import { UpdateMatchScoreDto } from '../../dto/tournament/update-match-score.dto';
+import { MatchCheckInDto } from '../../dto/tournament/match-check-in.dto';
 import { RegistrationSelectionDto } from '../../dto/tournament/registration-selection.dto';
 import { QueryTournamentRegistrationDto } from '../../dto/tournament/query-registration.dto';
 import { UpdateTournamentFinancialsDto } from '../../dto/tournament/update-financials.dto';
@@ -410,6 +412,65 @@ export class TournamentController {
       data,
       meta: data.meta,
     });
+  }
+
+  @Post(':id/matches/:matchId/check-in/verify')
+  @Roles(Role.EMPLOYEE, Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'employee', 'manager', 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Verify a participant QR pass for an assigned tournament match without checking them in' })
+  async verifyMatchCheckIn(
+    @Param('id') id: string,
+    @Param('matchId') matchId: string,
+    @Body() body: MatchCheckInDto,
+    @Req() req: any,
+  ) {
+    const data = await this.tournamentService.verifyTournamentMatchCheckIn(
+      id,
+      matchId,
+      body.qrToken,
+      body.expectedPlayerId,
+      req.user,
+    );
+    return sendResponse({ message: 'Player QR verified for this match', data });
+  }
+
+  @Post(':id/matches/:matchId/check-in')
+  @Roles(Role.EMPLOYEE, Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'employee', 'manager', 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Confirm participant check-in; automatically starts the match after both players check in' })
+  async checkInMatch(
+    @Param('id') id: string,
+    @Param('matchId') matchId: string,
+    @Body() body: MatchCheckInDto,
+    @Req() req: any,
+  ) {
+    const data = await this.tournamentService.checkInTournamentMatch(
+      id,
+      matchId,
+      body.qrToken,
+      body.expectedPlayerId,
+      req.user,
+    );
+    return sendResponse({
+      message: data.matchStarted ? 'Both players checked in; match started' : 'Player checked in; waiting for the other participant',
+      data,
+    });
+  }
+
+  @Post(':id/matches/:matchId/score')
+  @Roles(Role.EMPLOYEE, Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'employee', 'manager', 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Submit the final score for a started match assigned to the current employee' })
+  async submitMatchScore(
+    @Param('id') id: string,
+    @Param('matchId') matchId: string,
+    @Body() body: UpdateMatchScoreDto,
+    @Req() req: any,
+  ) {
+    const data = await this.tournamentService.submitAssignedMatchScore(
+      id,
+      matchId,
+      body,
+      req.user,
+    );
+    return sendResponse({ message: 'Final score submitted and tournament result updated', data });
   }
 
   @Get(':id/staff-assignments')

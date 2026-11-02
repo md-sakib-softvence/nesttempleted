@@ -358,6 +358,47 @@ export class TournamentService {
     return this.matches.getTournamentMatches(tournamentId, filter);
   }
 
+  async verifyTournamentMatchCheckIn(
+    tournamentId: string,
+    matchId: string,
+    qrToken: string,
+    expectedPlayerId: string | undefined,
+    actor: { userId: string; role: string },
+  ) {
+    return this.matches.verifyTournamentMatchCheckIn(
+      tournamentId,
+      matchId,
+      qrToken,
+      expectedPlayerId,
+      actor,
+    );
+  }
+
+  async checkInTournamentMatch(
+    tournamentId: string,
+    matchId: string,
+    qrToken: string,
+    expectedPlayerId: string | undefined,
+    actor: { userId: string; role: string },
+  ) {
+    return this.matches.checkInTournamentMatch(
+      tournamentId,
+      matchId,
+      qrToken,
+      expectedPlayerId,
+      actor,
+    );
+  }
+
+  async submitAssignedMatchScore(
+    tournamentId: string,
+    matchId: string,
+    dto: UpdateMatchScoreDto,
+    actor: { userId: string; role: string },
+  ) {
+    return this.matches.submitAssignedMatchScore(tournamentId, matchId, dto, actor);
+  }
+
   async getTournamentCalendar(id: string) {
     return this.matches.getTournamentCalendar(id);
   }
@@ -406,12 +447,12 @@ export class TournamentService {
     return this.matches.correctMatchScore(matchId, dto);
   }
 
-  async disputeMatch(matchId: string, dto: CreateMatchDisputeDto) {
-    return this.matches.disputeMatch(matchId, dto);
+  async disputeMatch(matchId: string, dto: CreateMatchDisputeDto, actor: { userId: string; role: string }) {
+    return this.matches.disputeMatch(matchId, dto, actor);
   }
 
-  async resolveMatchDispute(disputeId: string, dto: UpdateMatchDisputeDto) {
-    return this.matches.resolveMatchDispute(disputeId, dto);
+  async resolveMatchDispute(disputeId: string, dto: UpdateMatchDisputeDto, actor: { userId: string; role: string }) {
+    return this.matches.resolveMatchDispute(disputeId, dto, actor);
   }
 
   async reconcileScheduleCapacity(

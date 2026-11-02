@@ -258,15 +258,16 @@ export class AdminMatchController {
   }
 
   @Post(':matchId/dispute')
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'MANAGER', 'EMPLOYEE')
   @ApiOperation({ summary: 'Flags a match under review' })
   @ApiParam({ name: 'matchId', description: 'Canonical Match ID' })
   @ApiResponse({ status: 200, description: 'Match flagged as UNDER_REVIEW' })
   async disputeMatch(
     @Param('matchId') matchId: string,
     @Body() body: CreateMatchDisputeDto,
+    @Req() req: any,
   ) {
-    const data = await this.tournamentService.disputeMatch(matchId, body);
+    const data = await this.tournamentService.disputeMatch(matchId, body, req.user);
     return sendResponse({
       message: 'Match marked under review and dispute logged successfully',
       data,
@@ -320,7 +321,7 @@ export class AdminMatchController {
 @ApiBearerAuth()
 @Controller('disputes')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN, Role.SUPER_ADMIN)
+@Roles(Role.ADMIN, Role.SUPER_ADMIN, 'MANAGER')
 export class AdminDisputeController {
   constructor(private readonly tournamentService: TournamentService) {}
 
@@ -331,10 +332,12 @@ export class AdminDisputeController {
   async resolveDispute(
     @Param('disputeId') disputeId: string,
     @Body() body: UpdateMatchDisputeDto,
+    @Req() req: any,
   ) {
     const data = await this.tournamentService.resolveMatchDispute(
       disputeId,
       body,
+      req.user,
     );
     return sendResponse({
       message: 'Match dispute resolved successfully',

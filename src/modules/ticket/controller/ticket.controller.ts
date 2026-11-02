@@ -139,7 +139,15 @@ export class TicketController {
    * 5. QR Code Venue Check-In (Scanner Parity with QRScannerModal)
    */
   @Post('check-in')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    Role.SECURITY_GUARD,
+    Role.EMPLOYEE,
+    Role.MANAGER,
+    'SECURITY',
+  )
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
