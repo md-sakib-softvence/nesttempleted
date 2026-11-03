@@ -125,8 +125,10 @@ export class EmployeeService {
       await deleteImageFromS3(existingEmployee.profileImage);
     }
 
-    // Extract S3 keys from pre-signed URLs if necessary
-    const extractKey = (urlOrKey: string) => {
+    // Extract an S3 object key from a signed URL when deleting uploaded files.
+    // Referral QR codes are regular URLs, so they must be matched as complete
+    // strings and must never be sent to S3 for deletion.
+    const extractS3Key = (urlOrKey: string) => {
       if (urlOrKey.startsWith('http')) {
         try {
           const url = new URL(urlOrKey);
@@ -142,7 +144,7 @@ export class EmployeeService {
 
     // Handle deleted documents
     if (deletedDocuments && deletedDocuments.length > 0) {
-      const deletedKeys = deletedDocuments.map(extractKey);
+      const deletedKeys = deletedDocuments.map(extractS3Key);
       for (const key of deletedKeys) {
         await deleteImageFromS3(key);
       }
@@ -160,11 +162,42 @@ export class EmployeeService {
 
     // Handle deleted QR codes
     if (deletedQrCodes && deletedQrCodes.length > 0) {
-      const deletedKeys = deletedQrCodes.map(extractKey);
-      for (const key of deletedKeys) {
-        await deleteImageFromS3(key);
+      const requestedDeletes = new Set(
+        deletedQrCodes.map((qr) => qr.trim()).filter(Boolean),
+      );
+      const removedQrCodes = finalQrCodes.filter((storedQr) => {
+        if (requestedDeletes.has(storedQr)) return true;
+
+        // Uploaded QR images are stored as S3 keys, while the API may return
+        // them as pre-signed URLs. Match those by key, but keep referral URLs
+        // (which are stored as full URLs) on exact-match semantics.
+        if (
+          !storedQr.startsWith('http://') &&
+          !storedQr.startsWith('https://')
+        ) {
+          return [...requestedDeletes].some((requestedQr) => {
+            try {
+              const requestedUrl = new URL(requestedQr);
+              return (
+                requestedUrl.hostname.endsWith('amazonaws.com') &&
+                extractS3Key(requestedQr) === storedQr
+              );
+            } catch {
+              return requestedQr === storedQr;
+            }
+          });
+        }
+
+        return false;
+      });
+
+      for (const qr of removedQrCodes) {
+        if (!qr.startsWith('http://') && !qr.startsWith('https://')) {
+          await deleteImageFromS3(qr);
+        }
       }
-      finalQrCodes = finalQrCodes.filter((qr) => !deletedKeys.includes(qr));
+
+      finalQrCodes = finalQrCodes.filter((qr) => !removedQrCodes.includes(qr));
     }
 
     // Append new QR codes
