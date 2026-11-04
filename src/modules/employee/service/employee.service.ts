@@ -52,6 +52,13 @@ export class EmployeeService {
     }
 
     const { password, qrCode, ...rest } = createEmployeeDto;
+    const initialQrCodes = [
+      ...new Set(
+        (Array.isArray(qrCode) ? qrCode : qrCode ? [qrCode] : [])
+          .map((value) => value.trim())
+          .filter(Boolean),
+      ),
+    ];
     const hashedPassword = await bcrypt.hash(
       password,
       Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
@@ -61,7 +68,9 @@ export class EmployeeService {
     const newEmployee = await this.prisma.employee.create({
       data: {
         ...rest,
-        qrCode: Array.isArray(qrCode) ? qrCode : qrCode ? [qrCode] : [],
+        qrCode: initialQrCodes,
+        qrCodeSerials: initialQrCodes.map((_, index) => index + 1),
+        qrCodeGenerationCount: initialQrCodes.length,
         password: hashedPassword,
         showEmployeeId,
         state: 'INACTIVE',
@@ -139,6 +148,19 @@ export class EmployeeService {
       }
       return urlOrKey;
     };
+    const qrIdentity = (value: string) => {
+      if (!value.startsWith('http://') && !value.startsWith('https://')) {
+        return value;
+      }
+      try {
+        const url = new URL(value);
+        return url.hostname.endsWith('amazonaws.com')
+          ? extractS3Key(value)
+          : value;
+      } catch {
+        return value;
+      }
+    };
 
     let finalDocuments = existingEmployee.document || [];
 
@@ -158,7 +180,23 @@ export class EmployeeService {
       finalDocuments = [...finalDocuments, ...document];
     }
 
-    let finalQrCodes = existingEmployee.qrCode || [];
+    const storedQrCodes = existingEmployee.qrCode || [];
+    const storedSerials = existingEmployee.qrCodeSerials || [];
+    let qrCodeGenerationCount = existingEmployee.qrCodeGenerationCount || 0;
+    const finalQrCodes: string[] = [];
+    const finalQrCodeSerials: number[] = [];
+    const seenQrCodes = new Set<string>();
+    storedQrCodes.forEach((storedQr, index) => {
+      if (seenQrCodes.has(storedQr)) return;
+      seenQrCodes.add(storedQr);
+      finalQrCodes.push(storedQr);
+      finalQrCodeSerials.push(storedSerials[index] || index + 1);
+    });
+    qrCodeGenerationCount = Math.max(
+      qrCodeGenerationCount,
+      ...finalQrCodeSerials,
+      0,
+    );
 
     // Handle deleted QR codes
     if (deletedQrCodes && deletedQrCodes.length > 0) {
@@ -197,15 +235,30 @@ export class EmployeeService {
         }
       }
 
-      finalQrCodes = finalQrCodes.filter((qr) => !removedQrCodes.includes(qr));
+      const remainingIndexes = finalQrCodes
+        .map((qr, index) => ({ qr, index }))
+        .filter(({ qr }) => !removedQrCodes.includes(qr));
+      const remainingCodes = remainingIndexes.map(({ qr }) => qr);
+      const remainingSerials = remainingIndexes.map(
+        ({ index }) => finalQrCodeSerials[index],
+      );
+      finalQrCodes.splice(0, finalQrCodes.length, ...remainingCodes);
+      finalQrCodeSerials.splice(0, finalQrCodeSerials.length, ...remainingSerials);
     }
 
-    // Append new QR codes
+    // Clients may submit the full current list. Add only genuinely new values.
     if (qrCode && qrCode.length > 0) {
-      finalQrCodes = [
-        ...finalQrCodes,
-        ...(Array.isArray(qrCode) ? qrCode : [qrCode]),
-      ];
+      const incomingQrCodes = Array.isArray(qrCode) ? qrCode : [qrCode];
+      for (const incomingQr of incomingQrCodes) {
+        const normalizedQr = incomingQr.trim();
+        if (
+          !normalizedQr ||
+          finalQrCodes.some((currentQr) => qrIdentity(currentQr) === qrIdentity(normalizedQr))
+        ) continue;
+        finalQrCodes.push(normalizedQr);
+        qrCodeGenerationCount += 1;
+        finalQrCodeSerials.push(qrCodeGenerationCount);
+      }
     }
 
     // 4. Perform the update
@@ -216,6 +269,8 @@ export class EmployeeService {
         ...(profileImage ? { profileImage } : {}),
         document: finalDocuments,
         qrCode: finalQrCodes,
+        qrCodeSerials: finalQrCodeSerials,
+        qrCodeGenerationCount,
         ...(hashedPassword ? { password: hashedPassword } : {}),
       },
     });

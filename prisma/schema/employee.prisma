@@ -9,6 +9,8 @@ model Employee {
   profileImage   String?
   document       String[]
   qrCode         String[]                  @default([])
+  qrCodeSerials          Int[]              @default([])
+  qrCodeGenerationCount Int                 @default(0)
   cashLeader     Boolean                   @default(false)
   enablePost     Boolean                   @default(false)
   password       String
