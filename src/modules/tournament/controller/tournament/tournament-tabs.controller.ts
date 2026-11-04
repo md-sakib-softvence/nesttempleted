@@ -513,16 +513,87 @@ export class TournamentTabsController {
 
   @Patch(':id/tabs/settings')
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Update Tournament Settings tab' })
+  @ApiOperation({
+    summary: 'Update Tournament Settings tab (Optional file uploads or JSON)',
+  })
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'canvasImage', maxCount: 1 },
+      { name: 'bannerUrl', maxCount: 1 },
+      { name: 'banner', maxCount: 1 },
+      { name: 'fanPassArtUrl', maxCount: 1 },
+      { name: 'playerOrgUrl', maxCount: 1 },
+      { name: 'organizerLogo', maxCount: 1 },
+      { name: 'prOrgUrl', maxCount: 1 },
+      { name: 'secondaryOrganizerLogo', maxCount: 1 },
+      { name: 'tournamentLogoUrl', maxCount: 1 },
+      { name: 'tournamentLogo', maxCount: 1 },
+      { name: 'logo', maxCount: 1 },
+      { name: 'rules', maxCount: 10 },
+      { name: 'termsAndConditions', maxCount: 10 },
+      { name: 'tsAndTc', maxCount: 10 },
+    ]),
+  )
   async patchSettingsTab(
     @Param('id') id: string,
     @Body() dto: UpdateSettingsTabDto,
+    @UploadedFiles()
+    files?: {
+      canvasImage?: Express.Multer.File[];
+      bannerUrl?: Express.Multer.File[];
+      banner?: Express.Multer.File[];
+      fanPassArtUrl?: Express.Multer.File[];
+      playerOrgUrl?: Express.Multer.File[];
+      organizerLogo?: Express.Multer.File[];
+      prOrgUrl?: Express.Multer.File[];
+      secondaryOrganizerLogo?: Express.Multer.File[];
+      tournamentLogoUrl?: Express.Multer.File[];
+      tournamentLogo?: Express.Multer.File[];
+      logo?: Express.Multer.File[];
+      rules?: Express.Multer.File[];
+      termsAndConditions?: Express.Multer.File[];
+      tsAndTc?: Express.Multer.File[];
+    },
   ) {
-    const data = await this.tabsService.patchSettingsTab(id, dto);
-    return sendResponse({
-      message: 'Tournament Settings tab updated successfully',
-      data,
-    });
+    let uploadedFiles: any = null;
+    if (files && Object.keys(files).length > 0) {
+      uploadedFiles = await uploadTournamentFiles(files);
+      if (uploadedFiles.canvasImage) {
+        dto.canvasImage = uploadedFiles.canvasImage;
+        dto.bannerUrl = uploadedFiles.canvasImage;
+        dto.fanPassArtUrl = uploadedFiles.canvasImage;
+      }
+      if (uploadedFiles.playerOrgUrl) {
+        dto.playerOrgUrl = uploadedFiles.playerOrgUrl;
+        dto.organizerLogo = uploadedFiles.playerOrgUrl;
+      }
+      if (uploadedFiles.prOrgUrl) {
+        dto.prOrgUrl = uploadedFiles.prOrgUrl;
+        dto.secondaryOrganizerLogo = uploadedFiles.prOrgUrl;
+      }
+      if (uploadedFiles.tournamentLogoUrl) {
+        dto.tournamentLogoUrl = uploadedFiles.tournamentLogoUrl;
+        dto.logo = uploadedFiles.tournamentLogoUrl;
+      }
+      if (uploadedFiles.rules?.length > 0) {
+        dto.rules = uploadedFiles.rules;
+      }
+      if (uploadedFiles.tsAndTc?.length > 0) {
+        dto.tsAndTc = uploadedFiles.tsAndTc;
+        dto.termsAndConditions = uploadedFiles.tsAndTc;
+      }
+    }
+
+    try {
+      const data = await this.tabsService.patchSettingsTab(id, dto);
+      return sendResponse({
+        message: 'Tournament Settings tab updated successfully',
+        data,
+      });
+    } catch (err) {
+      if (uploadedFiles) await rollbackTournamentFiles(uploadedFiles);
+      throw err;
+    }
   }
 
   // ==========================================
