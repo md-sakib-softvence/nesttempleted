@@ -27,7 +27,11 @@ import {
   SponsorStatus,
   Prisma,
 } from '@prisma/client';
-import { presignTournamentMedia } from '../utils/tournament-media.util';
+import {
+  presignTournamentMedia,
+  safePresignUrl,
+  extractStorageKey,
+} from '../utils/tournament-media.util';
 import { calculatePaginationMeta } from '../../utils/query.util';
 import { normalizeStringArray } from '../utils/file-upload.util';
 import { mapPrizeRule } from '../dto/tournament/create-tournament.dto';
@@ -160,8 +164,10 @@ export class TournamentTabsService {
       ? `${tournament.venues[0].name}, ${tournament.venues[0].address}`
       : 'TBD';
 
-    const bannerUrl = tournament.canvasImage || null;
-    const logo = tournament.tournamentLogoUrl || tournament.canvasImage || null;
+    const presigned = await presignTournamentMedia(tournament as any);
+
+    const bannerUrl = presigned.canvasImage || null;
+    const logo = presigned.tournamentLogoUrl || presigned.canvasImage || null;
     const description =
       tournament.rules?.[0] || 'Tournament details and overview';
 
@@ -223,8 +229,8 @@ export class TournamentTabsService {
         uniqueMatchdays,
         heatmapData: heatmapVenues,
       },
-      rulesUrl: tournament.rules?.[0] || null,
-      termsAndConditionsUrl: tournament.tsAndTc?.[0] || null,
+      rulesUrl: presigned.rules?.[0] || null,
+      termsAndConditionsUrl: presigned.tsAndTc?.[0] || null,
     };
   }
 
@@ -967,17 +973,22 @@ export class TournamentTabsService {
 
     const presigned = await presignTournamentMedia(tournament as any);
 
-    const sponsors = (tournament.sponsors || []).map((s) => ({
-      id: s.sponsorId,
-      sponsorId: s.sponsorId,
-      name: s.name,
-      logo: s.logo || null,
-      logoUrl: s.logo || null,
-      website: s.website || null,
-      websiteUrl: s.website || null,
-      tier: s.priority || 'GOLD',
-      priority: s.priority || 'GOLD',
-    }));
+    const sponsors = await Promise.all(
+      (tournament.sponsors || []).map(async (s) => {
+        const presignedLogo = s.logo ? await safePresignUrl(s.logo) : null;
+        return {
+          id: s.sponsorId,
+          sponsorId: s.sponsorId,
+          name: s.name,
+          logo: presignedLogo,
+          logoUrl: presignedLogo,
+          website: s.website || null,
+          websiteUrl: s.website || null,
+          tier: s.priority || 'GOLD',
+          priority: s.priority || 'GOLD',
+        };
+      }),
+    );
 
     return {
       tournamentId: tournament.tournamentId,
@@ -999,22 +1010,28 @@ export class TournamentTabsService {
 
     const data: Prisma.TournamentUpdateInput = {};
     if (dto.organizerLogo !== undefined || dto.playerOrgUrl !== undefined) {
-      data.playerOrgUrl = dto.organizerLogo || dto.playerOrgUrl;
+      data.playerOrgUrl = extractStorageKey(
+        dto.organizerLogo || dto.playerOrgUrl,
+      );
     }
     if (
       dto.secondaryOrganizerLogo !== undefined ||
       dto.prOrgUrl !== undefined
     ) {
-      data.prOrgUrl = dto.secondaryOrganizerLogo || dto.prOrgUrl;
+      data.prOrgUrl = extractStorageKey(
+        dto.secondaryOrganizerLogo || dto.prOrgUrl,
+      );
     }
     if (
       dto.tournamentLogo !== undefined ||
       dto.tournamentLogoUrl !== undefined
     ) {
-      data.tournamentLogoUrl = dto.tournamentLogo || dto.tournamentLogoUrl;
+      data.tournamentLogoUrl = extractStorageKey(
+        dto.tournamentLogo || dto.tournamentLogoUrl,
+      );
     }
     if (dto.canvasImage !== undefined) {
-      data.canvasImage = dto.canvasImage;
+      data.canvasImage = extractStorageKey(dto.canvasImage);
     }
     if (dto.playerCardTemplate !== undefined) {
       data.playerCardTemplate = dto.playerCardTemplate;
@@ -1031,13 +1048,14 @@ export class TournamentTabsService {
     if (Array.isArray(dto.sponsors)) {
       for (const item of dto.sponsors) {
         if (typeof item === 'object' && item !== null && item.name) {
+          const sponsorLogo = extractStorageKey(item.logo || item.logoUrl);
           if (item.sponsorId || item.id) {
             const sid = item.sponsorId || item.id;
             await this.prisma.sponsor.update({
               where: { sponsorId: sid },
               data: {
                 name: item.name,
-                logo: item.logo || item.logoUrl,
+                logo: sponsorLogo,
                 website: item.website || item.websiteUrl,
                 priority: item.tier || item.priority,
                 status: SponsorStatus.PLAYER,
@@ -1048,7 +1066,7 @@ export class TournamentTabsService {
               data: {
                 tournamentId,
                 name: item.name,
-                logo: item.logo || item.logoUrl,
+                logo: sponsorLogo,
                 website: item.website || item.websiteUrl,
                 priority: item.tier || item.priority || 'GOLD',
                 status: SponsorStatus.PLAYER,
@@ -1084,17 +1102,22 @@ export class TournamentTabsService {
 
     const presigned = await presignTournamentMedia(tournament as any);
 
-    const sponsors = (tournament.sponsors || []).map((s) => ({
-      id: s.sponsorId,
-      sponsorId: s.sponsorId,
-      name: s.name,
-      logo: s.logo || null,
-      logoUrl: s.logo || null,
-      website: s.website || null,
-      websiteUrl: s.website || null,
-      tier: s.priority || 'GOLD',
-      priority: s.priority || 'GOLD',
-    }));
+    const sponsors = await Promise.all(
+      (tournament.sponsors || []).map(async (s) => {
+        const presignedLogo = s.logo ? await safePresignUrl(s.logo) : null;
+        return {
+          id: s.sponsorId,
+          sponsorId: s.sponsorId,
+          name: s.name,
+          logo: presignedLogo,
+          logoUrl: presignedLogo,
+          website: s.website || null,
+          websiteUrl: s.website || null,
+          tier: s.priority || 'GOLD',
+          priority: s.priority || 'GOLD',
+        };
+      }),
+    );
 
     return {
       tournamentId: tournament.tournamentId,
@@ -1117,22 +1140,30 @@ export class TournamentTabsService {
 
     const data: Prisma.TournamentUpdateInput = {};
     if (dto.organizerLogo !== undefined || dto.playerOrgUrl !== undefined) {
-      data.playerOrgUrl = dto.organizerLogo || dto.playerOrgUrl;
+      data.playerOrgUrl = extractStorageKey(
+        dto.organizerLogo || dto.playerOrgUrl,
+      );
     }
     if (
       dto.secondaryOrganizerLogo !== undefined ||
       dto.prOrgUrl !== undefined
     ) {
-      data.prOrgUrl = dto.secondaryOrganizerLogo || dto.prOrgUrl;
+      data.prOrgUrl = extractStorageKey(
+        dto.secondaryOrganizerLogo || dto.prOrgUrl,
+      );
     }
     if (
       dto.tournamentLogo !== undefined ||
       dto.tournamentLogoUrl !== undefined
     ) {
-      data.tournamentLogoUrl = dto.tournamentLogo || dto.tournamentLogoUrl;
+      data.tournamentLogoUrl = extractStorageKey(
+        dto.tournamentLogo || dto.tournamentLogoUrl,
+      );
     }
     if (dto.fanPassArtUrl !== undefined || dto.canvasImage !== undefined) {
-      data.canvasImage = dto.fanPassArtUrl || dto.canvasImage;
+      data.canvasImage = extractStorageKey(
+        dto.fanPassArtUrl || dto.canvasImage,
+      );
     }
     if (dto.fanPassTemplate !== undefined) {
       data.fanPassTemplate = dto.fanPassTemplate;
@@ -1148,13 +1179,14 @@ export class TournamentTabsService {
     if (Array.isArray(dto.sponsors)) {
       for (const item of dto.sponsors) {
         if (typeof item === 'object' && item !== null && item.name) {
+          const sponsorLogo = extractStorageKey(item.logo || item.logoUrl);
           if (item.sponsorId || item.id) {
             const sid = item.sponsorId || item.id;
             await this.prisma.sponsor.update({
               where: { sponsorId: sid },
               data: {
                 name: item.name,
-                logo: item.logo || item.logoUrl,
+                logo: sponsorLogo,
                 website: item.website || item.websiteUrl,
                 priority: item.tier || item.priority,
                 status: SponsorStatus.FAN,
@@ -1165,7 +1197,7 @@ export class TournamentTabsService {
               data: {
                 tournamentId,
                 name: item.name,
-                logo: item.logo || item.logoUrl,
+                logo: sponsorLogo,
                 website: item.website || item.websiteUrl,
                 priority: item.tier || item.priority || 'GOLD',
                 status: SponsorStatus.FAN,
@@ -1199,9 +1231,11 @@ export class TournamentTabsService {
 
     const data: Prisma.TournamentUpdateInput = {};
     if (dto.rules !== undefined) {
-      data.rules = dto.rules;
+      data.rules = normalizeStringArray(dto.rules).map((r) =>
+        extractStorageKey(r),
+      );
     } else if (dto.rulesUrl !== undefined) {
-      data.rules = [dto.rulesUrl];
+      data.rules = [extractStorageKey(dto.rulesUrl)];
     }
 
     data.version = { increment: 1 };
@@ -1241,7 +1275,9 @@ export class TournamentTabsService {
 
     const data: Prisma.TournamentUpdateInput = {};
     if (terms !== undefined) {
-      data.tsAndTc = terms;
+      data.tsAndTc = normalizeStringArray(terms).map((t) =>
+        extractStorageKey(t),
+      );
     }
 
     data.version = { increment: 1 };
@@ -1317,19 +1353,26 @@ export class TournamentTabsService {
       amount: p.amount,
     }));
 
-    const sponsors = (tournament.sponsors || []).map((sp) => ({
-      id: sp.sponsorId,
-      sponsorId: sp.sponsorId,
-      name: sp.name,
-      website: sp.website || '',
-      priority: sp.priority || 'PRIMARY',
-      tier: sp.priority || 'GOLD',
-      value: sp.value ?? 0,
-      status: sp.status || 'BOTH',
-      contact: sp.contact || '',
-      logo: sp.logo || '',
-      logoUrl: sp.logo || '',
-    }));
+    const presigned = await presignTournamentMedia(tournament as any);
+
+    const sponsors = await Promise.all(
+      (tournament.sponsors || []).map(async (sp) => {
+        const presignedLogo = sp.logo ? await safePresignUrl(sp.logo) : '';
+        return {
+          id: sp.sponsorId,
+          sponsorId: sp.sponsorId,
+          name: sp.name,
+          website: sp.website || '',
+          priority: sp.priority || 'PRIMARY',
+          tier: sp.priority || 'GOLD',
+          value: sp.value ?? 0,
+          status: sp.status || 'BOTH',
+          contact: sp.contact || '',
+          logo: presignedLogo || '',
+          logoUrl: presignedLogo || '',
+        };
+      }),
+    );
 
     const scheduleObj = (tournament.schedule as any) || {};
     const groupsCount =
@@ -1339,9 +1382,9 @@ export class TournamentTabsService {
       scheduleObj?.structure?.thirdPlacePlayoffEnabled !== undefined
         ? scheduleObj.structure.thirdPlacePlayoffEnabled
         : true;
-    const rulesList = Array.isArray(tournament.rules) ? tournament.rules : [];
-    const tsAndTcList = Array.isArray(tournament.tsAndTc)
-      ? tournament.tsAndTc
+    const rulesList = Array.isArray(presigned.rules) ? presigned.rules : [];
+    const tsAndTcList = Array.isArray(presigned.tsAndTc)
+      ? presigned.tsAndTc
       : [];
     const formatName =
       tournament.tournamentFormat === 'SINGLE_ELIMINATION'
@@ -1390,20 +1433,20 @@ export class TournamentTabsService {
       status: tournament.status,
       isDraft: tournament.status === 'DRAFT',
 
-      logo: tournament.tournamentLogoUrl || null,
-      tournamentLogoUrl: tournament.tournamentLogoUrl || null,
-      bannerUrl: tournament.canvasImage || null,
-      canvasImage: tournament.canvasImage || null,
-      organizerLogo: tournament.playerOrgUrl || null,
-      secondaryOrganizerLogo: tournament.prOrgUrl || null,
-      fanPassArtUrl: tournament.canvasImage || null,
+      logo: presigned.tournamentLogoUrl || null,
+      tournamentLogoUrl: presigned.tournamentLogoUrl || null,
+      bannerUrl: presigned.canvasImage || null,
+      canvasImage: presigned.canvasImage || null,
+      organizerLogo: presigned.playerOrgUrl || null,
+      secondaryOrganizerLogo: presigned.prOrgUrl || null,
+      fanPassArtUrl: presigned.canvasImage || null,
 
       rulesUrl: rulesList[0] || null,
       rules: rulesList,
       termsAndConditionsUrl: tsAndTcList[0] || null,
       termsAndConditions: tsAndTcList,
-      playerOrgUrl: tournament.playerOrgUrl || null,
-      prOrgUrl: tournament.prOrgUrl || null,
+      playerOrgUrl: presigned.playerOrgUrl || null,
+      prOrgUrl: presigned.prOrgUrl || null,
 
       entryFee: tournament.entryFee,
       currency: tournament.currency,
@@ -1528,27 +1571,41 @@ export class TournamentTabsService {
     if (dto.frequencyArray !== undefined)
       data.frequencyArray = dto.frequencyArray;
 
-    if (dto.bannerUrl !== undefined) data.canvasImage = dto.bannerUrl;
-    if (dto.canvasImage !== undefined) data.canvasImage = dto.canvasImage;
-    if (dto.fanPassArtUrl !== undefined) data.canvasImage = dto.fanPassArtUrl;
-    if (dto.logo !== undefined) data.tournamentLogoUrl = dto.logo;
+    if (dto.bannerUrl !== undefined)
+      data.canvasImage = extractStorageKey(dto.bannerUrl);
+    if (dto.canvasImage !== undefined)
+      data.canvasImage = extractStorageKey(dto.canvasImage);
+    if (dto.fanPassArtUrl !== undefined)
+      data.canvasImage = extractStorageKey(dto.fanPassArtUrl);
+    if (dto.logo !== undefined)
+      data.tournamentLogoUrl = extractStorageKey(dto.logo);
     if (dto.tournamentLogoUrl !== undefined)
-      data.tournamentLogoUrl = dto.tournamentLogoUrl;
+      data.tournamentLogoUrl = extractStorageKey(dto.tournamentLogoUrl);
     if (dto.organizerLogo !== undefined)
-      data.playerOrgUrl = dto.organizerLogo;
-    if (dto.playerOrgUrl !== undefined) data.playerOrgUrl = dto.playerOrgUrl;
+      data.playerOrgUrl = extractStorageKey(dto.organizerLogo);
+    if (dto.playerOrgUrl !== undefined)
+      data.playerOrgUrl = extractStorageKey(dto.playerOrgUrl);
     if (dto.secondaryOrganizerLogo !== undefined)
-      data.prOrgUrl = dto.secondaryOrganizerLogo;
-    if (dto.prOrgUrl !== undefined) data.prOrgUrl = dto.prOrgUrl;
+      data.prOrgUrl = extractStorageKey(dto.secondaryOrganizerLogo);
+    if (dto.prOrgUrl !== undefined)
+      data.prOrgUrl = extractStorageKey(dto.prOrgUrl);
 
-    if (dto.rulesUrl !== undefined) data.rules = [dto.rulesUrl];
-    if (dto.rules !== undefined) data.rules = normalizeStringArray(dto.rules);
+    if (dto.rulesUrl !== undefined)
+      data.rules = [extractStorageKey(dto.rulesUrl)];
+    if (dto.rules !== undefined)
+      data.rules = normalizeStringArray(dto.rules).map((r) =>
+        extractStorageKey(r),
+      );
     if (dto.termsAndConditionsUrl !== undefined)
-      data.tsAndTc = [dto.termsAndConditionsUrl];
+      data.tsAndTc = [extractStorageKey(dto.termsAndConditionsUrl)];
     if (dto.termsAndConditions !== undefined)
-      data.tsAndTc = normalizeStringArray(dto.termsAndConditions);
+      data.tsAndTc = normalizeStringArray(dto.termsAndConditions).map((t) =>
+        extractStorageKey(t),
+      );
     if (dto.tsAndTc !== undefined)
-      data.tsAndTc = normalizeStringArray(dto.tsAndTc);
+      data.tsAndTc = normalizeStringArray(dto.tsAndTc).map((t) =>
+        extractStorageKey(t),
+      );
 
     if (dto.scheduleSettings) {
       if (dto.scheduleSettings.dailyStart !== undefined)
@@ -1734,7 +1791,7 @@ export class TournamentTabsService {
           const sponsorId = sp.id || sp.sponsorId;
           const sponsorData = {
             name: sp.name,
-            logo: sp.logo || sp.logoUrl,
+            logo: extractStorageKey(sp.logo || sp.logoUrl),
             website: sp.website,
             priority: sp.priority || sp.tier,
             contact: sp.contact,

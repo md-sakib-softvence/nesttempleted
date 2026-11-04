@@ -8,8 +8,6 @@ dist/
 build/
 
 # Environment
-.env
-.env.local
 .env.*.local
 
 # Logs
@@ -23,7 +21,6 @@ pnpm-debug.log*
 Thumbs.db
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -43,3 +40,4 @@ prisma/migrations/*.sql.bak
 *.pem
 # Misc
 *.tsbuildinfo
+config.bat
