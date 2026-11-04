@@ -2,19 +2,32 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { UpdateNotificationDto } from './dto/update-notification.dto';
+import { NotificationGateway } from './notification.gateway';
 
 @Injectable()
 export class NotificationService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly notificationGateway: NotificationGateway,
+  ) {}
 
-  create(createNotificationDto: CreateNotificationDto) {
-    return this.prisma.notification.create({
+  async create(createNotificationDto: CreateNotificationDto) {
+    const notification = await this.prisma.notification.create({
       data: createNotificationDto,
     });
+    this.notificationGateway.publishCreated(notification.userId);
+    return notification;
   }
 
   findAll() {
     return this.prisma.notification.findMany();
+  }
+
+  findForUser(userId: string) {
+    return this.prisma.notification.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   async findOne(notificationId: string) {
@@ -33,6 +46,28 @@ export class NotificationService {
     return this.prisma.notification.update({
       where: { notificationId },
       data: updateNotificationDto,
+    });
+  }
+
+  async markAsReadForUser(notificationId: string, userId: string) {
+    const result = await this.prisma.notification.updateMany({
+      where: { notificationId, userId },
+      data: { isRead: true },
+    });
+
+    if (result.count === 0) {
+      throw new NotFoundException(
+        `Notification with ID ${notificationId} was not found`,
+      );
+    }
+
+    return this.findOne(notificationId);
+  }
+
+  markAllAsReadForUser(userId: string) {
+    return this.prisma.notification.updateMany({
+      where: { userId, isRead: false },
+      data: { isRead: true },
     });
   }
 

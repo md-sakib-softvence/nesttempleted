@@ -22,7 +22,10 @@ import {
   calculatePaginationMeta,
   QueryOptions,
 } from '../../utils/query.util';
-import { presignTournamentMedia } from '../utils/tournament-media.util';
+import {
+  presignTournamentMedia,
+  extractStorageKey,
+} from '../utils/tournament-media.util';
 import {
   TournamentScheduleService,
   Participant,
@@ -684,25 +687,35 @@ export class TournamentCoreService {
       updateData.paymentWindow = Number(updateTournamentDto.paymentWindowHours);
     }
     if (updateTournamentDto.rulesUrl) {
-      updateData.rules = [updateTournamentDto.rulesUrl];
+      updateData.rules = [extractStorageKey(updateTournamentDto.rulesUrl)];
     }
     if (updateTournamentDto.termsAndConditionsUrl) {
-      updateData.tsAndTc = [updateTournamentDto.termsAndConditionsUrl];
+      updateData.tsAndTc = [
+        extractStorageKey(updateTournamentDto.termsAndConditionsUrl),
+      ];
     }
     if (updateTournamentDto.logo) {
-      updateData.tournamentLogoUrl = updateTournamentDto.logo;
+      updateData.tournamentLogoUrl = extractStorageKey(
+        updateTournamentDto.logo,
+      );
     }
     if (updateTournamentDto.bannerUrl) {
-      updateData.canvasImage = updateTournamentDto.bannerUrl;
+      updateData.canvasImage = extractStorageKey(updateTournamentDto.bannerUrl);
     }
     if (updateTournamentDto.organizerLogo) {
-      updateData.playerOrgUrl = updateTournamentDto.organizerLogo;
+      updateData.playerOrgUrl = extractStorageKey(
+        updateTournamentDto.organizerLogo,
+      );
     }
     if (updateTournamentDto.secondaryOrganizerLogo) {
-      updateData.prOrgUrl = updateTournamentDto.secondaryOrganizerLogo;
+      updateData.prOrgUrl = extractStorageKey(
+        updateTournamentDto.secondaryOrganizerLogo,
+      );
     }
     if (updateTournamentDto.fanPassArtUrl) {
-      updateData.canvasImage = updateTournamentDto.fanPassArtUrl;
+      updateData.canvasImage = extractStorageKey(
+        updateTournamentDto.fanPassArtUrl,
+      );
     }
     if (updateTournamentDto.prizeRule !== undefined) {
       updateData.prizeRule = mapPrizeRule(updateTournamentDto.prizeRule);
@@ -769,15 +782,33 @@ export class TournamentCoreService {
     if (deadline) {
       updateData.deadline = new Date(deadline);
     }
+    if (updateData.canvasImage !== undefined) {
+      updateData.canvasImage = extractStorageKey(updateData.canvasImage);
+    }
+    if (updateData.tournamentLogoUrl !== undefined) {
+      updateData.tournamentLogoUrl = extractStorageKey(
+        updateData.tournamentLogoUrl,
+      );
+    }
+    if (updateData.playerOrgUrl !== undefined) {
+      updateData.playerOrgUrl = extractStorageKey(updateData.playerOrgUrl);
+    }
+    if (updateData.prOrgUrl !== undefined) {
+      updateData.prOrgUrl = extractStorageKey(updateData.prOrgUrl);
+    }
     if (rest.rules !== undefined) {
-      updateData.rules = normalizeStringArray(rest.rules);
+      updateData.rules = normalizeStringArray(rest.rules).map((r) =>
+        extractStorageKey(r),
+      );
     }
     const terms =
       updateTournamentDto.termsAndConditions !== undefined
         ? updateTournamentDto.termsAndConditions
         : rest.tsAndTc;
     if (terms !== undefined) {
-      updateData.tsAndTc = normalizeStringArray(terms);
+      updateData.tsAndTc = normalizeStringArray(terms).map((t) =>
+        extractStorageKey(t),
+      );
     }
     if (rest.frequencyArray !== undefined) {
       updateData.frequencyArray = normalizeStringArray(rest.frequencyArray);

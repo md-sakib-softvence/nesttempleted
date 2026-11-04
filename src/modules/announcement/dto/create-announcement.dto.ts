@@ -28,7 +28,7 @@ export class CreateAnnouncementDto {
 
   @ApiPropertyOptional({
     description:
-      'Target Audience (e.g. GLOBAL, STAFF, PLAYERS_ALL, or a specific tournament ID)',
+      'Target Audience (e.g. GLOBAL, FANS_ALL, STAFF, PLAYERS_ALL, or a specific tournament ID)',
     example: 'GLOBAL',
     default: 'GLOBAL',
   })

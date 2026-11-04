@@ -1,13 +1,67 @@
 import { getPreSignedUrl } from '../../utils/s3.util';
 
 const isHttpUrl = (value: string) => /^https?:\/\//i.test(value);
+const isS3HttpUrl = (value: string) =>
+  isHttpUrl(value) &&
+  (/amazonaws\.com/i.test(value) || /X-Amz-/i.test(value));
 const isStoredDocumentKey = (value: string) =>
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.[a-z0-9]+$/i.test(value) ||
-  /\.(pdf|doc|docx|txt|rtf|png|jpe?g)$/i.test(value);
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.[a-z0-9]+$/i.test(
+    value,
+  ) || /\.(pdf|doc|docx|txt|rtf|png|jpe?g|webp|gif|svg)$/i.test(value);
 
-const presignLegacyDocument = async (value: string) => {
-  if (isHttpUrl(value) || !isStoredDocumentKey(value)) return value;
-  return getPreSignedUrl(value);
+/**
+ * Extracts the raw S3 key if a pre-signed or full S3 URL is passed back from the client,
+ * preventing expiring query parameters from being saved in the database.
+ */
+export function extractStorageKey<T extends string | null | undefined>(
+  value: T,
+): T {
+  if (!value || typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  if (isS3HttpUrl(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      const key = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
+      const bucketName = process.env.AWS_S3_BUCKET_NAME;
+      if (bucketName && key.startsWith(`${bucketName}/`)) {
+        return key.slice(bucketName.length + 1) as T;
+      }
+      return (key || trimmed) as T;
+    } catch {
+      return trimmed as T;
+    }
+  }
+  return trimmed as T;
+}
+
+/**
+ * Safely generates an S3 pre-signed URL for a stored key or S3 URL.
+ * Preserves external non-S3 HTTP URLs and falls back gracefully if S3 env is missing.
+ */
+export async function safePresignUrl(
+  value?: string | null,
+): Promise<string | null> {
+  if (!value) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+  if (isHttpUrl(str) && !isS3HttpUrl(str)) {
+    return str;
+  }
+  try {
+    return (await getPreSignedUrl(str)) || str;
+  } catch {
+    return str;
+  }
+}
+
+export const presignLegacyDocument = async (value: string) => {
+  if (!value) return value;
+  const str = String(value).trim();
+  if (isS3HttpUrl(str)) {
+    return (await safePresignUrl(str)) || str;
+  }
+  if (isHttpUrl(str) || !isStoredDocumentKey(str)) return str;
+  return (await safePresignUrl(str)) || str;
 };
 
 /**
@@ -22,35 +76,23 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
   const formatted: Record<string, any> = { ...tournament };
 
   if (formatted.canvasImage) {
-    formatted.canvasImage = await getPreSignedUrl(
-      String(formatted.canvasImage),
-    );
+    formatted.canvasImage = await safePresignUrl(String(formatted.canvasImage));
   }
 
   if (formatted.tournamentLogoUrl) {
-    formatted.tournamentLogoUrl = await getPreSignedUrl(
+    formatted.tournamentLogoUrl = await safePresignUrl(
       String(formatted.tournamentLogoUrl),
     );
   }
 
   if (formatted.playerOrgUrl) {
-    if (
-      !String(formatted.playerOrgUrl).includes('http://') &&
-      !String(formatted.playerOrgUrl).includes('https://')
-    ) {
-      formatted.playerOrgUrl = await getPreSignedUrl(
-        String(formatted.playerOrgUrl),
-      );
-    }
+    formatted.playerOrgUrl = await safePresignUrl(
+      String(formatted.playerOrgUrl),
+    );
   }
 
   if (formatted.prOrgUrl) {
-    if (
-      !String(formatted.prOrgUrl).includes('http://') &&
-      !String(formatted.prOrgUrl).includes('https://')
-    ) {
-      formatted.prOrgUrl = await getPreSignedUrl(String(formatted.prOrgUrl));
-    }
+    formatted.prOrgUrl = await safePresignUrl(String(formatted.prOrgUrl));
   }
 
   if (formatted.rules && Array.isArray(formatted.rules)) {
@@ -170,14 +212,20 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
   }
 
   formatted.logo = formatted.tournamentLogoUrl || formatted.canvasImage || null;
+  formatted.bannerUrl = formatted.canvasImage || null;
   formatted.organizerLogo = formatted.playerOrgUrl || formatted.prOrgUrl || '';
-  formatted.secondaryOrganizerLogo = formatted.secondaryOrganizerLogo || null;
+  formatted.secondaryOrganizerLogo =
+    formatted.prOrgUrl || formatted.secondaryOrganizerLogo || null;
   formatted.fanPassArtUrl = formatted.canvasImage || null;
   formatted.rulesUrl =
-    (formatted.rules && formatted.rules.find((value: string) => isHttpUrl(value))) ||
+    (formatted.rules &&
+      formatted.rules.find((value: string) => isHttpUrl(value))) ||
+    formatted.rules?.[0] ||
     '';
   formatted.termsAndConditionsUrl =
-    (formatted.tsAndTc && formatted.tsAndTc.find((value: string) => isHttpUrl(value))) ||
+    (formatted.tsAndTc &&
+      formatted.tsAndTc.find((value: string) => isHttpUrl(value))) ||
+    formatted.tsAndTc?.[0] ||
     '';
   formatted.termsAndConditions = formatted.tsAndTc || [];
   formatted.seriesId =
@@ -254,26 +302,32 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
 
   // Normalized Sponsors
   if (formatted.sponsors && Array.isArray(formatted.sponsors)) {
-    formatted.sponsors = formatted.sponsors.map((s: any) => {
-      let priorityOrder = 2;
-      const prio =
-        typeof s.priority === 'string' ? s.priority.toUpperCase() : '';
-      if (prio === 'GOLD' || prio === 'PRIMARY') priorityOrder = 1;
-      else if (prio === 'SILVER' || prio === 'SECONDARY') priorityOrder = 2;
-      else if (prio === 'BRONZE' || prio === 'THIRD' || prio === 'TERTIARY')
-        priorityOrder = 3;
-      else if (prio === 'TEAL') priorityOrder = 4;
+    formatted.sponsors = await Promise.all(
+      formatted.sponsors.map(async (s: any) => {
+        let priorityOrder = 2;
+        const prio =
+          typeof s.priority === 'string' ? s.priority.toUpperCase() : '';
+        if (prio === 'GOLD' || prio === 'PRIMARY') priorityOrder = 1;
+        else if (prio === 'SILVER' || prio === 'SECONDARY') priorityOrder = 2;
+        else if (prio === 'BRONZE' || prio === 'THIRD' || prio === 'TERTIARY')
+          priorityOrder = 3;
+        else if (prio === 'TEAL') priorityOrder = 4;
 
-      return {
-        id: s.sponsorId || s.id,
-        name: s.name,
-        logoUrl: s.logo || s.logoUrl,
-        website: s.website,
-        priority: s.priority,
-        priorityOrder: s.priorityOrder ?? priorityOrder,
-        contractValue: Number(s.value) || 0,
-      };
-    });
+        const rawLogo = s.logo || s.logoUrl || null;
+        const presignedLogo = rawLogo ? await safePresignUrl(rawLogo) : rawLogo;
+
+        return {
+          id: s.sponsorId || s.id,
+          name: s.name,
+          logo: presignedLogo,
+          logoUrl: presignedLogo,
+          website: s.website,
+          priority: s.priority,
+          priorityOrder: s.priorityOrder ?? priorityOrder,
+          contractValue: Number(s.value) || 0,
+        };
+      }),
+    );
   }
 
   // Matches, Slots, Seeds, Groups from Schedule Payload
