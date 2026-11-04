@@ -52,6 +52,13 @@ export class EmployeeService {
     }
 
     const { password, qrCode, ...rest } = createEmployeeDto;
+    const initialQrCodes = [
+      ...new Set(
+        (Array.isArray(qrCode) ? qrCode : qrCode ? [qrCode] : [])
+          .map((value) => value.trim())
+          .filter(Boolean),
+      ),
+    ];
     const hashedPassword = await bcrypt.hash(
       password,
       Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
@@ -61,7 +68,9 @@ export class EmployeeService {
     const newEmployee = await this.prisma.employee.create({
       data: {
         ...rest,
-        qrCode: Array.isArray(qrCode) ? qrCode : qrCode ? [qrCode] : [],
+        qrCode: initialQrCodes,
+        qrCodeSerials: initialQrCodes.map((_, index) => index + 1),
+        qrCodeGenerationCount: initialQrCodes.length,
         password: hashedPassword,
         showEmployeeId,
         state: 'INACTIVE',
@@ -125,8 +134,10 @@ export class EmployeeService {
       await deleteImageFromS3(existingEmployee.profileImage);
     }
 
-    // Extract S3 keys from pre-signed URLs if necessary
-    const extractKey = (urlOrKey: string) => {
+    // Extract an S3 object key from a signed URL when deleting uploaded files.
+    // Referral QR codes are regular URLs, so they must be matched as complete
+    // strings and must never be sent to S3 for deletion.
+    const extractS3Key = (urlOrKey: string) => {
       if (urlOrKey.startsWith('http')) {
         try {
           const url = new URL(urlOrKey);
@@ -137,12 +148,25 @@ export class EmployeeService {
       }
       return urlOrKey;
     };
+    const qrIdentity = (value: string) => {
+      if (!value.startsWith('http://') && !value.startsWith('https://')) {
+        return value;
+      }
+      try {
+        const url = new URL(value);
+        return url.hostname.endsWith('amazonaws.com')
+          ? extractS3Key(value)
+          : value;
+      } catch {
+        return value;
+      }
+    };
 
     let finalDocuments = existingEmployee.document || [];
 
     // Handle deleted documents
     if (deletedDocuments && deletedDocuments.length > 0) {
-      const deletedKeys = deletedDocuments.map(extractKey);
+      const deletedKeys = deletedDocuments.map(extractS3Key);
       for (const key of deletedKeys) {
         await deleteImageFromS3(key);
       }
@@ -156,23 +180,85 @@ export class EmployeeService {
       finalDocuments = [...finalDocuments, ...document];
     }
 
-    let finalQrCodes = existingEmployee.qrCode || [];
+    const storedQrCodes = existingEmployee.qrCode || [];
+    const storedSerials = existingEmployee.qrCodeSerials || [];
+    let qrCodeGenerationCount = existingEmployee.qrCodeGenerationCount || 0;
+    const finalQrCodes: string[] = [];
+    const finalQrCodeSerials: number[] = [];
+    const seenQrCodes = new Set<string>();
+    storedQrCodes.forEach((storedQr, index) => {
+      if (seenQrCodes.has(storedQr)) return;
+      seenQrCodes.add(storedQr);
+      finalQrCodes.push(storedQr);
+      finalQrCodeSerials.push(storedSerials[index] || index + 1);
+    });
+    qrCodeGenerationCount = Math.max(
+      qrCodeGenerationCount,
+      ...finalQrCodeSerials,
+      0,
+    );
 
     // Handle deleted QR codes
     if (deletedQrCodes && deletedQrCodes.length > 0) {
-      const deletedKeys = deletedQrCodes.map(extractKey);
-      for (const key of deletedKeys) {
-        await deleteImageFromS3(key);
+      const requestedDeletes = new Set(
+        deletedQrCodes.map((qr) => qr.trim()).filter(Boolean),
+      );
+      const removedQrCodes = finalQrCodes.filter((storedQr) => {
+        if (requestedDeletes.has(storedQr)) return true;
+
+        // Uploaded QR images are stored as S3 keys, while the API may return
+        // them as pre-signed URLs. Match those by key, but keep referral URLs
+        // (which are stored as full URLs) on exact-match semantics.
+        if (
+          !storedQr.startsWith('http://') &&
+          !storedQr.startsWith('https://')
+        ) {
+          return [...requestedDeletes].some((requestedQr) => {
+            try {
+              const requestedUrl = new URL(requestedQr);
+              return (
+                requestedUrl.hostname.endsWith('amazonaws.com') &&
+                extractS3Key(requestedQr) === storedQr
+              );
+            } catch {
+              return requestedQr === storedQr;
+            }
+          });
+        }
+
+        return false;
+      });
+
+      for (const qr of removedQrCodes) {
+        if (!qr.startsWith('http://') && !qr.startsWith('https://')) {
+          await deleteImageFromS3(qr);
+        }
       }
-      finalQrCodes = finalQrCodes.filter((qr) => !deletedKeys.includes(qr));
+
+      const remainingIndexes = finalQrCodes
+        .map((qr, index) => ({ qr, index }))
+        .filter(({ qr }) => !removedQrCodes.includes(qr));
+      const remainingCodes = remainingIndexes.map(({ qr }) => qr);
+      const remainingSerials = remainingIndexes.map(
+        ({ index }) => finalQrCodeSerials[index],
+      );
+      finalQrCodes.splice(0, finalQrCodes.length, ...remainingCodes);
+      finalQrCodeSerials.splice(0, finalQrCodeSerials.length, ...remainingSerials);
     }
 
-    // Append new QR codes
+    // Clients may submit the full current list. Add only genuinely new values.
     if (qrCode && qrCode.length > 0) {
-      finalQrCodes = [
-        ...finalQrCodes,
-        ...(Array.isArray(qrCode) ? qrCode : [qrCode]),
-      ];
+      const incomingQrCodes = Array.isArray(qrCode) ? qrCode : [qrCode];
+      for (const incomingQr of incomingQrCodes) {
+        const normalizedQr = incomingQr.trim();
+        if (
+          !normalizedQr ||
+          finalQrCodes.some((currentQr) => qrIdentity(currentQr) === qrIdentity(normalizedQr))
+        ) continue;
+        finalQrCodes.push(normalizedQr);
+        qrCodeGenerationCount += 1;
+        finalQrCodeSerials.push(qrCodeGenerationCount);
+      }
     }
 
     // 4. Perform the update
@@ -183,6 +269,8 @@ export class EmployeeService {
         ...(profileImage ? { profileImage } : {}),
         document: finalDocuments,
         qrCode: finalQrCodes,
+        qrCodeSerials: finalQrCodeSerials,
+        qrCodeGenerationCount,
         ...(hashedPassword ? { password: hashedPassword } : {}),
       },
     });
