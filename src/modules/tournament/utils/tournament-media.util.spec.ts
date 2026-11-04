@@ -1,4 +1,7 @@
-import { presignTournamentMedia } from './tournament-media.util';
+import {
+  presignTournamentMedia,
+  extractStorageKey,
+} from './tournament-media.util';
 
 describe('presignTournamentMedia (Payload Optimization & On-Demand Slots/Seeds)', () => {
   const generateLargeTournament = () => {
@@ -85,5 +88,16 @@ describe('presignTournamentMedia (Payload Optimization & On-Demand Slots/Seeds)'
     const result = await presignTournamentMedia(smallTourney);
     expect(result.slots.length).toBe(16);
     expect(result.slotSummary.totalSlots).toBe(16);
+  });
+
+  it('should extract storage key from S3 pre-signed URLs while keeping raw keys intact', () => {
+    const presignedUrl =
+      'https://my-bucket.s3.us-east-1.amazonaws.com/74cbf62c-e09a-4737-8628-c49e7931e325.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=abc';
+    expect(extractStorageKey(presignedUrl)).toBe(
+      '74cbf62c-e09a-4737-8628-c49e7931e325.png',
+    );
+    expect(extractStorageKey('74cbf62c-e09a-4737-8628-c49e7931e325.png')).toBe(
+      '74cbf62c-e09a-4737-8628-c49e7931e325.png',
+    );
   });
 });
