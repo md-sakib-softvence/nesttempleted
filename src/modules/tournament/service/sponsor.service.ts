@@ -2,10 +2,26 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateSponsorDto } from '../dto/sponsor/create-sponsor.dto';
 import { UpdateSponsorDto } from '../dto/sponsor/update-sponsor.dto';
+import {
+  safePresignUrl,
+  extractStorageKey,
+} from '../utils/tournament-media.util';
 
 @Injectable()
 export class SponsorService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private async presignSponsor<T extends Record<string, any>>(
+    sponsor: T,
+  ): Promise<T> {
+    if (!sponsor) return sponsor;
+    const formatted: Record<string, any> = { ...sponsor };
+    if (formatted.logo) {
+      formatted.logo = await safePresignUrl(String(formatted.logo));
+      formatted.logoUrl = formatted.logo;
+    }
+    return formatted as T;
+  }
 
   async create(dto: CreateSponsorDto) {
     if (dto.tournamentId) {
@@ -20,7 +36,11 @@ export class SponsorService {
       }
     }
 
-    return this.prisma.sponsor.create({
+    if (dto.logo) {
+      dto.logo = extractStorageKey(dto.logo);
+    }
+
+    const created = await this.prisma.sponsor.create({
       data: dto,
       include: {
         tournament: {
@@ -32,6 +52,7 @@ export class SponsorService {
         },
       },
     });
+    return this.presignSponsor(created);
   }
 
   async findOne(id: string) {
@@ -52,7 +73,7 @@ export class SponsorService {
       throw new NotFoundException(`Sponsor with ID ${id} not found`);
     }
 
-    return sponsor;
+    return this.presignSponsor(sponsor);
   }
 
   async update(id: string, dto: UpdateSponsorDto) {
@@ -76,7 +97,11 @@ export class SponsorService {
       }
     }
 
-    return this.prisma.sponsor.update({
+    if (dto.logo) {
+      dto.logo = extractStorageKey(dto.logo);
+    }
+
+    const updated = await this.prisma.sponsor.update({
       where: { sponsorId: id },
       data: dto,
       include: {
@@ -89,6 +114,7 @@ export class SponsorService {
         },
       },
     });
+    return this.presignSponsor(updated);
   }
 
   async remove(id: string) {

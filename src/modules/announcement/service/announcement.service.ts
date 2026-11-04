@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { NotificationGateway } from '../../notification/notification.gateway';
 import { CreateAnnouncementDto } from '../dto/create-announcement.dto';
 import { UpdateAnnouncementDto } from '../dto/update-announcement.dto';
 import {
@@ -10,12 +11,48 @@ import {
 
 @Injectable()
 export class AnnouncementService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationGateway: NotificationGateway,
+  ) {}
 
   async create(createAnnouncementDto: CreateAnnouncementDto) {
-    return this.prisma.announcement.create({
-      data: createAnnouncementDto,
+    const { announcement, fanIds } = await this.prisma.$transaction(async (tx) => {
+      let fanIds: string[] = [];
+      const announcement = await tx.announcement.create({
+        data: createAnnouncementDto,
+      });
+
+      // In-app broadcasts for fans are persisted as personal notifications so
+      // each fan can read and dismiss only their own messages from the bell.
+      if (
+        createAnnouncementDto.audience === 'FANS_ALL' &&
+        createAnnouncementDto.status !== 'DRAFT' &&
+        (createAnnouncementDto.channels || ['APP']).includes('APP')
+      ) {
+        const fans = await tx.fan.findMany({
+          where: { isDeleted: false, status: 'ACTIVE' },
+          select: { fanId: true },
+        });
+
+        if (fans.length > 0) {
+          fanIds = fans.map((fan) => fan.fanId);
+          await tx.notification.createMany({
+            data: fans.map((fan) => ({
+              userId: fan.fanId,
+              title: createAnnouncementDto.title,
+              description: createAnnouncementDto.content,
+              status: 'INFORMATION',
+            })),
+          });
+        }
+      }
+
+      return { announcement, fanIds };
     });
+
+    fanIds.forEach((fanId) => this.notificationGateway.publishCreated(fanId));
+    return announcement;
   }
 
   async findAll(query: QueryOptions = {}) {
