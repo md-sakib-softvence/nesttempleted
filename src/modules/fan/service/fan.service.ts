@@ -26,7 +26,10 @@ export class FanService {
     private mailService: MailService,
   ) {}
 
-  async createFan(createFanDto: CreateFanDto) {
+  async createFan(
+    createFanDto: CreateFanDto,
+    options: { awardSignupBonus?: boolean } = {},
+  ) {
     const existingFan = await this.prisma.fan.findUnique({
       where: { email: createFanDto.email },
     });
@@ -52,19 +55,37 @@ export class FanService {
       throw new ConflictException('Fan with this email already exists');
     }
 
-    const { password, ...rest } = createFanDto;
+    const { password, coins, ...rest } = createFanDto;
     const hashedPassword = await bcrypt.hash(
       password,
       Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
     );
     const showFanId = await generateFanId(this.prisma);
 
-    const newFan = await this.prisma.fan.create({
-      data: {
-        ...rest,
-        password: hashedPassword,
-        showFanId,
-      },
+    const signupBonus = options.awardSignupBonus ? 100 : 0;
+    const newFan = await this.prisma.$transaction(async (tx) => {
+      const createdFan = await tx.fan.create({
+        data: {
+          ...rest,
+          password: hashedPassword,
+          showFanId,
+          coins: options.awardSignupBonus ? signupBonus : (coins ?? 0),
+        },
+      });
+
+      if (options.awardSignupBonus) {
+        await tx.fanCoinTransaction.create({
+          data: {
+            fanId: createdFan.fanId,
+            type: 'SEED_CREDIT',
+            amount: signupBonus,
+            balanceAfter: signupBonus,
+            description: 'New fan registration bonus',
+          },
+        });
+      }
+
+      return createdFan;
     });
 
     const title = 'Fan Creation';
