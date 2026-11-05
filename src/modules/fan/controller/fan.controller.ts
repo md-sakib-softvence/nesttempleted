@@ -163,6 +163,45 @@ export class FanController {
   }
 
   @Public()
+  @Post('register')
+  @ApiOperation({ summary: 'Register a new Fan and award the signup coin bonus' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('profileImage'))
+  async registerFan(
+    @Body() createFanDto: CreateFanDto,
+    @UploadedFile() profileImage?: Express.Multer.File,
+  ) {
+    let s3ProfileImageFilename: string | null = null;
+
+    if (profileImage) {
+      s3ProfileImageFilename = await uploadImageToS3(profileImage);
+      createFanDto.profileImage = s3ProfileImageFilename;
+    } else {
+      delete createFanDto.profileImage;
+    }
+
+    try {
+      const data = await this.fanService.createFan(createFanDto, {
+        awardSignupBonus: true,
+      });
+
+      if (data.profileImage) {
+        data.profileImage = await getPreSignedUrl(data.profileImage);
+      }
+
+      return sendResponse({
+        message: 'Fan registered successfully. 100 coins have been added.',
+        data,
+      });
+    } catch (error) {
+      if (s3ProfileImageFilename) {
+        await deleteImageFromS3(s3ProfileImageFilename);
+      }
+      throw error;
+    }
+  }
+
+  @Public()
   @Post()
   @ApiOperation({ summary: 'Create Fan' })
   @ApiConsumes('multipart/form-data')
