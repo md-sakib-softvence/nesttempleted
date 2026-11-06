@@ -372,6 +372,85 @@ export class EmployeeService {
     };
   }
 
+  async getEmployeeAnalytics(id: string) {
+    const employee = await this.prisma.employee.findFirst({
+      where: {
+        OR: [{ employeeId: id }, { showEmployeeId: id }],
+        isDeleted: false,
+      },
+      select: { employeeId: true, showEmployeeId: true },
+    });
+
+    if (!employee) throw new NotFoundException('Employee not found');
+
+    const identities = [...new Set([employee.employeeId, employee.showEmployeeId])];
+    const assignments = await this.prisma.tournamentStaffAssignment.findMany({
+      where: { employeeId: employee.employeeId },
+      select: { matchId: true, tournament: { select: { schedule: true } } },
+    });
+
+    const getScheduledMatches = (scheduleValue: unknown): any[] => {
+      const schedule = scheduleValue as any;
+      if (Array.isArray(schedule)) {
+        return schedule.flatMap((venue: any) =>
+          (venue?.screens || []).flatMap((screen: any) =>
+            (screen?.days || []).flatMap((day: any) =>
+              (day?.timeslots || [])
+                .map((slot: any) => slot?.game)
+                .filter((match: any) => match?.id),
+            ),
+          ),
+        );
+      }
+      const matches = schedule?.structure?.matches || schedule?.matches;
+      return Array.isArray(matches) ? matches : [];
+    };
+
+    const matchesOfficiated = assignments.filter((assignment) =>
+      getScheduledMatches(assignment.tournament.schedule).some(
+        (match) =>
+          String(match.id) === assignment.matchId &&
+          String(match.status || '').toUpperCase() === 'COMPLETED',
+      ),
+    ).length;
+
+    const [totalScans, validScans, scannedTickets, disputesRaised] =
+      await Promise.all([
+        this.prisma.ticketScanLog.count({
+          where: { guardId: { in: identities } },
+        }),
+        this.prisma.ticketScanLog.count({
+          where: { guardId: { in: identities }, status: 'VALID' },
+        }),
+        this.prisma.ticketScanLog.findMany({
+          where: {
+            guardId: { in: identities },
+            status: 'VALID',
+            ticketId: { not: null },
+          },
+          distinct: ['ticketId'],
+          select: { ticketId: true },
+        }),
+        this.prisma.matchDispute.count({
+          where: {
+            OR: [
+              { reportedBy: { in: identities } },
+              { resolvedBy: { in: identities } },
+            ],
+          },
+        }),
+      ]);
+
+    return {
+      employeeId: employee.employeeId,
+      matchesOfficiated,
+      playersScanned: scannedTickets.length,
+      reliabilityScore:
+        totalScans === 0 ? 0 : Math.round((validScans / totalScans) * 100),
+      disputesRaised,
+    };
+  }
+
   async getMyTournamentStaffAssignments(employeeId: string) {
     const employee = await this.prisma.employee.findFirst({
       where: { employeeId, isDeleted: false, state: 'ACTIVE' },

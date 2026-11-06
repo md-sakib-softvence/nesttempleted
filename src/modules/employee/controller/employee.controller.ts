@@ -350,6 +350,17 @@ export class EmployeeController {
     });
   }
 
+  @Get(':id/analytics')
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Get analytics metrics for an employee' })
+  async getEmployeeAnalytics(@Param('id') id: string) {
+    const data = await this.employeeService.getEmployeeAnalytics(id);
+    return sendResponse({
+      message: 'Employee analytics retrieved successfully',
+      data,
+    });
+  }
+
   @Get('my-tournament-assignments')
   @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, ...Object.values(EmployeeRole))
   @ApiOperation({ summary: 'Get tournament matches assigned to the logged-in employee' })
