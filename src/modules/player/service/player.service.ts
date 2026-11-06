@@ -24,10 +24,11 @@ import { createActivities } from '../../utils/activity.util';
 import { JwtService } from '@nestjs/jwt';
 import { MailService } from '../../mail/mail.service';
 import { formatPlayerResponse } from '../utils/player-response.util';
-import { DocumentStatus, Role } from '@prisma/client';
+import { DocumentStatus, PlayerStatus, Role } from '@prisma/client';
 import { PlayerDocumentService } from './player-document.service';
 import { PlayerPassService } from './player-pass.service';
 import { PlayerWalletService } from './player-wallet.service';
+import { UpdatePlayerModerationDto } from '../dto/update-player-moderation.dto';
 import { evaluateSelfSchedulingWindow } from '../../tournament/utils/self-schedule.util';
 
 @Injectable()
@@ -421,6 +422,48 @@ export class PlayerService {
     }
 
     return formatPlayerResponse(updatedPlayerRecord);
+  }
+
+  async updatePlayerModeration(id: string, dto: UpdatePlayerModerationDto) {
+    const player = await this.prisma.player.findFirst({
+      where: { playerId: id, isDeleted: false },
+      select: { playerId: true },
+    });
+    if (!player) throw new NotFoundException('Player not found');
+
+    const data: Prisma.PlayerUpdateInput = {};
+    if (dto.status !== undefined) data.status = dto.status as PlayerStatus;
+    if (dto.moderationNotes !== undefined) {
+      data.moderationNotes = dto.moderationNotes.trim() || null;
+    }
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException(
+        'Provide at least one of status or moderationNotes',
+      );
+    }
+
+    const updated = await this.prisma.player.update({
+      where: { playerId: id },
+      data,
+      include: { documents: true },
+    });
+    return {
+      ...(await formatPlayerResponse(updated)),
+      moderationNotes: updated.moderationNotes,
+    };
+  }
+
+  async getPlayerModeration(id: string) {
+    const player = await this.prisma.player.findFirst({
+      where: { playerId: id, isDeleted: false },
+      select: {
+        playerId: true,
+        status: true,
+        moderationNotes: true,
+      },
+    });
+    if (!player) throw new NotFoundException('Player not found');
+    return player;
   }
 
   /**
@@ -1049,6 +1092,31 @@ export class PlayerService {
     query?: { page?: number | string; limit?: number | string },
   ) {
     return this.passService.getMyPasses(playerId, query);
+  }
+
+  async getAdminPlayerPasses(
+    playerId: string,
+    query?: { page?: number | string; limit?: number | string },
+  ) {
+    return this.passService.getPlayerPasses(playerId, query);
+  }
+
+  async getAdminPlayerAccessLogs(
+    playerId: string,
+    query?: { page?: number | string; limit?: number | string },
+  ) {
+    return this.passService.getPlayerAccessLogs(playerId, query);
+  }
+
+  async regenerateAdminPlayerQrCodes(playerId: string) {
+    return this.passService.regeneratePlayerQrCodes(playerId);
+  }
+
+  async getAdminPlayerFinancials(
+    playerId: string,
+    query?: { page?: number | string; limit?: number | string },
+  ) {
+    return this.walletService.getPlayerFinancials(playerId, query);
   }
 
   async getPassByTournament(playerId: string, tournamentId: string) {

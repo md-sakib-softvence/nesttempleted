@@ -26,6 +26,7 @@ import { PlayerService } from '../service/player.service';
 import { AuthService } from '../../auth/service/auth.service';
 import { CreatePlayerDto } from '../dto/create-player.dto';
 import { UpdatePlayerDto } from '../dto/update-player.dto';
+import { UpdatePlayerModerationDto } from '../dto/update-player-moderation.dto';
 import { UpdateDocumentStatusDto } from '../dto/update-document-status.dto';
 import { ChangePasswordDto } from '../../auth/dto/change-password.dto';
 import { sendResponse } from '../../utils/response.util';
@@ -384,6 +385,111 @@ export class PlayerController {
     const data = await this.playerService.recoverPlayer(token);
     return sendResponse({
       message: 'Player account recovered successfully',
+      data,
+    });
+  }
+
+  @Get(':id/security/passes')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  @ApiOperation({
+    summary: "Get a player's tournament passes for admin security review",
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getAdminPlayerPasses(
+    @Param('id') id: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    const data = await this.playerService.getAdminPlayerPasses(id, {
+      page,
+      limit,
+    });
+    return sendResponse({
+      message: 'Player security passes retrieved successfully',
+      data,
+      meta: data.pagination,
+    });
+  }
+
+  @Get(':id/financials')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  @ApiOperation({
+    summary: 'Get a player financial summary and wallet transactions',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getAdminPlayerFinancials(
+    @Param('id') id: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    const data = await this.playerService.getAdminPlayerFinancials(id, {
+      page,
+      limit,
+    });
+    return sendResponse({
+      message: 'Player financials retrieved successfully',
+      data,
+      meta: data.pagination,
+    });
+  }
+
+  @Get(':id/moderation')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Get player moderation status and private notes' })
+  async getPlayerModeration(@Param('id') id: string) {
+    const data = await this.playerService.getPlayerModeration(id);
+    return sendResponse({
+      message: 'Player moderation details retrieved successfully',
+      data,
+    });
+  }
+
+  @Patch(':id/moderation')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  @ApiOperation({
+    summary: 'Update player moderation status and private notes',
+  })
+  async updatePlayerModeration(
+    @Param('id') id: string,
+    @Body() dto: UpdatePlayerModerationDto,
+  ) {
+    const data = await this.playerService.updatePlayerModeration(id, dto);
+    return sendResponse({
+      message: 'Player moderation updated successfully',
+      data,
+    });
+  }
+
+  @Get(':id/security/access-logs')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  @ApiOperation({ summary: "Get a player's tournament match check-in history" })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getAdminPlayerAccessLogs(
+    @Param('id') id: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    const data = await this.playerService.getAdminPlayerAccessLogs(id, {
+      page,
+      limit,
+    });
+    return sendResponse({
+      message: 'Player security access logs retrieved successfully',
+      data,
+      meta: data.pagination,
+    });
+  }
+
+  @Post(':id/security/qr-codes/regenerate')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Regenerate all tournament QR codes for a player' })
+  async regenerateAdminPlayerQrCodes(@Param('id') id: string) {
+    const data = await this.playerService.regenerateAdminPlayerQrCodes(id);
+    return sendResponse({
+      message: 'Player tournament QR codes regenerated successfully',
       data,
     });
   }

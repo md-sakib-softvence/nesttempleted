@@ -9,6 +9,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { RequestPayoutDto } from '../dto/request-payout.dto';
 import {
   WalletStatus,
+  WalletTransaction,
   WalletTransactionType,
   TransactionStatus,
   PayoutStatus,
@@ -169,6 +170,200 @@ export class PlayerWalletService {
       })),
       pagination,
       meta: pagination,
+    };
+  }
+
+  /** Admin view of a selected player's financial totals and ledger entries. */
+  async getPlayerFinancials(
+    playerId: string,
+    options: { page?: number | string; limit?: number | string } = {},
+  ) {
+    const player = await this.prisma.player.findFirst({
+      where: { playerId, isDeleted: false },
+      select: { playerId: true },
+    });
+    if (!player) throw new NotFoundException('Player not found');
+
+    const wallet = await this.prisma.wallet.findFirst({
+      where: { OR: [{ playerId }, { userId: playerId }] },
+      select: { walletId: true, currency: true },
+    });
+
+    const page = Math.max(1, Number(options.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(options.limit) || 20));
+    const walletTransactionsQuery: Promise<WalletTransaction[]> = wallet
+      ? this.prisma.walletTransaction.findMany({
+          where: { walletId: wallet.walletId },
+          orderBy: { createdAt: 'desc' },
+        })
+      : Promise.resolve([]);
+    const [walletTransactions, registrations, tickets] = await Promise.all([
+      walletTransactionsQuery,
+      this.prisma.tournamentRegistration.findMany({
+        where: { playerId },
+        select: {
+          registrationId: true,
+          tournamentId: true,
+          status: true,
+          paymentStatus: true,
+          createdAt: true,
+          updatedAt: true,
+          tournament: {
+            select: { name: true, entryFee: true, currency: true },
+          },
+        },
+      }),
+      this.prisma.ticket.findMany({
+        where: { playerId, purchaserRole: 'PLAYER' },
+        select: {
+          ticketId: true,
+          tournamentId: true,
+          pricePaid: true,
+          currency: true,
+          paymentStatus: true,
+          createdAt: true,
+          tournament: { select: { name: true } },
+        },
+      }),
+    ]);
+
+    const displayTypes: Record<string, string> = {
+      ENTRY_FEE: 'entry_fee',
+      TICKET_PURCHASE: 'ticket_sale',
+      PRIZE_PAYOUT: 'payout',
+      REFUND: 'refund',
+      WITHDRAWAL_REQUEST: 'withdrawal',
+      PAYOUT_APPROVED: 'withdrawal',
+      PAYOUT_REJECTED: 'payout_rejected',
+      CREDIT_ADJUSTMENT: 'credit_adjustment',
+      SYSTEM_BONUS: 'system_bonus',
+    };
+
+    const transactions = walletTransactions
+      .filter(
+        // Registration and ticket purchases are reconstructed from their
+        // canonical records below, avoiding duplicate wallet ledger entries.
+        (transaction) =>
+          transaction.type !== WalletTransactionType.ENTRY_FEE &&
+          transaction.type !== WalletTransactionType.TICKET_PURCHASE,
+      )
+      .map((transaction) => ({
+        id: transaction.transactionId,
+        identityId: playerId,
+        reference: transaction.reference,
+        type: displayTypes[transaction.type] || transaction.type.toLowerCase(),
+        amount: Math.abs(transaction.amount),
+        currency: transaction.currency || wallet?.currency || 'NGN',
+        status: transaction.status,
+        description:
+          transaction.description || transaction.type.replace(/_/g, ' '),
+        timestamp: transaction.createdAt,
+      }));
+
+    for (const registration of registrations) {
+      const paymentStatus = String(registration.paymentStatus).toUpperCase();
+      const entryFee = Number(registration.tournament?.entryFee || 0);
+      if (entryFee <= 0) continue;
+      const tournamentName = registration.tournament?.name || 'Tournament';
+      if (
+        ['PAID', 'SUCCESS', 'CONFIRMED', 'REFUNDED'].includes(paymentStatus)
+      ) {
+        transactions.push({
+          id: `registration:${registration.registrationId}:entry-fee`,
+          identityId: playerId,
+          reference: registration.registrationId,
+          type: 'entry_fee',
+          amount: entryFee,
+          currency:
+            registration.tournament?.currency || wallet?.currency || 'NGN',
+          status: TransactionStatus.SUCCESS,
+          description: `${tournamentName} entry fee`,
+          timestamp: registration.createdAt,
+        });
+      }
+      if (paymentStatus === 'REFUNDED') {
+        transactions.push({
+          id: `registration:${registration.registrationId}:refund`,
+          identityId: playerId,
+          reference: registration.registrationId,
+          type: 'refund',
+          amount: entryFee,
+          currency:
+            registration.tournament?.currency || wallet?.currency || 'NGN',
+          status: TransactionStatus.SUCCESS,
+          description: `${tournamentName} entry fee refund`,
+          timestamp: registration.updatedAt,
+        });
+      }
+    }
+
+    for (const ticket of tickets) {
+      const paymentStatus = String(ticket.paymentStatus).toUpperCase();
+      const ticketAmount = Math.abs(ticket.pricePaid);
+      if (['SUCCESS', 'PAID', 'REFUNDED'].includes(paymentStatus)) {
+        transactions.push({
+          id: `ticket:${ticket.ticketId}:purchase`,
+          identityId: playerId,
+          reference: ticket.ticketId,
+          type: 'ticket_sale',
+          amount: ticketAmount,
+          currency: ticket.currency || wallet?.currency || 'NGN',
+          status: TransactionStatus.SUCCESS,
+          description: `${ticket.tournament?.name || 'Tournament'} ticket purchase`,
+          timestamp: ticket.createdAt,
+        });
+      }
+      if (paymentStatus === 'REFUNDED') {
+        transactions.push({
+          id: `ticket:${ticket.ticketId}:refund`,
+          identityId: playerId,
+          reference: ticket.ticketId,
+          type: 'refund',
+          amount: ticketAmount,
+          currency: ticket.currency || wallet?.currency || 'NGN',
+          status: TransactionStatus.SUCCESS,
+          description: `${ticket.tournament?.name || 'Tournament'} ticket refund`,
+          timestamp: ticket.createdAt,
+        });
+      }
+    }
+
+    transactions.sort(
+      (a, b) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    );
+    const successfulTransactions = transactions.filter(
+      (transaction) => transaction.status === TransactionStatus.SUCCESS,
+    );
+    const grossSpend = successfulTransactions
+      .filter(
+        (transaction) =>
+          transaction.type === 'entry_fee' ||
+          transaction.type === 'ticket_sale',
+      )
+      .reduce((sum, transaction) => sum + transaction.amount, 0);
+    const refunds = successfulTransactions
+      .filter((transaction) => transaction.type === 'refund')
+      .reduce((sum, transaction) => sum + transaction.amount, 0);
+    const totalSpent = Math.max(0, grossSpend - refunds);
+    const totalWinnings = successfulTransactions
+      .filter((transaction) => transaction.type === 'payout')
+      .reduce((sum, transaction) => sum + transaction.amount, 0);
+    const total = transactions.length;
+    const pagination = {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+
+    return {
+      playerId,
+      currency: wallet?.currency || 'NGN',
+      totalSpent: Number(totalSpent.toFixed(2)),
+      totalWinnings: Number(totalWinnings.toFixed(2)),
+      transactions: transactions.slice((page - 1) * limit, page * limit),
+      pagination,
     };
   }
 

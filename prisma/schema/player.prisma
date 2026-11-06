@@ -17,8 +17,9 @@ model Player {
   favoriteTeam      String?
   dateOfBirth       DateTime?
 
-  document String[]
-  status   PlayerStatus @default(ACTIVE)
+  document        String[]
+  status          PlayerStatus @default(ACTIVE)
+  moderationNotes String?
 
   documents               PlayerDocument[]
   marketingData           MarketingDataCollection?

@@ -119,7 +119,11 @@ export const formatPlayerResponse = async (player: any) => {
     : null;
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { password, ...safePlayerData } = player;
+  const {
+    password,
+    moderationNotes: _privateModerationNotes,
+    ...safePlayerData
+  } = player;
 
   return {
     ...safePlayerData,
