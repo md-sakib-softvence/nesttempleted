@@ -400,7 +400,7 @@ export class EmployeeController {
   }
 
   @Get(':id/tournament-assignments')
-  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.MANAGER)
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Get tournament and venue assignments for one employee' })
   async getEmployeeTournamentAssignments(@Param('id') id: string) {
     const data = await this.employeeService.getEmployeeTournamentAssignments(id);
@@ -411,7 +411,7 @@ export class EmployeeController {
   }
 
   @Post(':id/tournament-assignments')
-  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.MANAGER)
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Assign a manager or ambassador to a tournament venue' })
   async createEmployeeTournamentAssignment(
     @Param('id') id: string,
@@ -428,7 +428,7 @@ export class EmployeeController {
   }
 
   @Delete(':id/tournament-assignments/:assignmentId')
-  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.MANAGER)
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Remove a tournament venue assignment' })
   async removeEmployeeTournamentAssignment(
     @Param('id') id: string,

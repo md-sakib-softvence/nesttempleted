@@ -513,10 +513,10 @@ export class EmployeeService {
     dto: CreateEmployeeTournamentAssignmentDto,
   ) {
     const employee = await this.prisma.employee.findFirst({
-      where: { employeeId, isDeleted: false, state: 'ACTIVE' },
+      where: { employeeId, isDeleted: false },
       select: { employeeId: true, role: true },
     });
-    if (!employee) throw new NotFoundException('Active employee not found');
+    if (!employee) throw new NotFoundException('Employee not found');
     if (
       employee.role !== EmployeeRole.MANAGER &&
       employee.role !== EmployeeRole.AMBASSADOR
