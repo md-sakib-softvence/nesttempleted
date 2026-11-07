@@ -106,27 +106,43 @@ export class TournamentController {
   ) {
     const uploadedFiles = await uploadTournamentFiles(files);
 
-    if (uploadedFiles.canvasImage) {
-      createDto.canvasImage = uploadedFiles.canvasImage;
-      createDto.fanPassArtUrl = uploadedFiles.canvasImage;
-    } else if (createDto.bannerUrl && typeof createDto.bannerUrl === 'string') {
-      createDto.canvasImage = createDto.bannerUrl;
+    const bannerVal =
+      uploadedFiles.canvasImage ||
+      createDto.canvasImage ||
+      createDto.bannerUrl ||
+      (createDto as any).banner ||
+      createDto.fanPassArtUrl;
+    if (bannerVal) {
+      createDto.canvasImage = bannerVal;
+      createDto.fanPassArtUrl = bannerVal;
     }
 
-    if (uploadedFiles.playerOrgUrl) {
-      createDto.playerOrgUrl = uploadedFiles.playerOrgUrl;
+    const playerOrgVal =
+      uploadedFiles.playerOrgUrl ||
+      createDto.playerOrgUrl ||
+      (createDto as any).organizerLogo;
+    if (playerOrgVal) {
+      createDto.playerOrgUrl = playerOrgVal;
     }
 
-    if (uploadedFiles.prOrgUrl) {
-      createDto.prOrgUrl = uploadedFiles.prOrgUrl;
+    const prOrgVal =
+      uploadedFiles.prOrgUrl ||
+      createDto.prOrgUrl ||
+      (createDto as any).secondaryOrganizerLogo;
+    if (prOrgVal) {
+      createDto.prOrgUrl = prOrgVal;
     }
 
-    if (uploadedFiles.tournamentLogoUrl) {
-      createDto.tournamentLogoUrl = uploadedFiles.tournamentLogoUrl;
-    } else if (createDto.logo && typeof createDto.logo === 'string') {
-      createDto.tournamentLogoUrl = createDto.logo;
+    const logoVal =
+      uploadedFiles.tournamentLogoUrl ||
+      createDto.tournamentLogoUrl ||
+      createDto.logo ||
+      (createDto as any).tournamentLogo;
+    if (logoVal) {
+      createDto.tournamentLogoUrl = logoVal;
     }
     delete (createDto as any).tournamentLogo;
+    delete (createDto as any).banner;
 
     if (uploadedFiles.rules.length > 0) {
       createDto.rules = uploadedFiles.rules;
@@ -292,27 +308,43 @@ export class TournamentController {
   ) {
     const uploadedFiles = await uploadTournamentFiles(files);
 
-    if (uploadedFiles.canvasImage) {
-      updateDto.canvasImage = uploadedFiles.canvasImage;
-      updateDto.fanPassArtUrl = uploadedFiles.canvasImage;
-    } else if (updateDto.bannerUrl && typeof updateDto.bannerUrl === 'string') {
-      updateDto.canvasImage = updateDto.bannerUrl;
+    const bannerVal =
+      uploadedFiles.canvasImage ||
+      updateDto.canvasImage ||
+      updateDto.bannerUrl ||
+      (updateDto as any).banner ||
+      updateDto.fanPassArtUrl;
+    if (bannerVal) {
+      updateDto.canvasImage = bannerVal;
+      updateDto.fanPassArtUrl = bannerVal;
     }
 
-    if (uploadedFiles.playerOrgUrl) {
-      updateDto.playerOrgUrl = uploadedFiles.playerOrgUrl;
+    const playerOrgVal =
+      uploadedFiles.playerOrgUrl ||
+      updateDto.playerOrgUrl ||
+      (updateDto as any).organizerLogo;
+    if (playerOrgVal) {
+      updateDto.playerOrgUrl = playerOrgVal;
     }
 
-    if (uploadedFiles.prOrgUrl) {
-      updateDto.prOrgUrl = uploadedFiles.prOrgUrl;
+    const prOrgVal =
+      uploadedFiles.prOrgUrl ||
+      updateDto.prOrgUrl ||
+      (updateDto as any).secondaryOrganizerLogo;
+    if (prOrgVal) {
+      updateDto.prOrgUrl = prOrgVal;
     }
 
-    if (uploadedFiles.tournamentLogoUrl) {
-      updateDto.tournamentLogoUrl = uploadedFiles.tournamentLogoUrl;
-    } else if (updateDto.logo && typeof updateDto.logo === 'string') {
-      updateDto.tournamentLogoUrl = updateDto.logo;
+    const logoVal =
+      uploadedFiles.tournamentLogoUrl ||
+      updateDto.tournamentLogoUrl ||
+      updateDto.logo ||
+      (updateDto as any).tournamentLogo;
+    if (logoVal) {
+      updateDto.tournamentLogoUrl = logoVal;
     }
     delete (updateDto as any).tournamentLogo;
+    delete (updateDto as any).banner;
 
     if (uploadedFiles.rules.length > 0) {
       updateDto.rules = uploadedFiles.rules;

@@ -121,12 +121,25 @@ export const formatPlayerResponse = async (player: any) => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const {
     password,
-    moderationNotes: _privateModerationNotes,
+    photoModerationNotes,
+    photoModeratedBy,
+    gamertagModerationNotes,
+    gamertagModeratedBy,
+    moderationNotes,
+    moderatedBy,
     ...safePlayerData
   } = player;
 
   return {
     ...safePlayerData,
+    photoStatus:
+      ({ PENDING: 'Pending', APPROVED: 'Approved', REJECTED: 'Rejected' } as Record<string, string>)[
+        player.photoStatus
+      ] || 'Approved',
+    gamertagStatus:
+      ({ PENDING: 'Pending', APPROVED: 'Approved', FLAGGED: 'Flagged' } as Record<string, string>)[
+        player.gamertagStatus
+      ] || 'Approved',
     // Frontend Contract Properties
     id: player.playerId,
     fullName,

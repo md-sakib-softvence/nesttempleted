@@ -187,4 +187,21 @@ describe('TournamentController (Success Message & Spec API Verification)', () =>
       limit: 10,
     });
   });
+
+  it('update should map banner and tournamentLogo aliases into canvasImage and tournamentLogoUrl', async () => {
+    const res = await controller.update(
+      't1',
+      {
+        banner: 'banner-image-key.png',
+        tournamentLogo: 'logo-image-key.png',
+      } as any,
+      {},
+    );
+    expect(res.success).toBe(true);
+    expect(service.updateTournament).toHaveBeenCalledWith('t1', {
+      canvasImage: 'banner-image-key.png',
+      fanPassArtUrl: 'banner-image-key.png',
+      tournamentLogoUrl: 'logo-image-key.png',
+    });
+  });
 });

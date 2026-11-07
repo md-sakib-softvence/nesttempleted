@@ -279,12 +279,27 @@ export class UpdatePlayerCardTemplateTabDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  logo?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   tournamentLogo?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   tournamentLogoUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  banner?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  bannerUrl?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -324,12 +339,27 @@ export class UpdateFanPassTemplateTabDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  logo?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   tournamentLogo?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   tournamentLogoUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  banner?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  bannerUrl?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -585,7 +615,17 @@ export class UpdateSettingsTabDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  tournamentLogo?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   tournamentLogoUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  banner?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

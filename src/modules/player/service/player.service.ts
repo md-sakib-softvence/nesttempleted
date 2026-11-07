@@ -9,10 +9,12 @@ import {
 import { CreatePlayerDto } from '../dto/create-player.dto';
 import { UpdatePlayerDto } from '../dto/update-player.dto';
 import { UpdateDocumentStatusDto } from '../dto/update-document-status.dto';
+import { UpdatePlayerDisciplineDto } from '../dto/update-player-discipline.dto';
 import { RequestPayoutDto } from '../dto/request-payout.dto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { randomUUID } from 'crypto';
 import {
   buildPrismaQuery,
   calculatePaginationMeta,
@@ -24,11 +26,15 @@ import { createActivities } from '../../utils/activity.util';
 import { JwtService } from '@nestjs/jwt';
 import { MailService } from '../../mail/mail.service';
 import { formatPlayerResponse } from '../utils/player-response.util';
-import { DocumentStatus, PlayerStatus, Role } from '@prisma/client';
+import {
+  DocumentStatus,
+  GamerTagModerationStatus,
+  PhotoModerationStatus,
+  Role,
+} from '@prisma/client';
 import { PlayerDocumentService } from './player-document.service';
 import { PlayerPassService } from './player-pass.service';
 import { PlayerWalletService } from './player-wallet.service';
-import { UpdatePlayerModerationDto } from '../dto/update-player-moderation.dto';
 import { evaluateSelfSchedulingWindow } from '../../tournament/utils/self-schedule.util';
 
 @Injectable()
@@ -125,6 +131,12 @@ export class PlayerService {
           showPlayerId,
           gamerTag: normalizedGamerTag,
           profilePicture: profilePictureKey || null,
+          photoStatus: profilePictureKey
+            ? PhotoModerationStatus.PENDING
+            : PhotoModerationStatus.APPROVED,
+          gamertagStatus: normalizedGamerTag
+            ? GamerTagModerationStatus.PENDING
+            : GamerTagModerationStatus.APPROVED,
           dateOfBirth: parsedDob || null,
           document: initialDocs,
         },
@@ -384,12 +396,35 @@ export class PlayerService {
             ? { username: updatePlayerDto.username }
             : {}),
           ...(targetGamerTag ? { gamerTag: targetGamerTag } : {}),
+          ...(targetGamerTag && targetGamerTag.toLowerCase() !== existingPlayer.gamerTag?.trim().toLowerCase()
+            ? {
+                gamertagStatus: GamerTagModerationStatus.PENDING,
+                gamertagModerationNotes: null,
+                gamertagModeratedAt: null,
+                gamertagModeratedBy: null,
+              }
+            : {}),
           ...(updatePlayerDto.surname
             ? { surname: updatePlayerDto.surname }
             : {}),
           ...(resolvedPhoneNumber ? { phoneNumber: resolvedPhoneNumber } : {}),
           ...(parsedDob ? { dateOfBirth: parsedDob } : {}),
           profilePicture: updatedProfilePicture,
+          ...(newProfilePictureKey
+            ? {
+                photoStatus: PhotoModerationStatus.PENDING,
+                photoModerationNotes: null,
+                photoModeratedAt: null,
+                photoModeratedBy: null,
+              }
+            : updatePlayerDto.deleteProfilePicture
+              ? {
+                  photoStatus: PhotoModerationStatus.APPROVED,
+                  photoModerationNotes: null,
+                  photoModeratedAt: null,
+                  photoModeratedBy: null,
+                }
+              : {}),
           document: updatedLegacyDocumentList,
         },
         include: {
@@ -422,48 +457,6 @@ export class PlayerService {
     }
 
     return formatPlayerResponse(updatedPlayerRecord);
-  }
-
-  async updatePlayerModeration(id: string, dto: UpdatePlayerModerationDto) {
-    const player = await this.prisma.player.findFirst({
-      where: { playerId: id, isDeleted: false },
-      select: { playerId: true },
-    });
-    if (!player) throw new NotFoundException('Player not found');
-
-    const data: Prisma.PlayerUpdateInput = {};
-    if (dto.status !== undefined) data.status = dto.status as PlayerStatus;
-    if (dto.moderationNotes !== undefined) {
-      data.moderationNotes = dto.moderationNotes.trim() || null;
-    }
-    if (Object.keys(data).length === 0) {
-      throw new BadRequestException(
-        'Provide at least one of status or moderationNotes',
-      );
-    }
-
-    const updated = await this.prisma.player.update({
-      where: { playerId: id },
-      data,
-      include: { documents: true },
-    });
-    return {
-      ...(await formatPlayerResponse(updated)),
-      moderationNotes: updated.moderationNotes,
-    };
-  }
-
-  async getPlayerModeration(id: string) {
-    const player = await this.prisma.player.findFirst({
-      where: { playerId: id, isDeleted: false },
-      select: {
-        playerId: true,
-        status: true,
-        moderationNotes: true,
-      },
-    });
-    if (!player) throw new NotFoundException('Player not found');
-    return player;
   }
 
   /**
@@ -528,6 +521,349 @@ export class PlayerService {
     const meta = calculatePaginationMeta(total, page, limit);
 
     return { data: formattedData, meta };
+  }
+
+  async moderatePhoto(
+    playerId: string,
+    status: PhotoModerationStatus,
+    notes: string | undefined,
+    moderatorId: string,
+  ) {
+    const player = await this.prisma.player.findUnique({
+      where: { playerId },
+      select: {
+        playerId: true,
+        firstName: true,
+        email: true,
+        profilePicture: true,
+        isDeleted: true,
+      },
+    });
+    if (!player || player.isDeleted) {
+      throw new NotFoundException('Player not found');
+    }
+    if (!player.profilePicture) {
+      throw new BadRequestException('Player has no profile photo to moderate');
+    }
+
+    const updated = await this.prisma.player.update({
+      where: { playerId },
+      data: {
+        photoStatus: status,
+        photoModerationNotes: notes?.trim() || null,
+        photoModeratedAt: new Date(),
+        photoModeratedBy: moderatorId,
+      },
+    });
+
+    if (status === PhotoModerationStatus.REJECTED) {
+      try {
+        await this.mailService.sendPhotoModerationNotice(
+          player.email,
+          player.firstName,
+          notes?.trim(),
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Photo rejection was saved, but email notification failed for player ${playerId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    return formatPlayerResponse(updated);
+  }
+
+  async moderateGamerTag(
+    playerId: string,
+    status: GamerTagModerationStatus,
+    notes: string | undefined,
+    moderatorId: string,
+  ) {
+    const player = await this.prisma.player.findUnique({
+      where: { playerId },
+      select: {
+        playerId: true,
+        firstName: true,
+        email: true,
+        gamerTag: true,
+        isDeleted: true,
+      },
+    });
+    if (!player || player.isDeleted) {
+      throw new NotFoundException('Player not found');
+    }
+    if (!player.gamerTag?.trim()) {
+      throw new BadRequestException('Player has no gamer tag to moderate');
+    }
+
+    const updated = await this.prisma.player.update({
+      where: { playerId },
+      data: {
+        gamertagStatus: status,
+        gamertagModerationNotes: notes?.trim() || null,
+        gamertagModeratedAt: new Date(),
+        gamertagModeratedBy: moderatorId,
+      },
+    });
+
+    if (status === GamerTagModerationStatus.FLAGGED) {
+      try {
+        await this.mailService.sendGamerTagModerationNotice(
+          player.email,
+          player.firstName,
+          player.gamerTag,
+          notes?.trim(),
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Gamer tag flag was saved, but email notification failed for player ${playerId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    return formatPlayerResponse(updated);
+  }
+
+  async updateDiscipline(
+    playerId: string,
+    dto: UpdatePlayerDisciplineDto,
+    moderatorId: string,
+  ) {
+    if (dto.status === undefined && dto.moderationNotes === undefined) {
+      throw new BadRequestException(
+        'Provide a player status or moderation notes to update',
+      );
+    }
+
+    const existing = await this.prisma.player.findUnique({
+      where: { playerId },
+      select: { playerId: true, isDeleted: true },
+    });
+    if (!existing || existing.isDeleted) {
+      throw new NotFoundException('Player not found');
+    }
+
+    const updated = await this.prisma.player.update({
+      where: { playerId },
+      data: {
+        ...(dto.status !== undefined ? { status: dto.status } : {}),
+        ...(dto.moderationNotes !== undefined
+          ? { moderationNotes: dto.moderationNotes?.trim() || null }
+          : {}),
+        moderatedAt: new Date(),
+        moderatedBy: moderatorId,
+      },
+      include: { documents: true },
+    });
+
+    return {
+      ...(await formatPlayerResponse(updated)),
+      moderationNotes: updated.moderationNotes,
+      moderatedAt: updated.moderatedAt,
+      moderatedBy: updated.moderatedBy,
+    };
+  }
+
+  async getDiscipline(playerId: string) {
+    const player = await this.prisma.player.findUnique({
+      where: { playerId },
+      select: {
+        playerId: true,
+        status: true,
+        moderationNotes: true,
+        moderatedAt: true,
+        moderatedBy: true,
+        isDeleted: true,
+      },
+    });
+    if (!player || player.isDeleted) {
+      throw new NotFoundException('Player not found');
+    }
+    return {
+      playerId: player.playerId,
+      status: player.status,
+      moderationNotes: player.moderationNotes,
+      moderatedAt: player.moderatedAt,
+      moderatedBy: player.moderatedBy,
+    };
+  }
+
+  private async requireActivePlayer(playerId: string) {
+    const player = await this.prisma.player.findUnique({
+      where: { playerId },
+      select: { playerId: true, isDeleted: true },
+    });
+    if (!player || player.isDeleted) {
+      throw new NotFoundException('Player not found');
+    }
+    return player;
+  }
+
+  async getAdminFinancials(
+    playerId: string,
+    query: { page?: number | string; limit?: number | string } = {},
+  ) {
+    await this.requireActivePlayer(playerId);
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
+    const wallet = await this.prisma.wallet.findFirst({
+      where: { OR: [{ playerId }, { userId: playerId }] },
+      select: { walletId: true, currency: true },
+    });
+    if (!wallet) {
+      return {
+        playerId,
+        currency: 'NGN',
+        totalSpent: 0,
+        totalWinnings: 0,
+        transactions: [],
+        pagination: { total: 0, page, limit, totalPages: 0 },
+      };
+    }
+
+    const where = { walletId: wallet.walletId };
+    const [total, rows, spent, winnings] = await Promise.all([
+      this.prisma.walletTransaction.count({ where }),
+      this.prisma.walletTransaction.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.walletTransaction.aggregate({
+        where: {
+          ...where,
+          type: { in: ['ENTRY_FEE', 'TICKET_PURCHASE'] },
+          amount: { lt: 0 },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.walletTransaction.aggregate({
+        where: { ...where, type: 'PRIZE_PAYOUT', amount: { gt: 0 } },
+        _sum: { amount: true },
+      }),
+    ]);
+    const pagination = {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+
+    return {
+      playerId,
+      currency: wallet.currency || 'NGN',
+      totalSpent: Math.abs(spent._sum.amount || 0),
+      totalWinnings: winnings._sum.amount || 0,
+      transactions: rows.map((transaction) => ({
+        id: transaction.transactionId,
+        identityId: playerId,
+        reference: transaction.reference,
+        type: transaction.type.toLowerCase(),
+        amount: transaction.amount,
+        currency: transaction.currency,
+        status: transaction.status,
+        description: transaction.description || transaction.type.replace(/_/g, ' '),
+        timestamp: transaction.createdAt,
+      })),
+      pagination,
+    };
+  }
+
+  async getAdminSecurityPasses(
+    playerId: string,
+    query: { page?: number | string; limit?: number | string } = {},
+  ) {
+    await this.requireActivePlayer(playerId);
+    const result = await this.passService.getMyPasses(playerId, query);
+    return {
+      playerId,
+      ...result,
+    };
+  }
+
+  async getAdminAccessLogs(
+    playerId: string,
+    query: { page?: number | string; limit?: number | string } = {},
+  ) {
+    await this.requireActivePlayer(playerId);
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
+    const tournaments = await this.prisma.tournament.findMany({
+      where: { isDeleted: false },
+      select: { tournamentId: true, name: true, schedule: true },
+    });
+    const logs: Array<{
+      id: string;
+      type: string;
+      details: string;
+      tournamentId: string;
+      tournamentName: string;
+      matchId: string;
+      timestamp: string;
+      checkedInByRole?: string;
+    }> = [];
+
+    for (const tournament of tournaments) {
+      const schedule: any = tournament.schedule || {};
+      const matches: any[] = schedule.structure?.matches || schedule.matches || [];
+      for (const match of matches) {
+        const matchId = String(match.id || match.canonicalMatchId || '');
+        const matchTitle = String(match.title || match.name || matchId || 'Match');
+        for (const checkIn of Array.isArray(match.checkIns) ? match.checkIns : []) {
+          if (checkIn.playerId !== playerId || !checkIn.checkedInAt) continue;
+          logs.push({
+            id: `${tournament.tournamentId}:${matchId}:${playerId}`,
+            type: 'MATCH_CHECK_IN',
+            details: `Checked in for ${matchTitle}`,
+            tournamentId: tournament.tournamentId,
+            tournamentName: tournament.name,
+            matchId,
+            timestamp: String(checkIn.checkedInAt),
+            checkedInByRole: checkIn.checkedInByRole,
+          });
+        }
+      }
+    }
+
+    logs.sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    );
+    const total = logs.length;
+    const pagination = {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+    return {
+      playerId,
+      logs: logs.slice((page - 1) * limit, page * limit),
+      pagination,
+    };
+  }
+
+  async regenerateAdminPlayerQrCodes(playerId: string) {
+    await this.requireActivePlayer(playerId);
+    const registrations = await this.prisma.tournamentRegistration.findMany({
+      where: { playerId },
+      select: { registrationId: true, tournamentId: true },
+    });
+    const updated = await this.prisma.$transaction(
+      registrations.map((registration) =>
+        this.prisma.tournamentRegistration.update({
+          where: { registrationId: registration.registrationId },
+          data: {
+            qrCodeString: `PLAYER:${registration.tournamentId}:${playerId}:${randomUUID()}`,
+          },
+        }),
+      ),
+    );
+    return {
+      playerId,
+      regeneratedCount: updated.length,
+      invalidatedPreviousCodes: updated.length > 0,
+    };
   }
 
   /**
@@ -1092,31 +1428,6 @@ export class PlayerService {
     query?: { page?: number | string; limit?: number | string },
   ) {
     return this.passService.getMyPasses(playerId, query);
-  }
-
-  async getAdminPlayerPasses(
-    playerId: string,
-    query?: { page?: number | string; limit?: number | string },
-  ) {
-    return this.passService.getPlayerPasses(playerId, query);
-  }
-
-  async getAdminPlayerAccessLogs(
-    playerId: string,
-    query?: { page?: number | string; limit?: number | string },
-  ) {
-    return this.passService.getPlayerAccessLogs(playerId, query);
-  }
-
-  async regenerateAdminPlayerQrCodes(playerId: string) {
-    return this.passService.regeneratePlayerQrCodes(playerId);
-  }
-
-  async getAdminPlayerFinancials(
-    playerId: string,
-    query?: { page?: number | string; limit?: number | string },
-  ) {
-    return this.walletService.getPlayerFinancials(playerId, query);
   }
 
   async getPassByTournament(playerId: string, tournamentId: string) {

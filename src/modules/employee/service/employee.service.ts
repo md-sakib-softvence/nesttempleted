@@ -3,6 +3,7 @@ import {
   ConflictException,
   NotFoundException,
   UnauthorizedException,
+  BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { MailService } from '../../mail/mail.service';
@@ -18,6 +19,8 @@ import {
 import { getPreSignedUrl, deleteImageFromS3 } from '../../utils/s3.util';
 import { generateEmployeeId } from '../utils/generate-id.util';
 import { createActivities } from '../../utils/activity.util';
+import { EmployeeRole } from '@prisma/client';
+import { CreateEmployeeTournamentAssignmentDto } from '../dto/create-employee-tournament-assignment.dto';
 
 @Injectable()
 export class EmployeeService {
@@ -348,6 +351,14 @@ export class EmployeeService {
     };
   }
 
+  async getEmployeeByRole(id: string, role: EmployeeRole) {
+    const employee = await this.getEmployeeById(id);
+    if (employee.role !== role) {
+      throw new NotFoundException(`${role.toLowerCase()} employee not found`);
+    }
+    return employee;
+  }
+
   async getEmployeePass(id: string) {
     const employee = await this.getEmployeeById(id);
     const qrToken = `STAFF:${employee.role}:${employee.employeeId}:${employee.showEmployeeId}`;
@@ -380,7 +391,6 @@ export class EmployeeService {
       },
       select: { employeeId: true, showEmployeeId: true },
     });
-
     if (!employee) throw new NotFoundException('Employee not found');
 
     const identities = [...new Set([employee.employeeId, employee.showEmployeeId])];
@@ -388,7 +398,6 @@ export class EmployeeService {
       where: { employeeId: employee.employeeId },
       select: { matchId: true, tournament: { select: { schedule: true } } },
     });
-
     const getScheduledMatches = (scheduleValue: unknown): any[] => {
       const schedule = scheduleValue as any;
       if (Array.isArray(schedule)) {
@@ -405,7 +414,6 @@ export class EmployeeService {
       const matches = schedule?.structure?.matches || schedule?.matches;
       return Array.isArray(matches) ? matches : [];
     };
-
     const matchesOfficiated = assignments.filter((assignment) =>
       getScheduledMatches(assignment.tournament.schedule).some(
         (match) =>
@@ -473,6 +481,107 @@ export class EmployeeService {
       },
       orderBy: { assignedAt: 'asc' },
     });
+  }
+
+  async getEmployeeTournamentAssignments(employeeId: string) {
+    const employee = await this.prisma.employee.findFirst({
+      where: { employeeId, isDeleted: false },
+      select: { employeeId: true },
+    });
+    if (!employee) throw new NotFoundException('Employee not found');
+
+    return this.prisma.employeeTournamentAssignment.findMany({
+      where: { employeeId },
+      include: {
+        tournament: {
+          select: {
+            tournamentId: true,
+            name: true,
+            gameTitle: true,
+            startDate: true,
+          },
+        },
+        venue: { select: { venueId: true, name: true, address: true } },
+        screen: { select: { screenId: true, screenName: true } },
+      },
+      orderBy: { assignedAt: 'desc' },
+    });
+  }
+
+  async createEmployeeTournamentAssignment(
+    employeeId: string,
+    dto: CreateEmployeeTournamentAssignmentDto,
+  ) {
+    const employee = await this.prisma.employee.findFirst({
+      where: { employeeId, isDeleted: false, state: 'ACTIVE' },
+      select: { employeeId: true, role: true },
+    });
+    if (!employee) throw new NotFoundException('Active employee not found');
+    if (
+      employee.role !== EmployeeRole.MANAGER &&
+      employee.role !== EmployeeRole.AMBASSADOR
+    ) {
+      throw new BadRequestException(
+        'Tournament venue assignments are available for managers and ambassadors',
+      );
+    }
+
+    const tournament = await this.prisma.tournament.findFirst({
+      where: { tournamentId: dto.tournamentId, isDeleted: false },
+      include: { venues: { include: { screens: true } } },
+    });
+    if (!tournament) throw new NotFoundException('Tournament not found');
+
+    const venueId = dto.venueId?.trim() || null;
+    const screenId = dto.screenId?.trim() || null;
+    const venue = venueId
+      ? tournament.venues.find((item) => item.venueId === venueId)
+      : undefined;
+    if (venueId) {
+      if (!venue) {
+        throw new BadRequestException('Selected venue does not belong to this tournament');
+      }
+    }
+    if (screenId) {
+      if (!venueId || !venue?.screens.some((screen) => screen.screenId === screenId)) {
+        throw new BadRequestException('Selected screen must belong to the selected venue');
+      }
+    }
+
+    const assignmentKey = [employeeId, dto.tournamentId, venueId || '*', screenId || '*'].join(':');
+    return this.prisma.employeeTournamentAssignment.upsert({
+      where: { assignmentKey },
+      create: {
+        assignmentKey,
+        employeeId,
+        tournamentId: dto.tournamentId,
+        venueId,
+        screenId,
+      },
+      update: {},
+      include: {
+        tournament: {
+          select: { tournamentId: true, name: true, gameTitle: true, startDate: true },
+        },
+        venue: { select: { venueId: true, name: true, address: true } },
+        screen: { select: { screenId: true, screenName: true } },
+      },
+    });
+  }
+
+  async removeEmployeeTournamentAssignment(
+    employeeId: string,
+    assignmentId: string,
+  ) {
+    const assignment = await this.prisma.employeeTournamentAssignment.findFirst({
+      where: { id: assignmentId, employeeId },
+      select: { id: true },
+    });
+    if (!assignment) throw new NotFoundException('Tournament assignment not found');
+    await this.prisma.employeeTournamentAssignment.delete({
+      where: { id: assignment.id },
+    });
+    return { employeeId, assignmentId, removed: true };
   }
 
   async getEmployeeMarketingData(id: string, query: QueryOptions = {}) {

@@ -706,6 +706,13 @@ const DAY_NAME_TO_INDEX: Record<string, number> = {
   friday: 5,
   sat: 6,
   saturday: 6,
+  '0': 0,
+  '1': 1,
+  '2': 2,
+  '3': 3,
+  '4': 4,
+  '5': 5,
+  '6': 6,
 };
 
 /**

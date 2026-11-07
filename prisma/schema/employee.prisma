@@ -17,6 +17,7 @@ model Employee {
   isDeleted      Boolean                   @default(false)
   marketingData  MarketingDataCollection[]
   tournamentAssignments TournamentStaffAssignment[]
+  tournamentVenueAssignments EmployeeTournamentAssignment[]
   createdAt      DateTime                  @default(now())
   updatedAt      DateTime                  @updatedAt
 }

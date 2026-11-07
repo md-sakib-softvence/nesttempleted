@@ -49,6 +49,7 @@ enum FanPredictionStatus {
 
 enum FanCoinTransactionType {
   SEED_CREDIT
+  ADMIN_CREDIT
   PURCHASE_CREDIT
   PREDICTION_STAKE
   PREDICTION_PAYOUT

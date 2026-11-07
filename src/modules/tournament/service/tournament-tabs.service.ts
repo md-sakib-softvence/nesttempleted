@@ -1022,16 +1022,14 @@ export class TournamentTabsService {
         dto.secondaryOrganizerLogo || dto.prOrgUrl,
       );
     }
-    if (
-      dto.tournamentLogo !== undefined ||
-      dto.tournamentLogoUrl !== undefined
-    ) {
-      data.tournamentLogoUrl = extractStorageKey(
-        dto.tournamentLogo || dto.tournamentLogoUrl,
-      );
+    const logoVal =
+      dto.tournamentLogoUrl ?? dto.logo ?? dto.tournamentLogo;
+    if (logoVal !== undefined) {
+      data.tournamentLogoUrl = extractStorageKey(logoVal);
     }
-    if (dto.canvasImage !== undefined) {
-      data.canvasImage = extractStorageKey(dto.canvasImage);
+    const bannerVal = dto.canvasImage ?? dto.bannerUrl ?? dto.banner;
+    if (bannerVal !== undefined) {
+      data.canvasImage = extractStorageKey(bannerVal);
     }
     if (dto.playerCardTemplate !== undefined) {
       data.playerCardTemplate = dto.playerCardTemplate;
@@ -1152,18 +1150,15 @@ export class TournamentTabsService {
         dto.secondaryOrganizerLogo || dto.prOrgUrl,
       );
     }
-    if (
-      dto.tournamentLogo !== undefined ||
-      dto.tournamentLogoUrl !== undefined
-    ) {
-      data.tournamentLogoUrl = extractStorageKey(
-        dto.tournamentLogo || dto.tournamentLogoUrl,
-      );
+    const logoVal =
+      dto.tournamentLogoUrl ?? dto.logo ?? dto.tournamentLogo;
+    if (logoVal !== undefined) {
+      data.tournamentLogoUrl = extractStorageKey(logoVal);
     }
-    if (dto.fanPassArtUrl !== undefined || dto.canvasImage !== undefined) {
-      data.canvasImage = extractStorageKey(
-        dto.fanPassArtUrl || dto.canvasImage,
-      );
+    const bannerVal =
+      dto.fanPassArtUrl ?? dto.canvasImage ?? dto.bannerUrl ?? dto.banner;
+    if (bannerVal !== undefined) {
+      data.canvasImage = extractStorageKey(bannerVal);
     }
     if (dto.fanPassTemplate !== undefined) {
       data.fanPassTemplate = dto.fanPassTemplate;
@@ -1571,24 +1566,23 @@ export class TournamentTabsService {
     if (dto.frequencyArray !== undefined)
       data.frequencyArray = dto.frequencyArray;
 
-    if (dto.bannerUrl !== undefined)
-      data.canvasImage = extractStorageKey(dto.bannerUrl);
-    if (dto.canvasImage !== undefined)
-      data.canvasImage = extractStorageKey(dto.canvasImage);
-    if (dto.fanPassArtUrl !== undefined)
-      data.canvasImage = extractStorageKey(dto.fanPassArtUrl);
-    if (dto.logo !== undefined)
-      data.tournamentLogoUrl = extractStorageKey(dto.logo);
-    if (dto.tournamentLogoUrl !== undefined)
-      data.tournamentLogoUrl = extractStorageKey(dto.tournamentLogoUrl);
-    if (dto.organizerLogo !== undefined)
-      data.playerOrgUrl = extractStorageKey(dto.organizerLogo);
-    if (dto.playerOrgUrl !== undefined)
-      data.playerOrgUrl = extractStorageKey(dto.playerOrgUrl);
-    if (dto.secondaryOrganizerLogo !== undefined)
-      data.prOrgUrl = extractStorageKey(dto.secondaryOrganizerLogo);
-    if (dto.prOrgUrl !== undefined)
-      data.prOrgUrl = extractStorageKey(dto.prOrgUrl);
+    const bannerVal =
+      dto.canvasImage ?? dto.bannerUrl ?? dto.banner ?? dto.fanPassArtUrl;
+    if (bannerVal !== undefined)
+      data.canvasImage = extractStorageKey(bannerVal);
+
+    const logoVal =
+      dto.tournamentLogoUrl ?? dto.logo ?? dto.tournamentLogo;
+    if (logoVal !== undefined)
+      data.tournamentLogoUrl = extractStorageKey(logoVal);
+
+    const playerOrgVal = dto.playerOrgUrl ?? dto.organizerLogo;
+    if (playerOrgVal !== undefined)
+      data.playerOrgUrl = extractStorageKey(playerOrgVal);
+
+    const prOrgVal = dto.prOrgUrl ?? dto.secondaryOrganizerLogo;
+    if (prOrgVal !== undefined)
+      data.prOrgUrl = extractStorageKey(prOrgVal);
 
     if (dto.rulesUrl !== undefined)
       data.rules = [extractStorageKey(dto.rulesUrl)];

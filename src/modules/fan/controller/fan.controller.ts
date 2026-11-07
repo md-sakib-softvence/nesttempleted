@@ -25,6 +25,7 @@ import { FanService } from '../service/fan.service';
 import { FanPlayerRegistrationService } from '../service/fan-player-registration.service';
 import { FanCoinPurchaseService } from '../service/fan-coin-purchase.service';
 import { CreateFanDto } from '../dto/create-fan.dto';
+import { CreditFanCoinsDto } from '../dto/credit-fan-coins.dto';
 import { UpdateFanDto } from '../dto/update-fan.dto';
 import { CompleteFanTournamentApplicationDto } from '../dto/complete-fan-tournament-application.dto';
 import { PurchaseFanCoinsDto } from '../dto/purchase-fan-coins.dto';
@@ -259,19 +260,43 @@ export class FanController {
     }
 
     try {
-      const data = await this.fanService.createFan(createFanDto);
+      const data = await this.fanService.createFan(createFanDto, {
+        awardSignupBonus: true,
+      });
 
       if (data.profileImage) {
         data.profileImage = await getPreSignedUrl(data.profileImage);
       }
 
-      return sendResponse({ message: 'Fan created successfully', data });
+      return sendResponse({
+        message: 'Fan created successfully. 100 coins have been added.',
+        data,
+      });
     } catch (error) {
       if (s3ProfileImageFilename) {
         await deleteImageFromS3(s3ProfileImageFilename);
       }
       throw error;
     }
+  }
+
+  @Patch(':id/coins/credit')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Credit coins to a fan account' })
+  async creditFanCoins(
+    @Param('id') id: string,
+    @Body() dto: CreditFanCoinsDto,
+  ) {
+    const data = await this.fanService.creditCoins(
+      id,
+      dto.amount,
+      dto.reason,
+    );
+
+    return sendResponse({
+      message: `${dto.amount} coins credited successfully`,
+      data,
+    });
   }
 
   @Patch(':id')

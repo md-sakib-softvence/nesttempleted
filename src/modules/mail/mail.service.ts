@@ -120,4 +120,44 @@ export class MailService {
       attachments,
     });
   }
+
+  async sendPhotoModerationNotice(email: string, name: string, notes?: string) {
+    const reason = notes?.trim()
+      ? `<p>Review note: ${this.escapeHtml(notes.trim())}</p>`
+      : '';
+    await this.mailerService.sendMail({
+      to: email,
+      subject: 'Please update your profile photo',
+      html: `<p>Hi ${this.escapeHtml(name)},</p><p>Your profile photo was not approved. Please upload a different photo.</p>${reason}`,
+    });
+  }
+
+  async sendGamerTagModerationNotice(
+    email: string,
+    name: string,
+    gamerTag: string,
+    notes?: string,
+  ) {
+    const reason = notes?.trim()
+      ? `<p>Review note: ${this.escapeHtml(notes.trim())}</p>`
+      : '';
+    await this.mailerService.sendMail({
+      to: email,
+      subject: 'Your gamer tag needs review',
+      html: `<p>Hi ${this.escapeHtml(name)},</p><p>Your gamer tag “${this.escapeHtml(gamerTag)}” was flagged as inappropriate. Please contact support or update it.</p>${reason}`,
+    });
+  }
+
+  private escapeHtml(value: string) {
+    return value.replace(/[&<>"']/g, (character) => {
+      const entities: Record<string, string> = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      };
+      return entities[character];
+    });
+  }
 }

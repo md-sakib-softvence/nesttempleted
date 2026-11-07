@@ -66,16 +66,7 @@ export class TournamentMatchesService {
       throw new NotFoundException('Tournament not found or has been deleted');
     }
 
-    let tournamentVenues = tournament.venues;
-    if (tournamentVenues.length === 0) {
-      const existingVenues = await this.prisma.venue.findMany({
-        include: { screens: true },
-        take: 5,
-      });
-      if (existingVenues.length > 0) {
-        tournamentVenues = existingVenues;
-      }
-    }
+    const tournamentVenues = tournament.venues || [];
 
     if (tournamentVenues.length === 0) {
       throw new BadRequestException(
@@ -1059,16 +1050,7 @@ export class TournamentMatchesService {
       tournament.schedulingMode ||
       SchedulingMode.AUTO_HOME_VENUE;
 
-    let tournamentVenues = tournament.venues;
-    if (tournamentVenues.length === 0) {
-      const existingVenues = await this.prisma.venue.findMany({
-        include: { screens: true },
-        take: 5,
-      });
-      if (existingVenues.length > 0) {
-        tournamentVenues = existingVenues;
-      }
-    }
+    const tournamentVenues = tournament.venues || [];
 
     let participants: Participant[] = [];
     if (playerIds && Array.isArray(playerIds) && playerIds.length > 0) {
