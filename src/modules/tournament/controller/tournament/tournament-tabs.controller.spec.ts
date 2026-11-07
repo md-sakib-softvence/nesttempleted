@@ -216,6 +216,15 @@ describe('TournamentTabsController', () => {
     expect(tabsService.patchSettingsTab).toHaveBeenCalledWith('t-1', {
       name: 'Winter Cup Saved',
     });
+
+    await controller.patchSettingsTab('t-1', {
+      banner: 'banner-abc.png',
+      tournamentLogo: 'logo-xyz.png',
+    });
+    expect(tabsService.patchSettingsTab).toHaveBeenCalledWith('t-1', {
+      banner: 'banner-abc.png',
+      tournamentLogo: 'logo-xyz.png',
+    });
   });
 
   it('should dynamically get and patch tab by name', async () => {

@@ -160,9 +160,13 @@ export class CreateTournamentDto {
     const raw =
       value !== undefined && value !== ''
         ? value
-        : obj?.teams !== undefined
+        : obj?.teams !== undefined && obj?.teams !== ''
           ? obj.teams
-          : 16;
+          : obj?.capacity !== undefined && obj?.capacity !== ''
+            ? obj.capacity
+            : obj?.maxCapacity !== undefined && obj?.maxCapacity !== ''
+              ? obj.maxCapacity
+              : 16;
     const n = Number(raw);
     return isNaN(n) || n < 2 ? 16 : n;
   })
@@ -464,11 +468,15 @@ export class CreateTournamentDto {
     const raw =
       value !== undefined && value !== ''
         ? value
-        : obj?.maxCapacity !== undefined
+        : obj?.maxCapacity !== undefined && obj?.maxCapacity !== ''
           ? obj.maxCapacity
-          : obj?.teams !== undefined
-            ? obj.teams
-            : obj?.numberOfTeams;
+          : obj?.capacity !== undefined && obj?.capacity !== ''
+            ? obj.capacity
+            : obj?.teams !== undefined && obj?.teams !== ''
+              ? obj.teams
+              : obj?.numberOfTeams !== undefined && obj?.numberOfTeams !== ''
+                ? obj.numberOfTeams
+                : 16;
     const n = Number(raw);
     return isNaN(n) || n < 1 ? 16 : n;
   })
@@ -689,11 +697,20 @@ export class CreateTournamentDto {
   bannerUrl?: any;
 
   @ApiPropertyOptional({
+    description: 'Tournament hero banner file or URL (alias for canvasImage)',
+  })
+  @IsOptional()
+  banner?: any;
+
+  @ApiPropertyOptional({
     type: 'string',
     format: 'binary',
     description: 'Canvas Image file or URL',
   })
-  @Transform(({ value, obj }) => value || obj?.bannerUrl || obj?.fanPassArtUrl)
+  @Transform(
+    ({ value, obj }) =>
+      value || obj?.banner || obj?.bannerUrl || obj?.fanPassArtUrl,
+  )
   @IsOptional()
   canvasImage?: any;
 
