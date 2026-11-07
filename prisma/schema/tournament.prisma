@@ -58,6 +58,7 @@ model Tournament {
   predictions       FanPrediction[]
   guidelines        TournamentGuideline[]
   staffAssignments  TournamentStaffAssignment[]
+  employeeAssignments EmployeeTournamentAssignment[]
 }
 
 model TournamentStaffAssignment {
@@ -72,6 +73,24 @@ model TournamentStaffAssignment {
 
   @@unique([tournamentId, matchId])
   @@index([employeeId, tournamentId])
+}
+
+model EmployeeTournamentAssignment {
+  id           String     @id @default(uuid())
+  assignmentKey String   @unique
+  employeeId   String
+  employee     Employee   @relation(fields: [employeeId], references: [employeeId], onDelete: Cascade)
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+  venueId      String?
+  venue        Venue?     @relation(fields: [venueId], references: [venueId], onDelete: SetNull)
+  screenId     String?
+  screen       Screen?    @relation(fields: [screenId], references: [screenId], onDelete: SetNull)
+  assignedAt   DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([employeeId, tournamentId])
+  @@index([tournamentId])
 }
 
 /// Structured rules, terms, and policy content for a tournament.
@@ -148,6 +167,7 @@ model Venue {
   tournamentId    String?
   tournament      Tournament?                @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
   screens         Screen[]
+  employeeAssignments EmployeeTournamentAssignment[]
   fanApplications FanTournamentApplication[]
   createdAt       DateTime                   @default(now())
   updatedAt       DateTime                   @updatedAt
@@ -159,6 +179,7 @@ model Screen {
   venueId    String?
   venue      Venue?     @relation(fields: [venueId], references: [venueId], onDelete: Cascade)
   schedules  Schedule[]
+  employeeAssignments EmployeeTournamentAssignment[]
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
 }

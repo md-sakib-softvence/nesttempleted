@@ -27,6 +27,9 @@ import { AuthService } from '../../auth/service/auth.service';
 import { CreatePlayerDto } from '../dto/create-player.dto';
 import { UpdatePlayerDto } from '../dto/update-player.dto';
 import { UpdateDocumentStatusDto } from '../dto/update-document-status.dto';
+import { ModeratePlayerPhotoDto } from '../dto/moderate-player-photo.dto';
+import { ModeratePlayerGamerTagDto } from '../dto/moderate-player-gamertag.dto';
+import { UpdatePlayerDisciplineDto } from '../dto/update-player-discipline.dto';
 import { ChangePasswordDto } from '../../auth/dto/change-password.dto';
 import { sendResponse } from '../../utils/response.util';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
@@ -344,6 +347,150 @@ export class PlayerController {
     );
     return sendResponse({
       message: `Document status successfully updated to ${dto.status}`,
+      data,
+    });
+  }
+
+  @Patch(':playerId/moderation/photo')
+  @ApiOperation({ summary: 'Approve or reject a player profile photo (Admin only)' })
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  async moderatePlayerPhoto(
+    @Param('playerId') playerId: string,
+    @Req() req: RequestWithUser,
+    @Body() dto: ModeratePlayerPhotoDto,
+  ) {
+    const data = await this.playerService.moderatePhoto(
+      playerId,
+      dto.status,
+      dto.notes,
+      req.user.userId,
+    );
+    return sendResponse({
+      message: `Profile photo status updated to ${dto.status}`,
+      data,
+    });
+  }
+
+  @Patch(':playerId/moderation/gamertag')
+  @ApiOperation({ summary: 'Approve or flag a player gamer tag (Admin only)' })
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  async moderatePlayerGamerTag(
+    @Param('playerId') playerId: string,
+    @Req() req: RequestWithUser,
+    @Body() dto: ModeratePlayerGamerTagDto,
+  ) {
+    const data = await this.playerService.moderateGamerTag(
+      playerId,
+      dto.status,
+      dto.notes,
+      req.user.userId,
+    );
+    return sendResponse({
+      message: `Gamer tag status updated to ${dto.status}`,
+      data,
+    });
+  }
+
+  @Patch(':playerId/discipline')
+  @ApiOperation({ summary: 'Update player status and private discipline notes (Admin only)' })
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  async updatePlayerDiscipline(
+    @Param('playerId') playerId: string,
+    @Req() req: RequestWithUser,
+    @Body() dto: UpdatePlayerDisciplineDto,
+  ) {
+    const data = await this.playerService.updateDiscipline(
+      playerId,
+      dto,
+      req.user.userId,
+    );
+    return sendResponse({
+      message: 'Player discipline information updated successfully',
+      data,
+    });
+  }
+
+  @Get(':playerId/discipline')
+  @ApiOperation({ summary: 'Get private player discipline information (Admin only)' })
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  async getPlayerDiscipline(@Param('playerId') playerId: string) {
+    const data = await this.playerService.getDiscipline(playerId);
+    return sendResponse({
+      message: 'Player discipline information retrieved successfully',
+      data,
+    });
+  }
+
+  @Get(':playerId/financials')
+  @ApiOperation({ summary: 'Get admin financial summary and ledger for a player' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  async getAdminPlayerFinancials(
+    @Param('playerId') playerId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const data = await this.playerService.getAdminFinancials(playerId, {
+      page,
+      limit,
+    });
+    return sendResponse({
+      message: 'Player financials retrieved successfully',
+      data,
+      meta: data.pagination,
+    });
+  }
+
+  @Get(':playerId/security/passes')
+  @ApiOperation({ summary: 'Get a player’s tournament passes and QR codes' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  async getAdminPlayerSecurityPasses(
+    @Param('playerId') playerId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const data = await this.playerService.getAdminSecurityPasses(playerId, {
+      page,
+      limit,
+    });
+    return sendResponse({
+      message: 'Player security passes retrieved successfully',
+      data,
+      meta: data.pagination,
+    });
+  }
+
+  @Get(':playerId/security/access-logs')
+  @ApiOperation({ summary: 'Get match check-in access logs for a player' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  async getAdminPlayerAccessLogs(
+    @Param('playerId') playerId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const data = await this.playerService.getAdminAccessLogs(playerId, {
+      page,
+      limit,
+    });
+    return sendResponse({
+      message: 'Player access logs retrieved successfully',
+      data,
+      meta: data.pagination,
+    });
+  }
+
+  @Post(':playerId/security/qr-codes/regenerate')
+  @ApiOperation({ summary: 'Regenerate all tournament QR codes for a player' })
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  async regenerateAdminPlayerQrCodes(@Param('playerId') playerId: string) {
+    const data = await this.playerService.regenerateAdminPlayerQrCodes(playerId);
+    return sendResponse({
+      message: 'Player tournament QR codes regenerated successfully',
       data,
     });
   }

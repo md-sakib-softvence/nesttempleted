@@ -11,8 +11,19 @@ model Player {
   gamerTag     String?
   surname      String?
   isDeleted    Boolean @default(false)
+  moderationNotes String?
+  moderatedAt DateTime?
+  moderatedBy String?
 
-  profilePicture    String?
+  profilePicture          String?
+  photoStatus             PhotoModerationStatus    @default(APPROVED)
+  photoModerationNotes    String?
+  photoModeratedAt        DateTime?
+  photoModeratedBy        String?
+  gamertagStatus          GamerTagModerationStatus @default(APPROVED)
+  gamertagModerationNotes String?
+  gamertagModeratedAt     DateTime?
+  gamertagModeratedBy     String?
   preferredPlatform String?
   favoriteTeam      String?
   dateOfBirth       DateTime?
@@ -59,6 +70,18 @@ enum RegistrationStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum PhotoModerationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum GamerTagModerationStatus {
+  PENDING
+  APPROVED
+  FLAGGED
 }
 
 model PlayerDocument {

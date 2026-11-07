@@ -24,6 +24,7 @@ import {
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { EmployeeService } from '../service/employee.service';
 import { CreateEmployeeDto } from '../dto/create-employee.dto';
+import { CreateEmployeeTournamentAssignmentDto } from '../dto/create-employee-tournament-assignment.dto';
 import { UpdateEmployeeDto } from '../dto/update-employee.dto';
 import { sendResponse } from '../../utils/response.util';
 import { QueryOptions } from '../../utils/query.util';
@@ -361,6 +362,73 @@ export class EmployeeController {
     );
     return sendResponse({
       message: 'Your tournament match assignments retrieved successfully',
+      data,
+    });
+  }
+
+  @Get('managers/:id')
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Get one manager employee by ID' })
+  async getManagerById(@Param('id') id: string) {
+    const data = await this.employeeService.getEmployeeByRole(
+      id,
+      EmployeeRole.MANAGER,
+    );
+    return sendResponse({ message: 'Manager retrieved successfully', data });
+  }
+
+  @Get('ambassadors/:id')
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Get one ambassador employee by ID' })
+  async getAmbassadorById(@Param('id') id: string) {
+    const data = await this.employeeService.getEmployeeByRole(
+      id,
+      EmployeeRole.AMBASSADOR,
+    );
+    return sendResponse({ message: 'Ambassador retrieved successfully', data });
+  }
+
+  @Get(':id/tournament-assignments')
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.MANAGER)
+  @ApiOperation({ summary: 'Get tournament and venue assignments for one employee' })
+  async getEmployeeTournamentAssignments(@Param('id') id: string) {
+    const data = await this.employeeService.getEmployeeTournamentAssignments(id);
+    return sendResponse({
+      message: 'Employee tournament assignments retrieved successfully',
+      data,
+    });
+  }
+
+  @Post(':id/tournament-assignments')
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.MANAGER)
+  @ApiOperation({ summary: 'Assign a manager or ambassador to a tournament venue' })
+  async createEmployeeTournamentAssignment(
+    @Param('id') id: string,
+    @Body() dto: CreateEmployeeTournamentAssignmentDto,
+  ) {
+    const data = await this.employeeService.createEmployeeTournamentAssignment(
+      id,
+      dto,
+    );
+    return sendResponse({
+      message: 'Tournament assignment created successfully',
+      data,
+    });
+  }
+
+  @Delete(':id/tournament-assignments/:assignmentId')
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, EmployeeRole.MANAGER)
+  @ApiOperation({ summary: 'Remove a tournament venue assignment' })
+  async removeEmployeeTournamentAssignment(
+    @Param('id') id: string,
+    @Param('assignmentId') assignmentId: string,
+  ) {
+    const data = await this.employeeService.removeEmployeeTournamentAssignment(
+      id,
+      assignmentId,
+    );
+    return sendResponse({
+      message: 'Tournament assignment removed successfully',
       data,
     });
   }
