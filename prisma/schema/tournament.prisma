@@ -330,6 +330,7 @@ model Payment {
   paidCurrency     Currency?
   paidAt           DateTime?
   providerDetails  Json?
+  coinTransaction  FanCoinTransaction?
   createdAt        DateTime                 @default(now())
   updatedAt        DateTime                 @updatedAt
 

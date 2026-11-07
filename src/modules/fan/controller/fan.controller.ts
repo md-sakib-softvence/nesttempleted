@@ -23,9 +23,11 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { FanService } from '../service/fan.service';
 import { FanPlayerRegistrationService } from '../service/fan-player-registration.service';
+import { FanCoinPurchaseService } from '../service/fan-coin-purchase.service';
 import { CreateFanDto } from '../dto/create-fan.dto';
 import { UpdateFanDto } from '../dto/update-fan.dto';
 import { CompleteFanTournamentApplicationDto } from '../dto/complete-fan-tournament-application.dto';
+import { PurchaseFanCoinsDto } from '../dto/purchase-fan-coins.dto';
 import { VerifyFanTournamentPaymentDto } from '../dto/verify-fan-tournament-payment.dto';
 import { CreateFanTournamentApplicationDto } from '../dto/create-fan-tournament-application.dto';
 import { sendResponse } from '../../utils/response.util';
@@ -49,7 +51,44 @@ export class FanController {
   constructor(
     private readonly fanService: FanService,
     private readonly fanPlayerRegistrationService: FanPlayerRegistrationService,
+    private readonly fanCoinPurchaseService: FanCoinPurchaseService,
   ) {}
+
+  @Get('coins/packages')
+  @Roles(Role.FAN, 'fan')
+  @ApiOperation({ summary: 'List available fan coin purchase packages' })
+  async getFanCoinPackages() {
+    const data = this.fanCoinPurchaseService.getPackages();
+    return sendResponse({ message: 'Fan coin packages retrieved', data });
+  }
+
+  @Post('coins/purchases')
+  @Roles(Role.FAN, 'fan')
+  @ApiOperation({ summary: 'Start a Flutterwave checkout for a fan coin package' })
+  async startFanCoinPurchase(
+    @Req() req: Request & { user: { userId: string } },
+    @Body() dto: PurchaseFanCoinsDto,
+  ) {
+    const data = await this.fanCoinPurchaseService.startPurchase(
+      req.user.userId,
+      dto.packageId,
+    );
+    return sendResponse({ message: 'Fan coin checkout created', data });
+  }
+
+  @Post('coins/purchases/:txRef/verify')
+  @Roles(Role.FAN, 'fan')
+  @ApiOperation({ summary: 'Verify a fan coin payment and credit coins once' })
+  async verifyFanCoinPurchase(
+    @Req() req: Request & { user: { userId: string } },
+    @Param('txRef') txRef: string,
+  ) {
+    const data = await this.fanCoinPurchaseService.verifyPurchase(
+      req.user.userId,
+      txRef,
+    );
+    return sendResponse({ message: 'Fan coin payment verified', data });
+  }
 
   @Post('tournaments/:id/registrations')
   @Roles(Role.FAN, 'fan')

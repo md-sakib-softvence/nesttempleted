@@ -28,6 +28,8 @@ model FanCoinTransaction {
   fan          Fan                       @relation(fields: [fanId], references: [fanId], onDelete: Cascade)
   predictionId String?
   prediction   FanPrediction?            @relation(fields: [predictionId], references: [id], onDelete: SetNull)
+  paymentId    String?                   @unique
+  payment      Payment?                  @relation(fields: [paymentId], references: [id], onDelete: SetNull)
   type         FanCoinTransactionType
   amount       Int
   balanceAfter Int
@@ -47,6 +49,7 @@ enum FanPredictionStatus {
 
 enum FanCoinTransactionType {
   SEED_CREDIT
+  PURCHASE_CREDIT
   PREDICTION_STAKE
   PREDICTION_PAYOUT
   PREDICTION_REFUND

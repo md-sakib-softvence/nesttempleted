@@ -10,11 +10,12 @@ import { FlutterwaveModule } from '../flutterwave/flutterwave.module';
 import { TournamentModule } from '../tournament/tournament.module';
 import { PlayerModule } from '../player/player.module';
 import { FanPlayerRegistrationService } from './service/fan-player-registration.service';
+import { FanCoinPurchaseService } from './service/fan-coin-purchase.service';
 
 @Module({
   imports: [PrismaModule, MailModule, AuthModule, FlutterwaveModule, TournamentModule, PlayerModule],
   controllers: [FanFollowController, FanController],
-  providers: [FanService, FollowerService, FanPlayerRegistrationService],
-  exports: [FanService, FollowerService, FanPlayerRegistrationService],
+  providers: [FanService, FollowerService, FanPlayerRegistrationService, FanCoinPurchaseService],
+  exports: [FanService, FollowerService, FanPlayerRegistrationService, FanCoinPurchaseService],
 })
 export class FanModule {}
