@@ -83,19 +83,24 @@ model PayoutRequest {
   playerId String
   player   Player @relation(fields: [playerId], references: [playerId], onDelete: Cascade)
 
-  reference       String       @unique // PAYOUT-timestamp-random
-  accountNumber   String // 10-digit NUBAN
-  bankCode        String? // Optional 3-digit NIBSS bank code
-  bankName        String? // Optional bank name e.g. "Access Bank", "GTBank"
-  accountName     String? // Verified beneficiary name
-  amount          Float
-  currency        String       @default("NGN")
-  status          PayoutStatus @default(PENDING)
-  rejectionReason String?
-  processedAt     DateTime?
-  processedBy     String? // Admin user ID who reviewed/processed
+  reference         String       @unique // PAYOUT-timestamp-random
+  accountNumber     String // 10-digit NUBAN
+  bankCode          String? // Optional 3-digit NIBSS bank code
+  bankName          String? // Optional bank name e.g. "Access Bank", "GTBank"
+  accountName       String? // Verified beneficiary name
+  amount            Float
+  currency          String       @default("NGN")
+  status            PayoutStatus @default(PENDING)
+  rejectionReason   String?
+  failureReason     String?
+  reviewedAt        DateTime?
+  reviewedBy        String?
+  transferReference String?
+  processedAt       DateTime?
+  processedBy       String? // Admin user ID who reviewed/processed
 
   metadata Json?
+  events   PayoutRequestEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -103,8 +108,28 @@ model PayoutRequest {
   @@index([walletId])
   @@index([playerId])
   @@index([reference])
+  @@index([transferReference])
   @@index([status])
   @@index([createdAt])
+}
+
+model PayoutRequestEvent {
+  eventId           String        @id @default(uuid())
+  payoutId          String
+  payout            PayoutRequest @relation(fields: [payoutId], references: [payoutId], onDelete: Cascade)
+  action            String
+  fromStatus        String?
+  toStatus          String
+  actorId           String?
+  actorRole         String
+  actorName         String?
+  actorEmail        String?
+  reason            String?
+  transferReference String?
+  createdAt         DateTime      @default(now())
+
+  @@index([payoutId, createdAt])
+  @@index([actorId, createdAt])
 }
 
 enum PayoutStatus {
@@ -113,5 +138,6 @@ enum PayoutStatus {
   PROCESSING
   COMPLETED
   REJECTED
+  FAILED
   CANCELLED
 }

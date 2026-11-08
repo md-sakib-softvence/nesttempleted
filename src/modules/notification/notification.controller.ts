@@ -39,7 +39,7 @@ export class NotificationController {
   }
 
   @Get('me')
-  @Roles(Role.FAN, 'fan')
+  @Roles(Role.FAN, 'fan', Role.PLAYER, 'player')
   @ApiOperation({ summary: 'Get notifications for the authenticated fan' })
   @ApiResponse({ status: 200, description: 'Return the fan notifications.' })
   findMine(@Req() req: Request & { user: { userId: string } }) {
@@ -47,7 +47,7 @@ export class NotificationController {
   }
 
   @Patch('me/read-all')
-  @Roles(Role.FAN, 'fan')
+  @Roles(Role.FAN, 'fan', Role.PLAYER, 'player')
   @ApiOperation({ summary: 'Mark all notifications for the authenticated fan as read' })
   @ApiResponse({ status: 200, description: 'All unread fan notifications were marked as read.' })
   markAllMineAsRead(@Req() req: Request & { user: { userId: string } }) {
@@ -55,7 +55,7 @@ export class NotificationController {
   }
 
   @Patch(':id/read')
-  @Roles(Role.FAN, 'fan')
+  @Roles(Role.FAN, 'fan', Role.PLAYER, 'player')
   @ApiOperation({ summary: 'Mark one notification for the authenticated fan as read' })
   @ApiResponse({ status: 200, description: 'The fan notification was marked as read.' })
   markMineAsRead(

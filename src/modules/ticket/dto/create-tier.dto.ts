@@ -7,7 +7,7 @@ import {
   IsEnum,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { TicketType } from '@prisma/client';
+import { TicketAudienceRole, TicketType } from '@prisma/client';
 
 export class CreateTierDto {
   @ApiProperty({
@@ -34,6 +34,11 @@ export class CreateTierDto {
   @IsEnum(TicketType)
   @IsOptional()
   type?: TicketType;
+
+  @ApiPropertyOptional({ enum: TicketAudienceRole, default: TicketAudienceRole.FAN })
+  @IsEnum(TicketAudienceRole)
+  @IsOptional()
+  audienceRole?: TicketAudienceRole;
 
   @ApiProperty({
     description: 'Price per ticket in the tournament currency',

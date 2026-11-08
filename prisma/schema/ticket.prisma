@@ -55,6 +55,7 @@ model TicketTier {
   tournament   Tournament @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
 
   name        String // e.g. "Day Pass", "VIP Pass", "Season Pass"
+  audienceRole TicketAudienceRole @default(FAN)
   type        TicketType @default(DAY_PASS)
   price       Float
   currency    String     @default("NGN")
@@ -67,6 +68,12 @@ model TicketTier {
   updatedAt DateTime @updatedAt
 
   @@index([tournamentId])
+  @@index([audienceRole, tournamentId, status])
+}
+
+enum TicketAudienceRole {
+  FAN
+  PLAYER
 }
 
 enum TicketType {

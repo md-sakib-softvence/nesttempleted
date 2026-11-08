@@ -35,21 +35,29 @@ export class NotificationGateway implements OnGatewayConnection {
           'super_secret_change_in_production',
       });
       const role = String(user.role || '').toUpperCase();
-      if (role !== 'FAN' || !user.userId) {
-        throw new Error('Fan access required');
+      if (!user.userId || !['FAN', 'PLAYER'].includes(role)) {
+        throw new Error('Player or fan access required');
       }
 
-      const fan = await this.prisma.fan.findFirst({
-        where: { fanId: user.userId, status: 'ACTIVE', isDeleted: false },
-        select: { fanId: true },
-      });
-      if (!fan) throw new Error('Active fan account required');
+      if (role === 'FAN') {
+        const fan = await this.prisma.fan.findFirst({
+          where: { fanId: user.userId, status: 'ACTIVE', isDeleted: false },
+          select: { fanId: true },
+        });
+        if (!fan) throw new Error('Active fan account required');
+      } else {
+        const player = await this.prisma.player.findFirst({
+          where: { playerId: user.userId, status: 'ACTIVE', isDeleted: false },
+          select: { playerId: true },
+        });
+        if (!player) throw new Error('Active player account required');
+      }
 
       await client.join(`user:${user.userId}`);
       client.emit('notifications:ready');
     } catch {
       client.emit('notifications:unauthorized', {
-        message: 'Sign in with an active fan account.',
+        message: 'Sign in with an active player or fan account.',
       });
       client.disconnect(true);
     }

@@ -35,7 +35,7 @@ import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { Public } from '../../../common/decorators/public.decorator';
-import { Role } from '@prisma/client';
+import { Role, TicketAudienceRole } from '@prisma/client';
 
 @ApiTags('tickets')
 @ApiBearerAuth()
@@ -48,7 +48,8 @@ export class TicketController {
    * Accessible by Players and Fans (or any authenticated user)
    */
   @Post('purchase')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.PLAYER, Role.FAN, 'PLAYER', 'FAN')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
@@ -187,14 +188,15 @@ export class TicketController {
    * 6. User's Purchased Tickets Wallet (Total Passes, Active Codes, and Registered Passes)
    */
   @Get('my-tickets')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.PLAYER, Role.FAN, 'PLAYER', 'FAN')
   @ApiOperation({
     summary:
       'Get user ticket wallet with KPI counts (Total Passes, Active Codes) and entrance passes',
   })
   async getMyTickets(@Req() req: Request) {
     const user = (req as any).user;
-    const data = await this.ticketService.getMyTickets(user?.userId);
+    const data = await this.ticketService.getMyTickets(user?.userId, user?.role);
     return sendResponse({
       message: 'User tickets retrieved successfully',
       data,
@@ -264,8 +266,11 @@ export class TicketController {
   @Get('tiers')
   @Public()
   @ApiOperation({ summary: 'Get all ticket tiers across all tournaments' })
-  async getAllTiers(@Query('tournamentId') tournamentId?: string) {
-    const data = await this.ticketService.getAllTiers(tournamentId);
+  async getAllTiers(
+    @Query('tournamentId') tournamentId?: string,
+    @Query('audienceRole') audienceRole?: TicketAudienceRole,
+  ) {
+    const data = await this.ticketService.getAllTiers(tournamentId, audienceRole);
     return sendResponse({
       message: 'Ticket tiers retrieved successfully',
       data,
@@ -276,7 +281,8 @@ export class TicketController {
    * 8.6. Direct Ticket Purchase / Instant Issuance (Public demo & immediate pass generation)
    */
   @Post('purchase-direct')
-  @Public()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'ADMIN', 'SUPER_ADMIN')
   @ApiOperation({
     summary: 'Direct purchase / issue ticket without 3rd party checkout',
   })
@@ -295,8 +301,11 @@ export class TicketController {
   @Public()
   @ApiOperation({ summary: 'Get all ticket tiers for a tournament' })
   @ApiParam({ name: 'tournamentId', description: 'Tournament ID' })
-  async getTournamentTiers(@Param('tournamentId') tournamentId: string) {
-    const data = await this.ticketService.getTiersByTournament(tournamentId);
+  async getTournamentTiers(
+    @Param('tournamentId') tournamentId: string,
+    @Query('audienceRole') audienceRole?: TicketAudienceRole,
+  ) {
+    const data = await this.ticketService.getTiersByTournament(tournamentId, audienceRole);
     return sendResponse({
       message: 'Ticket tiers retrieved successfully',
       data,
@@ -307,7 +316,8 @@ export class TicketController {
    * 10. Create Ticket Tier (Admin / Organizer)
    */
   @Post('tiers')
-  @Public()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'ADMIN', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'Create a new ticket tier for a tournament' })
   async createTier(@Body() dto: CreateTierDto) {
     const data = await this.ticketService.createTier(dto);
@@ -321,7 +331,8 @@ export class TicketController {
    * 11. Update Ticket Tier
    */
   @Put('tiers/:tierId')
-  @Public()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'ADMIN', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'Update an existing ticket tier' })
   @ApiParam({ name: 'tierId', description: 'Tier ID' })
   async updateTier(
@@ -339,7 +350,8 @@ export class TicketController {
    * 12. Delete Ticket Tier
    */
   @Delete('tiers/:tierId')
-  @Public()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'ADMIN', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'Delete a ticket tier (only if no tickets sold)' })
   @ApiParam({ name: 'tierId', description: 'Tier ID' })
   async deleteTier(@Param('tierId') tierId: string) {
