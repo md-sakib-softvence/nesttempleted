@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -21,6 +22,7 @@ import {
 import { Request } from 'express';
 import { PlayerPassService } from '../service/player-pass.service';
 import { PlayerWalletService } from '../service/player-wallet.service';
+import { PlayerRefillService } from '../service/player-refill.service';
 import { RequestPayoutDto } from '../dto/request-payout.dto';
 import { sendResponse } from '../../utils/response.util';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
@@ -52,7 +54,61 @@ export class PlayerWalletController {
   constructor(
     private readonly playerPassService: PlayerPassService,
     private readonly playerWalletService: PlayerWalletService,
+    private readonly playerRefillService: PlayerRefillService,
   ) {}
+
+  @Get('refills/packages')
+  @Roles(Role.PLAYER, 'player')
+  @ApiOperation({
+    summary:
+      'Get configured Player coin and non-withdrawable wallet credit packages',
+  })
+  async getRefillPackages() {
+    return sendResponse({
+      message: 'Player refill packages retrieved',
+      data: this.playerRefillService.getPackages(),
+    });
+  }
+
+  @Post('refills/:kind')
+  @Roles(Role.PLAYER, 'player')
+  @ApiOperation({
+    summary: 'Start a Flutterwave Player coin or wallet credit refill',
+  })
+  async startRefill(
+    @Req() req: RequestWithUser,
+    @Param('kind') kind: string,
+    @Body('packageId') packageId: string,
+  ) {
+    if (kind !== 'coins' && kind !== 'credits')
+      throw new BadRequestException('Refill kind must be coins or credits.');
+    const data = await this.playerRefillService.startPurchase(
+      req.user.userId,
+      kind,
+      packageId,
+    );
+    return sendResponse({ message: 'Player refill checkout created', data });
+  }
+
+  @Post('refills/:kind/:txRef/verify')
+  @Roles(Role.PLAYER, 'player')
+  @ApiOperation({
+    summary: 'Verify a Player refill payment and credit the account once',
+  })
+  async verifyRefill(
+    @Req() req: RequestWithUser,
+    @Param('kind') kind: string,
+    @Param('txRef') txRef: string,
+  ) {
+    if (kind !== 'coins' && kind !== 'credits')
+      throw new BadRequestException('Refill kind must be coins or credits.');
+    const data = await this.playerRefillService.verifyPurchase(
+      req.user.userId,
+      kind,
+      txRef,
+    );
+    return sendResponse({ message: 'Player refill payment verified', data });
+  }
 
   /**
    * 1. Tab 1: 🎟️ SECURE PASS & ID
@@ -170,15 +226,28 @@ export class PlayerWalletController {
   @ApiOperation({ summary: 'Get the logged-in player payout request history' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'reference', required: false, type: String, description: 'Filter to a specific payout reference' })
+  @ApiQuery({
+    name: 'reference',
+    required: false,
+    type: String,
+    description: 'Filter to a specific payout reference',
+  })
   async getMyPayouts(
     @Req() req: RequestWithUser,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
     @Query('reference') reference?: string,
   ) {
-    const data = await this.playerWalletService.getMyPayouts(req.user.userId, { page, limit, reference });
-    return sendResponse({ message: 'Payout history retrieved successfully', data, meta: data.pagination });
+    const data = await this.playerWalletService.getMyPayouts(req.user.userId, {
+      page,
+      limit,
+      reference,
+    });
+    return sendResponse({
+      message: 'Payout history retrieved successfully',
+      data,
+      meta: data.pagination,
+    });
   }
 
   /**
@@ -206,7 +275,11 @@ export class PlayerWalletController {
     @Body() dto: RequestPayoutDto,
   ) {
     const playerId = req.user.userId;
-    const data = await this.playerWalletService.requestPayout(playerId, dto, req.user.email);
+    const data = await this.playerWalletService.requestPayout(
+      playerId,
+      dto,
+      req.user.email,
+    );
     return sendResponse({
       message: data.message,
       data: data.data,

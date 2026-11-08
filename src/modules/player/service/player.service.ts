@@ -1168,6 +1168,7 @@ export class PlayerService {
     // Process canonical matches across active tournaments for this player
     const upcomingMatches: any[] = [];
     const completedMatches: any[] = [];
+    const liveMatches: any[] = [];
     let winsCount = 0;
     let lossesCount = 0;
 
@@ -1195,37 +1196,57 @@ export class PlayerService {
 
           const isCompleted =
             m.status === 'COMPLETED' ||
+            (m.status !== 'IN_PROGRESS' &&
             (m.score1 !== undefined &&
               m.score2 !== undefined &&
               m.score1 !== null &&
               m.score2 !== null &&
-              (m.score1 > 0 || m.score2 > 0));
+              (m.score1 > 0 || m.score2 > 0)));
 
           if (isCompleted) {
+            const playerScore = isPlayer1 ? m.score1 : m.score2;
+            const opponentScore = isPlayer1 ? m.score2 : m.score1;
+            const isWinner =
+              m.winnerId === playerId ||
+              (m.winnerId == null && playerScore > opponentScore);
+            const isDraw =
+              m.winnerId == null && playerScore === opponentScore;
             completedMatches.push({
               matchId: m.id || m.canonicalMatchId,
               tournamentId: tourney.tournamentId,
               tournamentName: tourney.name,
               round: m.round,
-              playerScore: isPlayer1 ? m.score1 : m.score2,
-              opponentScore: isPlayer1 ? m.score2 : m.score1,
+              playerScore,
+              opponentScore,
               opponentId,
               winnerId: m.winnerId,
-              isWinner: m.winnerId === playerId,
+              isWinner,
+              outcome: isWinner ? 'WIN' : isDraw ? 'DRAW' : 'LOSS',
               date: m.date,
               time: m.time,
               venueName: m.venueName,
             });
 
-            if (
-              m.winnerId === playerId ||
-              (isPlayer1 && m.score1 > m.score2) ||
-              (!isPlayer1 && m.score2 > m.score1)
-            ) {
+            if (isWinner) {
               winsCount++;
-            } else if (opponentId) {
+            } else if (!isDraw && opponentId) {
               lossesCount++;
             }
+          } else if (m.status === 'IN_PROGRESS') {
+            liveMatches.push({
+              matchId: m.id || m.canonicalMatchId,
+              tournamentId: tourney.tournamentId,
+              tournamentName: tourney.name,
+              gameTitle: tourney.gameTitle,
+              round: m.round,
+              status: m.status,
+              playerScore: isPlayer1 ? (m.score1 ?? 0) : (m.score2 ?? 0),
+              opponentScore: isPlayer1 ? (m.score2 ?? 0) : (m.score1 ?? 0),
+              opponentId,
+              date: m.date || null,
+              time: m.time || null,
+              venueName: m.venueName || 'Main Arena',
+            });
           } else {
             const hasSchedule = Boolean(m.date && m.time);
             upcomingMatches.push({
@@ -1282,7 +1303,7 @@ export class PlayerService {
     }
 
     // Populate opponent details
-    for (const match of [...upcomingMatches, ...completedMatches]) {
+    for (const match of [...upcomingMatches, ...completedMatches, ...liveMatches]) {
       if (match.opponentId && opponentMap[match.opponentId]) {
         match.opponentGamertag = opponentMap[match.opponentId].gamertag;
         match.opponentName = opponentMap[match.opponentId].fullName;
@@ -1335,9 +1356,21 @@ export class PlayerService {
     return {
       profile: formattedProfile,
       wallet,
+      balances: {
+        coins: player.coins,
+        withdrawableCash: wallet.cashBalance,
+        nonWithdrawableCredits: wallet.creditBalance,
+        currency: wallet.currency || 'NGN',
+      },
       nextMatch,
       activeCups,
       upcomingMatches: scheduledUpcoming,
+      liveMatches,
+      completedMatches: completedMatches.sort(
+        (a, b) =>
+          new Date(`${b.date || ''}T${b.time || '00:00'}`).getTime() -
+          new Date(`${a.date || ''}T${a.time || '00:00'}`).getTime(),
+      ),
       raffles: availableRaffles,
       performanceRecords: {
         wins: winsCount,
