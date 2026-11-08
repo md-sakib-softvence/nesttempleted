@@ -33,46 +33,20 @@ export class AuthService {
     switch (loginDto.role) {
       case 'admin':
       case 'super_admin':
-        try {
-          result = await adminLoginUtil(
-            loginDto,
-            this.prisma,
-            this.jwtService,
-            this.configService,
-          );
-        } catch (adminErr) {
-          try {
-            result = await employeeLoginUtil(
-              loginDto,
-              this.prisma,
-              this.jwtService,
-              this.configService,
-            );
-          } catch {
-            throw adminErr;
-          }
-        }
+        result = await adminLoginUtil(
+          loginDto,
+          this.prisma,
+          this.jwtService,
+          this.configService,
+        );
         break;
       case 'manager':
-        try {
-          result = await employeeLoginUtil(
-            loginDto,
-            this.prisma,
-            this.jwtService,
-            this.configService,
-          );
-        } catch (empErr) {
-          try {
-            result = await adminLoginUtil(
-              loginDto,
-              this.prisma,
-              this.jwtService,
-              this.configService,
-            );
-          } catch {
-            throw empErr;
-          }
-        }
+        result = await employeeLoginUtil(
+          loginDto,
+          this.prisma,
+          this.jwtService,
+          this.configService,
+        );
         break;
       case 'security':
       case 'security_guard':
