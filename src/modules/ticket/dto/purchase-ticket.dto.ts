@@ -45,4 +45,19 @@ export class PurchaseTicketDto {
   @IsOptional()
   quantity?: number;
 
+  @ApiPropertyOptional({ description: 'Player registration home venue ID' })
+  @IsString()
+  @IsOptional()
+  homeVenueId?: string;
+
+  @ApiPropertyOptional({ description: 'Football tournament primary team ID/name' })
+  @IsString()
+  @IsOptional()
+  primaryTeamId?: string;
+
+  @ApiPropertyOptional({ description: 'Football tournament secondary team ID/name' })
+  @IsString()
+  @IsOptional()
+  secondaryTeamId?: string;
+
 }

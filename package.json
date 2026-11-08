@@ -14,6 +14,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main.js",
     "seed:local-test": "ts-node prisma/seeds/local-test.seed.ts",
+    "seed:player-self-scheduling:local": "ts-node prisma/seeds/player-self-scheduling.local.seed.ts",
     "seed:registration-demos": "ts-node prisma/seeds/registration-demo.seed.ts",
     "seed:security-guard": "ts-node prisma/seeds/security-guard.seed.ts",
     "seed:schedule-demo": "ts-node prisma/seeds/schedule-demo.seed.ts",

@@ -361,6 +361,7 @@ model Payment {
   paidAt           DateTime?
   providerDetails  Json?
   coinTransaction  FanCoinTransaction?
+  playerCoinTransaction PlayerCoinTransaction?
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
 
@@ -368,6 +369,20 @@ model Payment {
   @@index([tournamentId, status])
   @@index([purchaserId, status])
   @@index([gateway, status])
+}
+
+model PlayerCoinTransaction {
+  id           String   @id @default(uuid())
+  playerId     String
+  player       Player   @relation(fields: [playerId], references: [playerId], onDelete: Cascade)
+  paymentId    String?  @unique
+  payment      Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  amount       Int
+  balanceAfter Int
+  description  String?
+  createdAt    DateTime @default(now())
+
+  @@index([playerId, createdAt])
 }
 
 enum TournamentRegistrationStatus {

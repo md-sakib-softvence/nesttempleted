@@ -15,7 +15,13 @@ import { CreateTierDto } from '../dto/create-tier.dto';
 import { UpdateTierDto } from '../dto/update-tier.dto';
 import { QueryTicketDto } from '../dto/query-ticket.dto';
 import { TransferTicketDto } from '../dto/transfer-ticket.dto';
-import { TicketAudienceRole, TicketStatus, TicketType } from '@prisma/client';
+import {
+  TicketAudienceRole,
+  TicketStatus,
+  TicketType,
+  TournamentGameType,
+  TournamentRegistrationStatus,
+} from '@prisma/client';
 import { TicketScanGateway } from '../gateway/ticket-scan.gateway';
 import * as crypto from 'crypto';
 
@@ -217,6 +223,7 @@ export class TicketService {
       where: { tournamentId: dto.tournamentId },
       include: {
         ticketTiers: true,
+        venues: true,
       },
     });
 
@@ -236,6 +243,59 @@ export class TicketService {
       currentUser.userId,
       currentUser.role,
     );
+
+    let playerRegistrationDetails: {
+      homeVenueId: string;
+      primaryTeamId: string | null;
+      secondaryTeamId: string | null;
+    } | null = null;
+
+    if (purchaser.userType === 'PLAYER') {
+      if (!tournament.registrationOpen && tournament.status !== 'REGISTRATION_OPEN') {
+        throw new BadRequestException('Registration is closed for this tournament.');
+      }
+      if (!dto.homeVenueId?.trim()) {
+        throw new BadRequestException('Select a tournament venue before checkout.');
+      }
+      const selectedVenue = tournament.venues.find(
+        (venue) => venue.venueId === dto.homeVenueId!.trim(),
+      );
+      if (!selectedVenue) {
+        throw new BadRequestException('Selected venue does not belong to this tournament.');
+      }
+
+      const isFootball = tournament.gameType === TournamentGameType.FOOTBALL;
+      const primaryTeamId = dto.primaryTeamId?.trim() || '';
+      const secondaryTeamId = dto.secondaryTeamId?.trim() || '';
+      if (isFootball && (!primaryTeamId || !secondaryTeamId)) {
+        throw new BadRequestException('Choose both a primary and secondary team for this football tournament.');
+      }
+      if (
+        isFootball &&
+        primaryTeamId.toLocaleLowerCase() === secondaryTeamId.toLocaleLowerCase()
+      ) {
+        throw new BadRequestException('Primary and secondary teams must be different.');
+      }
+
+      const existingRegistration = await this.prisma.tournamentRegistration.findUnique({
+        where: {
+          tournamentId_playerId: {
+            tournamentId: dto.tournamentId,
+            playerId: purchaser.playerId!,
+          },
+        },
+        select: { status: true },
+      });
+      if (existingRegistration && existingRegistration.status !== TournamentRegistrationStatus.CANCELLED) {
+        throw new ConflictException('You are already registered for this tournament.');
+      }
+
+      playerRegistrationDetails = {
+        homeVenueId: selectedVenue.venueId,
+        primaryTeamId: isFootball ? primaryTeamId : null,
+        secondaryTeamId: isFootball ? secondaryTeamId : null,
+      };
+    }
 
     // Check ownership before capacity/pricing so a duplicate always receives
     // the correct message instead of a misleading seats or tier error.
@@ -378,6 +438,9 @@ export class TicketService {
         seatNumber,
         userId: currentUser.userId,
         userRole: purchaser.userType,
+        ...(playerRegistrationDetails
+          ? { playerRegistrationDetails }
+          : {}),
       },
     };
 
@@ -403,6 +466,9 @@ export class TicketService {
           seatNumber,
           userId: currentUser.userId,
           userRole: purchaser.userType,
+          ...(playerRegistrationDetails
+            ? { playerRegistrationDetails }
+            : {}),
         },
       },
     });
@@ -488,6 +554,15 @@ export class TicketService {
       };
     }
 
+    const pendingPayment = await this.prisma.payment.findUnique({ where: { txRef } });
+    if (!pendingPayment) {
+      throw new NotFoundException('Ticket payment record was not found for this transaction.');
+    }
+    const savedPaymentDetails =
+      pendingPayment.providerDetails && typeof pendingPayment.providerDetails === 'object'
+        ? (pendingPayment.providerDetails as Record<string, any>)
+        : {};
+
     // 2. Verify with Flutterwave API
     let txData: any;
     if (transactionId) {
@@ -506,6 +581,20 @@ export class TicketService {
       );
     }
 
+    if (txData.txRef && txData.txRef !== txRef) {
+      throw new BadRequestException('Flutterwave transaction reference does not match this checkout.');
+    }
+    if (
+      txData.currency &&
+      String(txData.currency).toUpperCase() !== String(pendingPayment.currency).toUpperCase()
+    ) {
+      await this.prisma.payment.updateMany({
+        where: { txRef },
+        data: { status: 'CURRENCY_MISMATCH' },
+      });
+      throw new BadRequestException('Payment currency does not match the tournament checkout.');
+    }
+
     // Persist the gateway result independently of issued tickets. This keeps
     // the payment ledger auditable and makes webhook/redirect retries idempotent.
     await this.prisma.payment.updateMany({
@@ -516,12 +605,17 @@ export class TicketService {
         paidAmount: txData.chargedAmount || txData.amount,
         paidCurrency: txData.currency,
         paidAt: txData.createdAt ? new Date(txData.createdAt) : new Date(),
-        providerDetails: txData.raw || txData,
+        providerDetails: {
+          ...savedPaymentDetails,
+          gatewayVerification: txData.raw || txData,
+        },
       },
     });
 
     const meta = txData.meta || {};
-    const tournamentId = meta.tournamentId;
+    // Use immutable server-side payment ownership/details as the source of
+    // truth; provider metadata remains a fallback for legacy payments.
+    const tournamentId = pendingPayment.tournamentId || savedPaymentDetails.tournamentId || meta.tournamentId;
 
     if (!tournamentId) {
       await this.prisma.payment.updateMany({
@@ -546,14 +640,17 @@ export class TicketService {
       throw new NotFoundException(`Tournament #${tournamentId} not found`);
     }
 
-    const quantity = Number(meta.quantity) || 1;
+    const quantity = Number(pendingPayment.quantity || savedPaymentDetails.quantity || meta.quantity) || 1;
+    const savedTicketType = savedPaymentDetails.ticketType || meta.ticketType;
     const ticketType: TicketType =
-      meta.ticketType && Object.values(TicketType).includes(meta.ticketType)
-        ? meta.ticketType
+      savedTicketType && Object.values(TicketType).includes(savedTicketType)
+        ? savedTicketType
         : TicketType.DAY_PASS;
-    const tierId = meta.tierId || null;
-    const userId = meta.userId || null;
-    const userRole = meta.userRole || 'FAN';
+    const tierId = pendingPayment.ticketTierId || savedPaymentDetails.tierId || meta.tierId || null;
+    const userId = pendingPayment.purchaserId || savedPaymentDetails.userId || meta.userId || null;
+    const userRole = pendingPayment.purchaserRole || savedPaymentDetails.userRole || meta.userRole || 'FAN';
+    const playerRegistrationDetails =
+      savedPaymentDetails.playerRegistrationDetails || meta.playerRegistrationDetails || null;
 
     if (quantity !== 1) {
       await this.prisma.payment.updateMany({
@@ -584,7 +681,7 @@ export class TicketService {
     }
     const expectedUnitPrice = selectedTier?.price ?? tournament.entryFee;
     const expectedAmount = Number((expectedUnitPrice * quantity).toFixed(2));
-    const chargedAmount = Number(txData.amount);
+    const chargedAmount = Number(txData.chargedAmount ?? txData.amount);
     if (!Number.isFinite(chargedAmount) || Math.abs(chargedAmount - expectedAmount) > 0.01) {
       await this.prisma.payment.updateMany({
         where: { txRef },
@@ -651,10 +748,11 @@ export class TicketService {
         ? Number((txData.amount / quantity).toFixed(2))
         : txData.amount;
 
-    const issuedTickets: any[] = [];
+    const issuance = await this.prisma.$transaction(async (tx) => {
+      const issuedTickets: any[] = [];
 
-    // Perform DB issuance
-    for (let i = 0; i < quantity; i++) {
+      // Create the ticket, registration and capacity updates atomically.
+      for (let i = 0; i < quantity; i++) {
       const ticketId = crypto.randomUUID();
       // Generate cryptographically unique, unguessable serial (e.g. TCK-2026-8F2A-4B9C)
       const randomChunk1 = crypto.randomBytes(2).toString('hex').toUpperCase();
@@ -676,7 +774,7 @@ export class TicketService {
       const prefix = userRole === 'PLAYER' ? 'PLAYER' : 'FAN';
       const qrToken = `${prefix}:${tournamentId}:${userId || ticketId}:${ticketId}:${signature}`;
 
-      const ticket = await this.prisma.ticket.create({
+      const ticket = await tx.ticket.create({
         data: {
           ticketId,
           showTicketId,
@@ -733,8 +831,8 @@ export class TicketService {
         },
       });
 
-      issuedTickets.push(ticket);
-    }
+        issuedTickets.push(ticket);
+      }
 
     // Increment tier sold count if applicable (with fallback matching by ticketType)
     let targetTierId = tierId;
@@ -746,17 +844,60 @@ export class TicketService {
     }
 
     if (targetTierId) {
-      await this.prisma.ticketTier
-        .update({
+      await tx.ticketTier.update({
           where: { tierId: targetTierId },
           data: {
             sold: { increment: quantity },
           },
-        })
-        .catch((err) => {
-          this.logger.warn(`Failed to update tier sold count: ${err.message}`);
         });
     }
+
+    let confirmedRegistration: any = null;
+    if (String(userRole).toUpperCase() === 'PLAYER') {
+      if (!userId || !playerRegistrationDetails?.homeVenueId) {
+        throw new BadRequestException(
+          'Player registration details are missing from the pending payment. Please restart checkout.',
+        );
+      }
+
+      const player = await tx.player.findFirst({
+        where: { playerId: userId, isDeleted: false },
+        select: { playerId: true, profilePicture: true },
+      });
+      if (!player) {
+        throw new NotFoundException('Player account for this payment was not found.');
+      }
+
+      confirmedRegistration = await tx.tournamentRegistration.upsert({
+        where: { tournamentId_playerId: { tournamentId, playerId: userId } },
+        create: {
+          tournamentId,
+          playerId: userId,
+          homeVenueId: playerRegistrationDetails.homeVenueId,
+          primaryTeamId: playerRegistrationDetails.primaryTeamId || null,
+          secondaryTeamId: playerRegistrationDetails.secondaryTeamId || null,
+          status: TournamentRegistrationStatus.CONFIRMED,
+          paymentStatus: 'PAID',
+          qrCodeString: `PLAYER:${tournamentId}:${userId}`,
+          playerPhotoUrl: player.profilePicture || null,
+        },
+        update: {
+          homeVenueId: playerRegistrationDetails.homeVenueId,
+          primaryTeamId: playerRegistrationDetails.primaryTeamId || null,
+          secondaryTeamId: playerRegistrationDetails.secondaryTeamId || null,
+          status: TournamentRegistrationStatus.CONFIRMED,
+          paymentStatus: 'PAID',
+          paymentDeadline: null,
+          qrCodeString: `PLAYER:${tournamentId}:${userId}`,
+          playerPhotoUrl: player.profilePicture || null,
+        },
+      });
+    }
+
+      return { issuedTickets, confirmedRegistration };
+    });
+
+    const { issuedTickets, confirmedRegistration } = issuance;
 
     const baseUrl = process.env.FRONTEND_URL || 'https://tapegaming.com';
     const rolePath = userRole === 'PLAYER' ? 'player' : 'fan';
@@ -788,6 +929,7 @@ export class TicketService {
       canBuyMultipleTimes: false,
       purchaserRole: userRole,
       purchaserId: userId,
+      ...(confirmedRegistration ? { registration: confirmedRegistration } : {}),
       tickets: formattedTickets,
     };
   }

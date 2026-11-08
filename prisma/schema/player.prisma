@@ -30,6 +30,7 @@ model Player {
 
   document String[]
   status   PlayerStatus @default(ACTIVE)
+  coins    Int          @default(0)
 
   documents               PlayerDocument[]
   marketingData           MarketingDataCollection?
@@ -43,6 +44,7 @@ model Player {
   payoutRequests          PayoutRequest[]
   tournamentApplications  FanTournamentApplication[]
   activityLogs            PlayerActivityLog[]
+  coinTransactions        PlayerCoinTransaction[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
