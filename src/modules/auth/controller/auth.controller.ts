@@ -38,6 +38,15 @@ export class AuthController {
     return this.authService.login(loginDto);
   }
 
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Record sign-out activity for the authenticated user' })
+  logout(@Req() req: AuthenticatedRequest) {
+    return this.authService.logoutPlayer(req.user);
+  }
+
   @Public()
   @Post('refresh-token')
   @HttpCode(HttpStatus.OK)

@@ -107,6 +107,14 @@ export const formatPlayerResponse = async (player: any) => {
 
   // Compute isVerified compliance badge flag
   const isVerified = formattedDocs.some((d) => d.status === 'Verified');
+  const kycStatus = formattedDocs.length === 0
+    ? 'NOT_SUBMITTED'
+    : formattedDocs.some((doc) => doc.status === 'Rejected')
+      ? 'REJECTED'
+      : formattedDocs.every((doc) => doc.status === 'Verified')
+        ? 'VERIFIED'
+        : 'PENDING_REVIEW';
+  const accountVerificationStatus = isVerified ? 'VERIFIED' : kycStatus;
 
   // Format full name
   const fullName = `${player.firstName || ''} ${player.lastName || ''}`.trim();
@@ -127,6 +135,7 @@ export const formatPlayerResponse = async (player: any) => {
     gamertagModeratedBy,
     moderationNotes,
     moderatedBy,
+    tournamentRegistrations,
     ...safePlayerData
   } = player;
 
@@ -149,6 +158,8 @@ export const formatPlayerResponse = async (player: any) => {
     dateOfBirth: formattedDob,
     documents: formattedDocs,
     isVerified,
+    kycStatus,
+    accountVerificationStatus,
 
     // Backend Canonical & Legacy Properties
     playerId: player.playerId,
@@ -157,5 +168,12 @@ export const formatPlayerResponse = async (player: any) => {
     firstName: player.firstName,
     lastName: player.lastName,
     document: legacyDocumentUrls,
+    ...(Array.isArray(tournamentRegistrations)
+      ? {
+          tournamentsEntered: tournamentRegistrations.filter(
+            (registration: { status: string }) => registration.status !== 'CANCELLED',
+          ).length,
+        }
+      : {}),
   };
 };

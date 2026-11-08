@@ -11,6 +11,46 @@ export class PlayerDocumentService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  async createPlayerDocument(playerId: string, type: string, key: string) {
+    const player = await this.prisma.player.findUnique({
+      where: { playerId },
+      select: { playerId: true, isDeleted: true },
+    });
+    if (!player || player.isDeleted) {
+      throw new NotFoundException('Player not found or account is deactivated');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.playerDocument.create({
+        data: {
+          playerId,
+          type,
+          url: key,
+          status: DocumentStatus.PENDING,
+        },
+      });
+      await tx.playerActivityLog.create({
+        data: {
+          playerId,
+          eventType: 'KYC_DOCUMENT_SUBMITTED',
+          title: 'KYC document submitted',
+          description: `${type} was submitted for review.`,
+          actorId: playerId,
+          actorRole: 'PLAYER',
+          toValue: 'PENDING',
+        },
+      });
+      await tx.player.update({
+        where: { playerId },
+        data: { document: { push: key } },
+      });
+      return tx.player.findUnique({
+        where: { playerId },
+        include: { documents: true },
+      });
+    });
+  }
+
   /**
    * Helper to safely extract S3 object key from a full URL or raw key.
    */
@@ -36,6 +76,7 @@ export class PlayerDocumentService {
     playerId: string,
     documentId: string,
     dto: UpdateDocumentStatusDto,
+    moderatorId?: string,
   ) {
     const doc = await this.prisma.playerDocument.findFirst({
       where: { id: documentId, playerId },
@@ -47,12 +88,29 @@ export class PlayerDocumentService {
       );
     }
 
-    const updated = await this.prisma.playerDocument.update({
-      where: { id: documentId },
-      data: {
-        status: dto.status,
-        notes: dto.notes ?? null,
-      },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const changed = await tx.playerDocument.update({
+        where: { id: documentId },
+        data: {
+          status: dto.status,
+          notes: dto.notes ?? null,
+        },
+      });
+      if (doc.status !== dto.status) {
+        await tx.playerActivityLog.create({
+          data: {
+            playerId,
+            eventType: 'KYC_DOCUMENT_STATUS_CHANGED',
+            title: 'KYC document review updated',
+            description: `${doc.type} review changed to ${dto.status.toLowerCase()}.`,
+            actorId: moderatorId,
+            actorRole: 'ADMIN',
+            fromValue: doc.status,
+            toValue: dto.status,
+          },
+        });
+      }
+      return changed;
     });
 
     this.logger.log(
@@ -147,6 +205,18 @@ export class PlayerDocumentService {
           playerId: existingPlayer.playerId,
         },
       });
+      await tx.playerActivityLog.create({
+        data: {
+          playerId: existingPlayer.playerId,
+          eventType: 'KYC_DOCUMENT_REMOVED',
+          title: 'KYC document removed',
+          description: `${documentIdsToDeleteFromDb.length} verification document${documentIdsToDeleteFromDb.length === 1 ? '' : 's'} removed from your account.`,
+          actorId: existingPlayer.playerId,
+          actorRole: 'PLAYER',
+          fromValue: 'SUBMITTED',
+          toValue: 'REMOVED',
+        },
+      });
     }
 
     // 2. Create newly uploaded document records in DB
@@ -159,6 +229,17 @@ export class PlayerDocumentService {
           url: key,
           status: DocumentStatus.PENDING,
         })),
+      });
+      await tx.playerActivityLog.create({
+        data: {
+          playerId: existingPlayer.playerId,
+          eventType: 'KYC_DOCUMENT_SUBMITTED',
+          title: 'KYC document submitted',
+          description: `${newDocumentKeys.length} ${docType} document${newDocumentKeys.length === 1 ? '' : 's'} submitted for review.`,
+          actorId: existingPlayer.playerId,
+          actorRole: 'PLAYER',
+          toValue: 'PENDING',
+        },
       });
     }
 

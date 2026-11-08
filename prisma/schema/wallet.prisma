@@ -1,24 +1,24 @@
 model Wallet {
-  walletId      String             @id @default(uuid())
-  playerId      String?            @unique
-  player        Player?            @relation(fields: [playerId], references: [playerId], onDelete: Cascade)
+  walletId String  @id @default(uuid())
+  playerId String? @unique
+  player   Player? @relation(fields: [playerId], references: [playerId], onDelete: Cascade)
 
-  fanId         String?            @unique
-  fan           Fan?               @relation(fields: [fanId], references: [fanId], onDelete: Cascade)
+  fanId String? @unique
+  fan   Fan?    @relation(fields: [fanId], references: [fanId], onDelete: Cascade)
 
-  userId        String             @unique // Universal user ID (matches playerId or fanId)
-  userRole      String             @default("PLAYER") // "PLAYER" | "FAN" | "ADMIN"
-  cashBalance   Float              @default(0.0)
-  creditBalance Float              @default(0.0)
-  escrowBalance Float              @default(0.0)
-  currency      String             @default("NGN")
-  status        WalletStatus       @default(ACTIVE)
+  userId        String       @unique // Universal user ID (matches playerId or fanId)
+  userRole      String       @default("PLAYER") // "PLAYER" | "FAN" | "ADMIN"
+  cashBalance   Float        @default(0.0)
+  creditBalance Float        @default(0.0)
+  escrowBalance Float        @default(0.0)
+  currency      String       @default("NGN")
+  status        WalletStatus @default(ACTIVE)
 
-  transactions  WalletTransaction[]
-  payouts       PayoutRequest[]
+  transactions WalletTransaction[]
+  payouts      PayoutRequest[]
 
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId])
   @@index([playerId])
@@ -33,21 +33,21 @@ enum WalletStatus {
 }
 
 model WalletTransaction {
-  transactionId String                @id @default(uuid())
+  transactionId String @id @default(uuid())
   walletId      String
-  wallet        Wallet                @relation(fields: [walletId], references: [walletId], onDelete: Cascade)
+  wallet        Wallet @relation(fields: [walletId], references: [walletId], onDelete: Cascade)
 
-  reference     String                @unique // WTX-timestamp-random
-  type          WalletTransactionType @default(PAYOUT_APPROVED)
-  amount        Float                 // Negative for deductions/withdrawals, positive for deposits/credits
-  balanceAfter  Float?                // Running balance snapshot
-  currency      String                @default("NGN")
-  status        TransactionStatus     @default(SUCCESS)
-  description   String?
-  metadata      Json?
+  reference    String                @unique // WTX-timestamp-random
+  type         WalletTransactionType @default(PAYOUT_APPROVED)
+  amount       Float // Negative for deductions/withdrawals, positive for deposits/credits
+  balanceAfter Float? // Running balance snapshot
+  currency     String                @default("NGN")
+  status       TransactionStatus     @default(SUCCESS)
+  description  String?
+  metadata     Json?
 
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([walletId])
   @@index([reference])
@@ -76,29 +76,29 @@ enum TransactionStatus {
 }
 
 model PayoutRequest {
-  payoutId        String       @id @default(uuid())
-  walletId        String
-  wallet          Wallet       @relation(fields: [walletId], references: [walletId], onDelete: Cascade)
+  payoutId String @id @default(uuid())
+  walletId String
+  wallet   Wallet @relation(fields: [walletId], references: [walletId], onDelete: Cascade)
 
-  playerId        String
-  player          Player       @relation(fields: [playerId], references: [playerId], onDelete: Cascade)
+  playerId String
+  player   Player @relation(fields: [playerId], references: [playerId], onDelete: Cascade)
 
   reference       String       @unique // PAYOUT-timestamp-random
-  accountNumber   String       // 10-digit NUBAN
-  bankCode        String?      // Optional 3-digit NIBSS bank code
-  bankName        String?      // Optional bank name e.g. "Access Bank", "GTBank"
-  accountName     String?      // Verified beneficiary name
+  accountNumber   String // 10-digit NUBAN
+  bankCode        String? // Optional 3-digit NIBSS bank code
+  bankName        String? // Optional bank name e.g. "Access Bank", "GTBank"
+  accountName     String? // Verified beneficiary name
   amount          Float
   currency        String       @default("NGN")
   status          PayoutStatus @default(PENDING)
   rejectionReason String?
   processedAt     DateTime?
-  processedBy     String?      // Admin user ID who reviewed/processed
+  processedBy     String? // Admin user ID who reviewed/processed
 
-  metadata        Json?
+  metadata Json?
 
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([walletId])
   @@index([playerId])

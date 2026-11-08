@@ -1,19 +1,19 @@
 model Player {
-  playerId     String  @id @default(uuid())
-  showPlayerId String  @unique
-  firstName    String
-  lastName     String
-  email        String  @unique
-  password     String
-  phoneNumber  String
-  username     String?
+  playerId                     String    @id @default(uuid())
+  showPlayerId                 String    @unique
+  firstName                    String
+  lastName                     String
+  email                        String    @unique
+  password                     String
+  phoneNumber                  String
+  username                     String?
   /// Unique case-insensitively by the Player_gamerTag_normalized_key SQL index.
-  gamerTag     String?
-  surname      String?
-  isDeleted    Boolean @default(false)
-  moderationNotes String?
-  moderatedAt DateTime?
-  moderatedBy String?
+  gamerTag                     String?
+  surname                      String?
+  isDeleted                    Boolean   @default(false)
+  moderationNotes              String?
+  moderatedAt                  DateTime?
+  moderatedBy                  String?
 
   profilePicture          String?
   photoStatus             PhotoModerationStatus    @default(APPROVED)
@@ -24,9 +24,9 @@ model Player {
   gamertagModerationNotes String?
   gamertagModeratedAt     DateTime?
   gamertagModeratedBy     String?
-  preferredPlatform String?
-  favoriteTeam      String?
-  dateOfBirth       DateTime?
+  preferredPlatform       String?
+  favoriteTeam            String?
+  dateOfBirth             DateTime?
 
   document String[]
   status   PlayerStatus @default(ACTIVE)
@@ -42,11 +42,29 @@ model Player {
   wallet                  Wallet?
   payoutRequests          PayoutRequest[]
   tournamentApplications  FanTournamentApplication[]
+  activityLogs            PlayerActivityLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([gamerTag])
+}
+
+model PlayerActivityLog {
+  id          String   @id @default(uuid())
+  playerId    String
+  player      Player   @relation(fields: [playerId], references: [playerId], onDelete: Cascade)
+  eventType   String
+  title       String
+  description String
+  actorId     String?
+  actorRole   String?
+  fromValue   String?
+  toValue     String?
+  createdAt   DateTime @default(now())
+
+  @@index([playerId, createdAt])
+  @@index([eventType, createdAt])
 }
 
 model PlayerRegistrationHistory {

@@ -12,6 +12,7 @@ import {
   UseInterceptors,
   UploadedFiles,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { Request } from 'express';
 import {
@@ -20,8 +21,10 @@ import {
   ApiConsumes,
   ApiQuery,
   ApiBearerAuth,
+  ApiBody,
 } from '@nestjs/swagger';
-import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
+import { UploadedFile } from '@nestjs/common';
 import { PlayerService } from '../service/player.service';
 import { AuthService } from '../../auth/service/auth.service';
 import { CreatePlayerDto } from '../dto/create-player.dto';
@@ -40,6 +43,7 @@ import {
   uploadImageToS3,
   uploadMultipleFilesToS3,
   deleteImageFromS3,
+  uploadPlayerIdentityDocumentToS3,
 } from '../../utils/s3.util';
 import { Role } from '@prisma/client';
 
@@ -149,6 +153,89 @@ export class PlayerController {
       message: 'Player profile retrieved successfully',
       data,
     });
+  }
+
+  @Get('profile/activity')
+  @ApiOperation({ summary: 'Get account activity history for the signed-in player' })
+  @Roles('player', Role.PLAYER)
+  async getMyPlayerActivity(@Req() req: RequestWithUser, @Query('limit') limit?: string) {
+    const data = await this.playerService.getPlayerActivity(
+      req.user.userId,
+      Number(limit) || 50,
+    );
+    return sendResponse({ message: 'Account activity retrieved successfully', data });
+  }
+
+  @Post('profile/documents')
+  @ApiOperation({
+    summary: 'Upload a government identity document for the signed-in player',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['document', 'type'],
+      properties: {
+        document: { type: 'string', format: 'binary' },
+        type: {
+          type: 'string',
+          enum: ['National ID', 'Passport', "Driver's License", 'Government ID'],
+        },
+      },
+    },
+  })
+  @Roles('player', Role.PLAYER)
+  @UseInterceptors(
+    FileInterceptor('document', {
+      limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+    }),
+  )
+  async uploadMyIdentityDocument(
+    @Req() req: RequestWithUser,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body('type') type = 'Government ID',
+  ) {
+    if (!file) throw new BadRequestException('Choose an ID image or PDF to upload.');
+
+    const extension = file.originalname.split('.').pop()?.toLowerCase();
+    const allowedTypes: Record<string, string> = {
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      pdf: 'application/pdf',
+    };
+    if (!extension || allowedTypes[extension] !== file.mimetype) {
+      throw new BadRequestException(
+        'Only matching JPG, PNG, or PDF identity documents are allowed.',
+      );
+    }
+
+    const allowedDocumentTypes = [
+      'National ID',
+      'Passport',
+      "Driver's License",
+      'Government ID',
+    ];
+    if (!allowedDocumentTypes.includes(type)) {
+      throw new BadRequestException('Choose a supported government ID type.');
+    }
+
+    const playerId = req.user.userId;
+    const key = await uploadPlayerIdentityDocumentToS3(file, playerId);
+    try {
+      const data = await this.playerService.createPlayerDocument(
+        playerId,
+        type,
+        key,
+      );
+      return sendResponse({
+        message: 'Identity document uploaded and queued for review',
+        data,
+      });
+    } catch (error) {
+      void deleteImageFromS3(key);
+      throw error;
+    }
   }
 
   @Get('dashboard')
@@ -338,12 +425,14 @@ export class PlayerController {
   async updateDocumentStatus(
     @Param('playerId') playerId: string,
     @Param('documentId') documentId: string,
+    @Req() req: RequestWithUser,
     @Body() dto: UpdateDocumentStatusDto,
   ) {
     const data = await this.playerService.updateDocumentStatus(
       playerId,
       documentId,
       dto,
+      req.user.userId,
     );
     return sendResponse({
       message: `Document status successfully updated to ${dto.status}`,
@@ -419,6 +508,21 @@ export class PlayerController {
       message: 'Player discipline information retrieved successfully',
       data,
     });
+  }
+
+  @Get(':playerId/activity')
+  @ApiOperation({ summary: 'Get account activity history for a player (Admin only)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  async getPlayerActivity(
+    @Param('playerId') playerId: string,
+    @Query('limit') limit?: string,
+  ) {
+    const data = await this.playerService.getPlayerActivity(
+      playerId,
+      Number(limit) || 50,
+    );
+    return sendResponse({ message: 'Player activity retrieved successfully', data });
   }
 
   @Get(':playerId/financials')
@@ -536,8 +640,8 @@ export class PlayerController {
   }
 
   @Get(':id')
-  @Public()
   @ApiOperation({ summary: 'Get a specific Player by ID' })
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
   async getPlayerById(@Param('id') id: string) {
     const data = await this.playerService.getPlayerById(id);
     return sendResponse({
@@ -556,9 +660,13 @@ export class PlayerController {
   @ApiQuery({ name: 'sortOrder', required: false, enum: ['asc', 'desc'] })
   async getAllPlayer(@Query() query: any) {
     const { data, meta } = await this.playerService.getAllPlayer(query);
+    const publicPlayers = data.map((player: any) => {
+      const { documents: _documents, document: _document, ...safePlayer } = player;
+      return safePlayer;
+    });
     return sendResponse({
       message: 'Players retrieved successfully',
-      data,
+      data: publicPlayers,
       meta,
     });
   }

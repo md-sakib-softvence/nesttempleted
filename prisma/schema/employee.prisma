@@ -1,25 +1,25 @@
 model Employee {
-  employeeId     String                    @id @default(uuid())
-  showEmployeeId String                    @unique
-  name           String
-  role           EmployeeRole              @default(EMPLOYEE)
-  state          EmployeeState             @default(ACTIVE)
-  email          String                    @unique
-  phoneNumber    String
-  profileImage   String?
-  document       String[]
-  qrCode         String[]                  @default([])
-  qrCodeSerials          Int[]              @default([])
-  qrCodeGenerationCount Int                 @default(0)
-  cashLeader     Boolean                   @default(false)
-  enablePost     Boolean                   @default(false)
-  password       String
-  isDeleted      Boolean                   @default(false)
-  marketingData  MarketingDataCollection[]
-  tournamentAssignments TournamentStaffAssignment[]
+  employeeId                 String                         @id @default(uuid())
+  showEmployeeId             String                         @unique
+  name                       String
+  role                       EmployeeRole                   @default(EMPLOYEE)
+  state                      EmployeeState                  @default(ACTIVE)
+  email                      String                         @unique
+  phoneNumber                String
+  profileImage               String?
+  document                   String[]
+  qrCode                     String[]                       @default([])
+  qrCodeSerials              Int[]                          @default([])
+  qrCodeGenerationCount      Int                            @default(0)
+  cashLeader                 Boolean                        @default(false)
+  enablePost                 Boolean                        @default(false)
+  password                   String
+  isDeleted                  Boolean                        @default(false)
+  marketingData              MarketingDataCollection[]
+  tournamentAssignments      TournamentStaffAssignment[]
   tournamentVenueAssignments EmployeeTournamentAssignment[]
-  createdAt      DateTime                  @default(now())
-  updatedAt      DateTime                  @updatedAt
+  createdAt                  DateTime                       @default(now())
+  updatedAt                  DateTime                       @updatedAt
 }
 
 enum EmployeeRole {

@@ -142,6 +142,18 @@ export class PlayerService {
         },
       });
 
+      await tx.playerActivityLog.create({
+        data: {
+          playerId: created.playerId,
+          eventType: 'ACCOUNT_CREATED',
+          title: 'Player account created',
+          description: 'Your player account was created.',
+          actorId: created.playerId,
+          actorRole: 'SYSTEM',
+          toValue: 'ACTIVE',
+        },
+      });
+
       if (initialDocs.length > 0) {
         await tx.playerDocument.createMany({
           data: initialDocs.map((url) => ({
@@ -227,6 +239,18 @@ export class PlayerService {
       },
     });
 
+    await tx.playerActivityLog.create({
+      data: {
+        playerId: player.playerId,
+        eventType: 'ACCOUNT_CREATED',
+        title: 'Player account created',
+        description: 'Your player account was created from your fan account.',
+        actorId: player.playerId,
+        actorRole: 'SYSTEM',
+        toValue: 'ACTIVE',
+      },
+    });
+
     await tx.wallet.create({
       data: {
         playerId: player.playerId,
@@ -282,30 +306,29 @@ export class PlayerService {
       }
     }
 
-    // Email Uniqueness Check
+    // Player email addresses are immutable after account creation.
     if (
       updatePlayerDto.email &&
-      updatePlayerDto.email.toLowerCase() !== existingPlayer.email.toLowerCase()
+      updatePlayerDto.email.trim().toLowerCase() !==
+        existingPlayer.email.trim().toLowerCase()
     ) {
-      const emailTaken = await this.prisma.player.findUnique({
-        where: { email: updatePlayerDto.email.toLowerCase() },
-      });
-      if (emailTaken && emailTaken.playerId !== id) {
-        throw new ConflictException(
-          'Email is already in use by another account',
-        );
-      }
+      throw new BadRequestException('Email address cannot be changed.');
     }
 
-    // Username Uniqueness Check
+    // Username uniqueness is case-insensitive, matching gamerTag behavior.
+    const targetUsername = updatePlayerDto.username?.trim();
     if (
-      updatePlayerDto.username &&
-      updatePlayerDto.username !== existingPlayer.username
+      targetUsername &&
+      targetUsername.toLowerCase() !==
+        existingPlayer.username?.trim().toLowerCase()
     ) {
       const usernameTaken = await this.prisma.player.findFirst({
-        where: { username: updatePlayerDto.username },
+        where: {
+          username: { equals: targetUsername, mode: 'insensitive' },
+          playerId: { not: id },
+        },
       });
-      if (usernameTaken && usernameTaken.playerId !== id) {
+      if (usernameTaken) {
         throw new ConflictException('This username is already taken');
       }
     }
@@ -342,6 +365,33 @@ export class PlayerService {
 
     const resolvedPhoneNumber =
       updatePlayerDto.phoneNumber || updatePlayerDto.phone;
+    const targetPhoneNumber = resolvedPhoneNumber?.trim();
+    const normalizedPhoneNumber = targetPhoneNumber?.replace(/\D/g, '');
+    const normalizedCurrentPhone = existingPlayer.phoneNumber.replace(
+      /\D/g,
+      '',
+    );
+
+    if (
+      normalizedPhoneNumber &&
+      normalizedPhoneNumber !== normalizedCurrentPhone
+    ) {
+      const duplicatePhone = await this.prisma.$queryRaw<
+        Array<{ playerId: string }>
+      >(Prisma.sql`
+        SELECT "playerId"
+        FROM "Player"
+        WHERE "playerId" <> ${id}
+          AND regexp_replace("phoneNumber", '[^0-9]', '', 'g') = ${normalizedPhoneNumber}
+        LIMIT 1
+      `);
+
+      if (duplicatePhone.length > 0) {
+        throw new ConflictException(
+          'This phone number is already in use by another player account.',
+        );
+      }
+    }
 
     let parsedDob: Date | undefined = undefined;
     if (updatePlayerDto.dateOfBirth) {
@@ -386,14 +436,22 @@ export class PlayerService {
 
       docsToDeleteFromS3 = documentsToDeleteFromS3;
 
-      return tx.player.update({
+      const changedFields: string[] = [];
+      if (resolvedFirstName && resolvedFirstName !== existingPlayer.firstName) changedFields.push('first name');
+      if (resolvedLastName && resolvedLastName !== existingPlayer.lastName) changedFields.push('last name');
+      if (targetUsername && targetUsername !== existingPlayer.username) changedFields.push('username');
+      if (targetGamerTag && targetGamerTag !== existingPlayer.gamerTag) changedFields.push('gamer tag');
+      if (targetPhoneNumber && targetPhoneNumber !== existingPlayer.phoneNumber) changedFields.push('phone number');
+      if (parsedDob && parsedDob.getTime() !== existingPlayer.dateOfBirth?.getTime()) changedFields.push('date of birth');
+      if (newProfilePictureKey || updatePlayerDto.deleteProfilePicture) changedFields.push('profile photo');
+
+      const updated = await tx.player.update({
         where: { playerId: id },
         data: {
           ...(resolvedFirstName ? { firstName: resolvedFirstName } : {}),
           ...(resolvedLastName ? { lastName: resolvedLastName } : {}),
-          ...(updatePlayerDto.email ? { email: updatePlayerDto.email } : {}),
-          ...(updatePlayerDto.username
-            ? { username: updatePlayerDto.username }
+          ...(targetUsername
+            ? { username: targetUsername }
             : {}),
           ...(targetGamerTag ? { gamerTag: targetGamerTag } : {}),
           ...(targetGamerTag && targetGamerTag.toLowerCase() !== existingPlayer.gamerTag?.trim().toLowerCase()
@@ -407,7 +465,7 @@ export class PlayerService {
           ...(updatePlayerDto.surname
             ? { surname: updatePlayerDto.surname }
             : {}),
-          ...(resolvedPhoneNumber ? { phoneNumber: resolvedPhoneNumber } : {}),
+          ...(targetPhoneNumber ? { phoneNumber: targetPhoneNumber } : {}),
           ...(parsedDob ? { dateOfBirth: parsedDob } : {}),
           profilePicture: updatedProfilePicture,
           ...(newProfilePictureKey
@@ -433,6 +491,19 @@ export class PlayerService {
           marketingData: true,
         },
       });
+      if (changedFields.length > 0) {
+        await tx.playerActivityLog.create({
+          data: {
+            playerId: id,
+            eventType: 'PROFILE_UPDATED',
+            title: 'Profile updated',
+            description: `Updated profile ${changedFields.join(', ')}.`,
+            actorId: requestingUser?.userId || id,
+            actorRole: isAdmin ? 'ADMIN' : 'PLAYER',
+          },
+        });
+      }
+      return updated;
       });
     } catch (error) {
       if (
@@ -472,6 +543,7 @@ export class PlayerService {
       include: {
         documents: true,
         registrationHistory: true,
+        tournamentRegistrations: { select: { status: true } },
         marketingData: true,
       },
     });
@@ -536,6 +608,7 @@ export class PlayerService {
         firstName: true,
         email: true,
         profilePicture: true,
+        photoStatus: true,
         isDeleted: true,
       },
     });
@@ -546,14 +619,32 @@ export class PlayerService {
       throw new BadRequestException('Player has no profile photo to moderate');
     }
 
-    const updated = await this.prisma.player.update({
-      where: { playerId },
-      data: {
-        photoStatus: status,
-        photoModerationNotes: notes?.trim() || null,
-        photoModeratedAt: new Date(),
-        photoModeratedBy: moderatorId,
-      },
+    const previousStatus = player.photoStatus;
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const changed = await tx.player.update({
+        where: { playerId },
+        data: {
+          photoStatus: status,
+          photoModerationNotes: notes?.trim() || null,
+          photoModeratedAt: new Date(),
+          photoModeratedBy: moderatorId,
+        },
+      });
+      if (previousStatus !== status) {
+        await tx.playerActivityLog.create({
+          data: {
+            playerId,
+            eventType: 'PHOTO_MODERATION_CHANGED',
+            title: 'Profile photo review updated',
+            description: `Profile photo status changed to ${status.toLowerCase()}.`,
+            actorId: moderatorId,
+            actorRole: 'ADMIN',
+            fromValue: previousStatus,
+            toValue: status,
+          },
+        });
+      }
+      return changed;
     });
 
     if (status === PhotoModerationStatus.REJECTED) {
@@ -586,6 +677,7 @@ export class PlayerService {
         firstName: true,
         email: true,
         gamerTag: true,
+        gamertagStatus: true,
         isDeleted: true,
       },
     });
@@ -596,14 +688,32 @@ export class PlayerService {
       throw new BadRequestException('Player has no gamer tag to moderate');
     }
 
-    const updated = await this.prisma.player.update({
-      where: { playerId },
-      data: {
-        gamertagStatus: status,
-        gamertagModerationNotes: notes?.trim() || null,
-        gamertagModeratedAt: new Date(),
-        gamertagModeratedBy: moderatorId,
-      },
+    const previousStatus = player.gamertagStatus;
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const changed = await tx.player.update({
+        where: { playerId },
+        data: {
+          gamertagStatus: status,
+          gamertagModerationNotes: notes?.trim() || null,
+          gamertagModeratedAt: new Date(),
+          gamertagModeratedBy: moderatorId,
+        },
+      });
+      if (previousStatus !== status) {
+        await tx.playerActivityLog.create({
+          data: {
+            playerId,
+            eventType: 'GAMERTAG_MODERATION_CHANGED',
+            title: 'Gamer tag review updated',
+            description: `Gamer tag status changed to ${status.toLowerCase()}.`,
+            actorId: moderatorId,
+            actorRole: 'ADMIN',
+            fromValue: previousStatus,
+            toValue: status,
+          },
+        });
+      }
+      return changed;
     });
 
     if (status === GamerTagModerationStatus.FLAGGED) {
@@ -637,23 +747,40 @@ export class PlayerService {
 
     const existing = await this.prisma.player.findUnique({
       where: { playerId },
-      select: { playerId: true, isDeleted: true },
+      select: { playerId: true, isDeleted: true, status: true },
     });
     if (!existing || existing.isDeleted) {
       throw new NotFoundException('Player not found');
     }
 
-    const updated = await this.prisma.player.update({
-      where: { playerId },
-      data: {
-        ...(dto.status !== undefined ? { status: dto.status } : {}),
-        ...(dto.moderationNotes !== undefined
-          ? { moderationNotes: dto.moderationNotes?.trim() || null }
-          : {}),
-        moderatedAt: new Date(),
-        moderatedBy: moderatorId,
-      },
-      include: { documents: true },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const changed = await tx.player.update({
+        where: { playerId },
+        data: {
+          ...(dto.status !== undefined ? { status: dto.status } : {}),
+          ...(dto.moderationNotes !== undefined
+            ? { moderationNotes: dto.moderationNotes?.trim() || null }
+            : {}),
+          moderatedAt: new Date(),
+          moderatedBy: moderatorId,
+        },
+        include: { documents: true },
+      });
+      if (dto.status !== undefined && existing.status !== dto.status) {
+        await tx.playerActivityLog.create({
+          data: {
+            playerId,
+            eventType: 'ACCOUNT_STATUS_CHANGED',
+            title: 'Account status updated',
+            description: `Account status changed to ${dto.status.toLowerCase().replace(/_/g, ' ')}.`,
+            actorId: moderatorId,
+            actorRole: 'ADMIN',
+            fromValue: existing.status,
+            toValue: dto.status,
+          },
+        });
+      }
+      return changed;
     });
 
     return {
@@ -686,6 +813,33 @@ export class PlayerService {
       moderatedAt: player.moderatedAt,
       moderatedBy: player.moderatedBy,
     };
+  }
+
+  async getPlayerActivity(playerId: string, limit = 50) {
+    const player = await this.prisma.player.findUnique({
+      where: { playerId },
+      select: { playerId: true, isDeleted: true },
+    });
+    if (!player || player.isDeleted) {
+      throw new NotFoundException('Player not found');
+    }
+
+    const entries = await this.prisma.playerActivityLog.findMany({
+      where: { playerId },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(Math.max(Number(limit) || 50, 1), 100),
+      select: {
+        id: true,
+        eventType: true,
+        title: true,
+        description: true,
+        actorRole: true,
+        fromValue: true,
+        toValue: true,
+        createdAt: true,
+      },
+    });
+    return { entries };
   }
 
   private async requireActivePlayer(playerId: string) {
@@ -1415,8 +1569,23 @@ export class PlayerService {
     playerId: string,
     documentId: string,
     dto: UpdateDocumentStatusDto,
+    moderatorId?: string,
   ) {
-    return this.documentService.updateDocumentStatus(playerId, documentId, dto);
+    return this.documentService.updateDocumentStatus(
+      playerId,
+      documentId,
+      dto,
+      moderatorId,
+    );
+  }
+
+  async createPlayerDocument(playerId: string, type: string, key: string) {
+    const player = await this.documentService.createPlayerDocument(
+      playerId,
+      type,
+      key,
+    );
+    return formatPlayerResponse(player);
   }
 
   async deleteDocument(playerId: string, documentId: string) {

@@ -1,44 +1,44 @@
 model Ticket {
-  ticketId         String       @id @default(uuid())
-  showTicketId     String?      // Formatted ID e.g. TCK-00001
-  tournamentId     String
-  tournament       Tournament   @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+  ticketId     String     @id @default(uuid())
+  showTicketId String? // Formatted ID e.g. TCK-00001
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
 
-  fanId            String?
-  fan              Fan?         @relation(fields: [fanId], references: [fanId], onDelete: SetNull)
+  fanId String?
+  fan   Fan?    @relation(fields: [fanId], references: [fanId], onDelete: SetNull)
 
-  playerId         String?
-  player           Player?      @relation(fields: [playerId], references: [playerId], onDelete: SetNull)
+  playerId String?
+  player   Player? @relation(fields: [playerId], references: [playerId], onDelete: SetNull)
 
-  purchasedBy      String       // User ID of the purchaser (Fan or Player)
-  purchaserRole    String       @default("FAN") // FAN or PLAYER
+  purchasedBy   String // User ID of the purchaser (Fan or Player)
+  purchaserRole String @default("FAN") // FAN or PLAYER
 
-  type             TicketType   @default(DAY_PASS)
-  pricePaid        Float        @default(0)
-  currency         String       @default("NGN")
-  status           TicketStatus @default(ACTIVE)
+  type      TicketType   @default(DAY_PASS)
+  pricePaid Float        @default(0)
+  currency  String       @default("NGN")
+  status    TicketStatus @default(ACTIVE)
 
-  qrToken          String       @unique // Scan token for venue check-in e.g. TICKET:tournamentId:ticketId:random
-  checkedIn        Boolean      @default(false)
-  checkedInAt      DateTime?
-  checkedInBy      String?      // Staff/Umpire ID
-  checkedInVenue   String?      // Venue ID
-  lastScannedAt    DateTime?    // Most recent scan timestamp (for Season Pass & VIP cooldown)
-  totalScanCount   Int          @default(0) // Total times scanned
+  qrToken        String    @unique // Scan token for venue check-in e.g. TICKET:tournamentId:ticketId:random
+  checkedIn      Boolean   @default(false)
+  checkedInAt    DateTime?
+  checkedInBy    String? // Staff/Umpire ID
+  checkedInVenue String? // Venue ID
+  lastScannedAt  DateTime? // Most recent scan timestamp (for Season Pass & VIP cooldown)
+  totalScanCount Int       @default(0) // Total times scanned
 
-  seatNumber       String?      // Optional seat designation
-  screenId         String?
+  seatNumber String? // Optional seat designation
+  screenId   String?
 
   // Payment integration (Flutterwave / Paystack)
-  paymentReference String?      @unique
-  flwTransactionId String?      // Flutterwave transaction ID
-  paymentGateway   String       @default("FLUTTERWAVE")
-  paymentStatus    String       @default("SUCCESS")
+  paymentReference String? @unique
+  flwTransactionId String? // Flutterwave transaction ID
+  paymentGateway   String  @default("FLUTTERWAVE")
+  paymentStatus    String  @default("SUCCESS")
 
-  metadata         Json?
+  metadata Json?
 
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tournamentId])
   @@index([fanId])
@@ -54,17 +54,17 @@ model TicketTier {
   tournamentId String
   tournament   Tournament @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
 
-  name         String     // e.g. "Day Pass", "VIP Pass", "Season Pass"
-  type         TicketType @default(DAY_PASS)
-  price        Float
-  currency     String     @default("NGN")
-  capacity     Int        @default(100) // Total available seats/tickets
-  sold         Int        @default(0)   // Total sold so far
-  description  String?
-  status       String     @default("ACTIVE") // ACTIVE, HIDDEN
+  name        String // e.g. "Day Pass", "VIP Pass", "Season Pass"
+  type        TicketType @default(DAY_PASS)
+  price       Float
+  currency    String     @default("NGN")
+  capacity    Int        @default(100) // Total available seats/tickets
+  sold        Int        @default(0) // Total sold so far
+  description String?
+  status      String     @default("ACTIVE") // ACTIVE, HIDDEN
 
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tournamentId])
 }
@@ -83,20 +83,19 @@ enum TicketStatus {
 }
 
 model TicketScanLog {
-  id             String    @id @default(uuid())
-  ticketId       String?
-  showTicketId   String?
-  qrToken        String
-  attendeeName   String?
-  passType       String?
-  status         String    // VALID, ALREADY_CHECKED_IN, INVALID
-  message        String?
-  guardId        String?
-  guardName      String?
-  guardRole      String?
-  createdAt      DateTime  @default(now())
+  id           String   @id @default(uuid())
+  ticketId     String?
+  showTicketId String?
+  qrToken      String
+  attendeeName String?
+  passType     String?
+  status       String // VALID, ALREADY_CHECKED_IN, INVALID
+  message      String?
+  guardId      String?
+  guardName    String?
+  guardRole    String?
+  createdAt    DateTime @default(now())
 
   @@index([createdAt])
   @@index([guardId])
 }
-
