@@ -745,7 +745,7 @@ export class CreateTournamentDto {
   })
   @Transform(
     ({ value, obj }) =>
-      value || obj?.banner || obj?.bannerUrl || obj?.fanPassArtUrl,
+      value || obj?.tournamentBanner || obj?.banner || obj?.bannerUrl,
   )
   @IsOptional()
   canvasImage?: any;

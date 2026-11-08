@@ -107,14 +107,14 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
   if (rawFanLogo) {
     formatted.fanPassLogo = await safePresignUrl(String(rawFanLogo));
   } else {
-    formatted.fanPassLogo = formatted.tournamentLogo || null;
+    formatted.fanPassLogo = null;
   }
 
-  const rawFanBg = formatted.fanPassBg || formatted.fanPassArtUrl;
+  const rawFanBg = formatted.fanPassBg;
   if (rawFanBg) {
     formatted.fanPassBg = await safePresignUrl(String(rawFanBg));
   } else {
-    formatted.fanPassBg = formatted.tournamentBanner || null;
+    formatted.fanPassBg = null;
   }
 
   if (formatted.rules && Array.isArray(formatted.rules)) {
@@ -237,8 +237,8 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
   formatted.tournamentBanner = formatted.tournamentBanner || null;
   formatted.primaryOrganization = formatted.primaryOrganization || null;
   formatted.secondaryOrganization = formatted.secondaryOrganization || null;
-  formatted.fanPassLogo = formatted.fanPassLogo || formatted.tournamentLogo || null;
-  formatted.fanPassBg = formatted.fanPassBg || formatted.tournamentBanner || null;
+  formatted.fanPassLogo = formatted.fanPassLogo || null;
+  formatted.fanPassBg = formatted.fanPassBg || null;
 
   formatted.logo = formatted.tournamentLogo || null;
   formatted.bannerUrl = formatted.tournamentBanner || null;

@@ -301,9 +301,8 @@ export class TournamentTabsController {
     let uploadedFiles: any = null;
     if (files && Object.keys(files).length > 0) {
       uploadedFiles = await uploadTournamentFiles(files);
-      if (uploadedFiles.tournamentBanner) {
+      if (files?.tournamentBanner && uploadedFiles.tournamentBanner) {
         dto.tournamentBanner = uploadedFiles.tournamentBanner;
-        dto.canvasImage = uploadedFiles.tournamentBanner;
         dto.bannerUrl = uploadedFiles.tournamentBanner;
         dto.banner = uploadedFiles.tournamentBanner;
       }
@@ -327,6 +326,10 @@ export class TournamentTabsController {
       }
       if (uploadedFiles.fanPassBg) {
         dto.fanPassBg = uploadedFiles.fanPassBg;
+        dto.fanPassArtUrl = uploadedFiles.fanPassBg;
+      } else if (uploadedFiles.canvasImage && !files?.tournamentBanner) {
+        dto.fanPassBg = uploadedFiles.canvasImage;
+        dto.fanPassArtUrl = uploadedFiles.canvasImage;
       }
     }
 
@@ -419,10 +422,12 @@ export class TournamentTabsController {
       if (uploadedFiles.fanPassBg) {
         dto.fanPassBg = uploadedFiles.fanPassBg;
         dto.fanPassArtUrl = uploadedFiles.fanPassBg;
+      } else if (uploadedFiles.canvasImage && !files?.tournamentBanner) {
+        dto.fanPassBg = uploadedFiles.canvasImage;
+        dto.fanPassArtUrl = uploadedFiles.canvasImage;
       }
-      if (uploadedFiles.tournamentBanner) {
+      if (files?.tournamentBanner && uploadedFiles.tournamentBanner) {
         dto.tournamentBanner = uploadedFiles.tournamentBanner;
-        dto.canvasImage = uploadedFiles.tournamentBanner;
         dto.bannerUrl = uploadedFiles.tournamentBanner;
         dto.banner = uploadedFiles.tournamentBanner;
       }

@@ -1000,7 +1000,7 @@ export class TournamentTabsService {
       fanPassBg: presigned.fanPassBg || null,
       organizerLogo: presigned.primaryOrganization || presigned.playerOrgUrl || null,
       secondaryOrganizerLogo: presigned.secondaryOrganization || presigned.prOrgUrl || null,
-      canvasImage: presigned.tournamentBanner || presigned.canvasImage || null,
+      canvasImage: presigned.fanPassBg || null,
       sponsors,
       playerCardTemplate: tournament.playerCardTemplate || null,
     };
@@ -1032,15 +1032,14 @@ export class TournamentTabsService {
       data.tournamentLogoUrl = data.tournamentLogo;
     }
     const bannerVal =
-      dto.tournamentBanner ?? dto.canvasImage ?? dto.bannerUrl ?? dto.banner;
+      dto.tournamentBanner ?? dto.bannerUrl ?? dto.banner;
     if (bannerVal !== undefined) {
       data.tournamentBanner = extractStorageKey(bannerVal);
-      data.canvasImage = data.tournamentBanner;
     }
     if (dto.fanPassLogo !== undefined) {
       data.fanPassLogo = extractStorageKey(dto.fanPassLogo);
     }
-    const fanBgVal = dto.fanPassBg ?? dto.fanPassArtUrl;
+    const fanBgVal = dto.fanPassBg ?? dto.fanPassArtUrl ?? dto.canvasImage;
     if (fanBgVal !== undefined) {
       data.fanPassBg = extractStorageKey(fanBgVal);
     }
@@ -1141,7 +1140,7 @@ export class TournamentTabsService {
       organizerLogo: presigned.primaryOrganization || presigned.playerOrgUrl || null,
       secondaryOrganizerLogo: presigned.secondaryOrganization || presigned.prOrgUrl || null,
       fanPassArtUrl: presigned.fanPassBg || null,
-      canvasImage: presigned.tournamentBanner || presigned.canvasImage || null,
+      canvasImage: presigned.fanPassBg || null,
       sponsors,
       fanPassTemplate: tournament.fanPassTemplate || null,
     };
@@ -1169,7 +1168,7 @@ export class TournamentTabsService {
     if (dto.fanPassLogo !== undefined) {
       data.fanPassLogo = extractStorageKey(dto.fanPassLogo);
     }
-    const fanBgVal = dto.fanPassBg ?? dto.fanPassArtUrl;
+    const fanBgVal = dto.fanPassBg ?? dto.fanPassArtUrl ?? dto.canvasImage;
     if (fanBgVal !== undefined) {
       data.fanPassBg = extractStorageKey(fanBgVal);
     }
@@ -1179,7 +1178,6 @@ export class TournamentTabsService {
     }
     if (dto.tournamentBanner !== undefined) {
       data.tournamentBanner = extractStorageKey(dto.tournamentBanner);
-      data.canvasImage = data.tournamentBanner;
     }
     if (dto.fanPassTemplate !== undefined) {
       data.fanPassTemplate = dto.fanPassTemplate;
