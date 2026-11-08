@@ -1,5 +1,47 @@
 # Admin Player and Staff APIs
 
+## Player identity document verification
+
+The signed-in player can view their profile and submit one government ID file. The
+file may be a JPG, PNG, or PDF up to 10 MB. A National ID should be uploaded as one
+file containing both sides (for example, a combined PDF). The API stores it under
+a player-scoped private S3 key and creates a `PENDING` `PlayerDocument` record.
+
+```http
+GET /api/v1/player/profile
+Authorization: Bearer <player-token>
+```
+
+```http
+POST /api/v1/player/profile/documents
+Authorization: Bearer <player-token>
+Content-Type: multipart/form-data
+```
+
+Multipart fields: `document` (the file) and `type` (`National ID`, `Passport`,
+`Driver's License`, or `Government ID`). The response includes the updated player
+profile and document status (`Pending`, `Verified`, or `Rejected`). The player
+dashboard refreshes this profile after upload.
+
+Admins review uploaded documents using the existing endpoints:
+
+```http
+PATCH /api/v1/player/{playerId}/documents/{documentId}/status
+Authorization: Bearer <admin-token>
+Content-Type: application/json
+```
+
+```json
+{
+  "status": "VERIFIED",
+  "notes": "Optional review note"
+}
+```
+
+Set `status` to `VERIFIED` or `REJECTED`; an optional `notes` value is displayed
+to the player when rejected. The player can submit a replacement document after
+rejection.
+
 API base prefix is normally `/api/v1` (it can be configured). All endpoints below require:
 
 ```http

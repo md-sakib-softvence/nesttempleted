@@ -1,21 +1,21 @@
 model FanPrediction {
-  id                 String               @id @default(uuid())
-  fanId              String
-  fan                Fan                  @relation(fields: [fanId], references: [fanId], onDelete: Cascade)
-  tournamentId       String
-  tournament         Tournament           @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
-  matchId            String
-  matchTitle         String
-  predictedWinnerId  String
+  id                  String               @id @default(uuid())
+  fanId               String
+  fan                 Fan                  @relation(fields: [fanId], references: [fanId], onDelete: Cascade)
+  tournamentId        String
+  tournament          Tournament           @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+  matchId             String
+  matchTitle          String
+  predictedWinnerId   String
   predictedWinnerName String
-  stakeCoins         Int
-  odds               Float                @default(2)
-  potentialPayout    Int
-  status             FanPredictionStatus  @default(PENDING)
-  settledAt          DateTime?
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-  coinTransactions   FanCoinTransaction[]
+  stakeCoins          Int
+  odds                Float                @default(2)
+  potentialPayout     Int
+  status              FanPredictionStatus  @default(PENDING)
+  settledAt           DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  coinTransactions    FanCoinTransaction[]
 
   @@unique([fanId, tournamentId, matchId])
   @@index([fanId, status, createdAt])
@@ -23,18 +23,18 @@ model FanPrediction {
 }
 
 model FanCoinTransaction {
-  id           String                    @id @default(uuid())
+  id           String                 @id @default(uuid())
   fanId        String
-  fan          Fan                       @relation(fields: [fanId], references: [fanId], onDelete: Cascade)
+  fan          Fan                    @relation(fields: [fanId], references: [fanId], onDelete: Cascade)
   predictionId String?
-  prediction   FanPrediction?            @relation(fields: [predictionId], references: [id], onDelete: SetNull)
-  paymentId    String?                   @unique
-  payment      Payment?                  @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  prediction   FanPrediction?         @relation(fields: [predictionId], references: [id], onDelete: SetNull)
+  paymentId    String?                @unique
+  payment      Payment?               @relation(fields: [paymentId], references: [id], onDelete: SetNull)
   type         FanCoinTransactionType
   amount       Int
   balanceAfter Int
   description  String?
-  createdAt    DateTime                  @default(now())
+  createdAt    DateTime               @default(now())
 
   @@index([fanId, createdAt])
   @@index([predictionId])

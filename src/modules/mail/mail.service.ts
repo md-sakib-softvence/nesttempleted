@@ -7,17 +7,6 @@ import { existsSync } from 'fs';
 export class MailService {
   constructor(private mailerService: MailerService) {}
 
-  async sendVerificationCode(email: string, code: string) {
-    await this.mailerService.sendMail({
-      to: email,
-      subject: 'Welcome to Esports - Verify Your Email',
-      template: './verification', // path to template file
-      context: {
-        code,
-      },
-    });
-  }
-
   async sendPasswordReset(email: string, code: string) {
     await this.mailerService.sendMail({
       to: email,

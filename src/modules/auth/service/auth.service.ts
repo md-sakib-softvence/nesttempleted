@@ -96,7 +96,48 @@ export class AuthService {
       );
     }
 
+    if (loginDto.role.toLowerCase() === 'player' && result.user?.userId) {
+      try {
+        await this.prisma.playerActivityLog.create({
+          data: {
+            playerId: result.user.userId,
+            eventType: 'PLAYER_LOGIN',
+            title: 'Signed in',
+            description: 'You signed in to your player account.',
+            actorId: result.user.userId,
+            actorRole: 'PLAYER',
+          },
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Player login activity could not be recorded: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
     return result;
+  }
+
+  async logoutPlayer(user: { userId: string; role: string }) {
+    if (user.role.toLowerCase() === 'player') {
+      try {
+        await this.prisma.playerActivityLog.create({
+          data: {
+            playerId: user.userId,
+            eventType: 'PLAYER_LOGOUT',
+            title: 'Signed out',
+            description: 'You signed out of your player account.',
+            actorId: user.userId,
+            actorRole: 'PLAYER',
+          },
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Player logout activity could not be recorded: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    return { success: true };
   }
 
   async refreshToken(dto: RefreshTokenDto) {
