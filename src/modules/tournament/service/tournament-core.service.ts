@@ -232,24 +232,54 @@ export class TournamentCoreService {
         frequencyStatus:
           createTournamentDto.frequencyStatus || FrequencyStatus.DAILY,
         frequencyArray,
+        tournamentLogo: extractStorageKey(
+          createTournamentDto.tournamentLogo ||
+            createTournamentDto.tournamentLogoUrl ||
+            createTournamentDto.logo,
+        ),
+        tournamentBanner: extractStorageKey(
+          createTournamentDto.tournamentBanner ||
+            createTournamentDto.canvasImage ||
+            createTournamentDto.banner ||
+            createTournamentDto.bannerUrl,
+        ),
+        primaryOrganization: extractStorageKey(
+          createTournamentDto.primaryOrganization ||
+            createTournamentDto.playerOrgUrl ||
+            createTournamentDto.organizerLogo,
+        ),
+        secondaryOrganization: extractStorageKey(
+          createTournamentDto.secondaryOrganization ||
+            createTournamentDto.prOrgUrl ||
+            createTournamentDto.secondaryOrganizerLogo,
+        ),
+        fanPassLogo: extractStorageKey(
+          createTournamentDto.fanPassLogo,
+        ),
+        fanPassBg: extractStorageKey(
+          createTournamentDto.fanPassBg ||
+            createTournamentDto.fanPassArtUrl,
+        ),
         playerOrgUrl: extractStorageKey(
-          createTournamentDto.playerOrgUrl ||
+          createTournamentDto.primaryOrganization ||
+            createTournamentDto.playerOrgUrl ||
             createTournamentDto.organizerLogo,
         ),
         prOrgUrl: extractStorageKey(
-          createTournamentDto.prOrgUrl ||
+          createTournamentDto.secondaryOrganization ||
+            createTournamentDto.prOrgUrl ||
             createTournamentDto.secondaryOrganizerLogo,
         ),
         tournamentLogoUrl: extractStorageKey(
-          createTournamentDto.tournamentLogoUrl ||
-            createTournamentDto.tournamentLogo ||
+          createTournamentDto.tournamentLogo ||
+            createTournamentDto.tournamentLogoUrl ||
             createTournamentDto.logo,
         ),
         canvasImage: extractStorageKey(
-          createTournamentDto.canvasImage ||
+          createTournamentDto.tournamentBanner ||
+            createTournamentDto.canvasImage ||
             createTournamentDto.banner ||
-            createTournamentDto.bannerUrl ||
-            createTournamentDto.fanPassArtUrl,
+            createTournamentDto.bannerUrl,
         ),
         rules,
         tsAndTc,
@@ -665,7 +695,6 @@ export class TournamentCoreService {
     delete updateData.termsAndConditionsUrl;
     delete updateData.termsAndConditions;
     delete updateData.logo;
-    delete updateData.tournamentLogo;
     delete updateData.banner;
     delete updateData.bannerUrl;
     delete updateData.organizerLogo;
@@ -703,33 +732,51 @@ export class TournamentCoreService {
       ];
     }
     const bannerVal =
+      updateTournamentDto.tournamentBanner ??
       updateTournamentDto.canvasImage ??
       updateTournamentDto.bannerUrl ??
-      (updateTournamentDto as any).banner ??
-      updateTournamentDto.fanPassArtUrl;
+      (updateTournamentDto as any).banner;
     if (bannerVal !== undefined) {
-      updateData.canvasImage = extractStorageKey(bannerVal);
+      updateData.tournamentBanner = extractStorageKey(bannerVal);
+      updateData.canvasImage = updateData.tournamentBanner;
     }
 
     const logoVal =
+      updateTournamentDto.tournamentLogo ??
       updateTournamentDto.tournamentLogoUrl ??
-      updateTournamentDto.logo ??
-      (updateTournamentDto as any).tournamentLogo;
+      updateTournamentDto.logo;
     if (logoVal !== undefined) {
-      updateData.tournamentLogoUrl = extractStorageKey(logoVal);
+      updateData.tournamentLogo = extractStorageKey(logoVal);
+      updateData.tournamentLogoUrl = updateData.tournamentLogo;
     }
 
-    const playerOrgVal =
-      updateTournamentDto.playerOrgUrl ?? updateTournamentDto.organizerLogo;
-    if (playerOrgVal !== undefined) {
-      updateData.playerOrgUrl = extractStorageKey(playerOrgVal);
+    const primaryOrgVal =
+      updateTournamentDto.primaryOrganization ??
+      updateTournamentDto.playerOrgUrl ??
+      updateTournamentDto.organizerLogo;
+    if (primaryOrgVal !== undefined) {
+      updateData.primaryOrganization = extractStorageKey(primaryOrgVal);
+      updateData.playerOrgUrl = updateData.primaryOrganization;
     }
 
-    const prOrgVal =
+    const secondaryOrgVal =
+      updateTournamentDto.secondaryOrganization ??
       updateTournamentDto.prOrgUrl ??
       updateTournamentDto.secondaryOrganizerLogo;
-    if (prOrgVal !== undefined) {
-      updateData.prOrgUrl = extractStorageKey(prOrgVal);
+    if (secondaryOrgVal !== undefined) {
+      updateData.secondaryOrganization = extractStorageKey(secondaryOrgVal);
+      updateData.prOrgUrl = updateData.secondaryOrganization;
+    }
+
+    if (updateTournamentDto.fanPassLogo !== undefined) {
+      updateData.fanPassLogo = extractStorageKey(updateTournamentDto.fanPassLogo);
+    }
+
+    const fanBgVal =
+      updateTournamentDto.fanPassBg ??
+      updateTournamentDto.fanPassArtUrl;
+    if (fanBgVal !== undefined) {
+      updateData.fanPassBg = extractStorageKey(fanBgVal);
     }
     if (updateTournamentDto.prizeRule !== undefined) {
       updateData.prizeRule = mapPrizeRule(updateTournamentDto.prizeRule);
@@ -1066,6 +1113,12 @@ export class TournamentCoreService {
       'playerOrgUrl',
       'prOrgUrl',
       'tournamentLogoUrl',
+      'tournamentLogo',
+      'tournamentBanner',
+      'primaryOrganization',
+      'secondaryOrganization',
+      'fanPassLogo',
+      'fanPassBg',
       'rules',
       'tsAndTc',
       'schedulingMode',

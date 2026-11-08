@@ -68,6 +68,12 @@ export class TournamentController {
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileFieldsInterceptor([
+      { name: 'tournamentLogo', maxCount: 1 },
+      { name: 'tournamentBanner', maxCount: 1 },
+      { name: 'primaryOrganization', maxCount: 1 },
+      { name: 'secondaryOrganization', maxCount: 1 },
+      { name: 'fanPassLogo', maxCount: 1 },
+      { name: 'fanPassBg', maxCount: 1 },
       { name: 'canvasImage', maxCount: 1 },
       { name: 'bannerUrl', maxCount: 1 },
       { name: 'banner', maxCount: 1 },
@@ -77,7 +83,6 @@ export class TournamentController {
       { name: 'prOrgUrl', maxCount: 1 },
       { name: 'secondaryOrganizerLogo', maxCount: 1 },
       { name: 'tournamentLogoUrl', maxCount: 1 },
-      { name: 'tournamentLogo', maxCount: 1 },
       { name: 'logo', maxCount: 1 },
       { name: 'rules', maxCount: 10 },
       { name: 'termsAndConditions', maxCount: 10 },
@@ -88,6 +93,12 @@ export class TournamentController {
     @Body() createDto: CreateTournamentDto,
     @UploadedFiles()
     files: {
+      tournamentLogo?: Express.Multer.File[];
+      tournamentBanner?: Express.Multer.File[];
+      primaryOrganization?: Express.Multer.File[];
+      secondaryOrganization?: Express.Multer.File[];
+      fanPassLogo?: Express.Multer.File[];
+      fanPassBg?: Express.Multer.File[];
       canvasImage?: Express.Multer.File[];
       bannerUrl?: Express.Multer.File[];
       banner?: Express.Multer.File[];
@@ -97,7 +108,6 @@ export class TournamentController {
       prOrgUrl?: Express.Multer.File[];
       secondaryOrganizerLogo?: Express.Multer.File[];
       tournamentLogoUrl?: Express.Multer.File[];
-      tournamentLogo?: Express.Multer.File[];
       logo?: Express.Multer.File[];
       rules?: Express.Multer.File[];
       termsAndConditions?: Express.Multer.File[];
@@ -107,41 +117,66 @@ export class TournamentController {
     const uploadedFiles = await uploadTournamentFiles(files);
 
     const bannerVal =
+      uploadedFiles.tournamentBanner ||
+      createDto.tournamentBanner ||
       uploadedFiles.canvasImage ||
       createDto.canvasImage ||
       createDto.bannerUrl ||
-      (createDto as any).banner ||
-      createDto.fanPassArtUrl;
+      (createDto as any).banner;
     if (bannerVal) {
+      createDto.tournamentBanner = bannerVal;
       createDto.canvasImage = bannerVal;
-      createDto.fanPassArtUrl = bannerVal;
-    }
-
-    const playerOrgVal =
-      uploadedFiles.playerOrgUrl ||
-      createDto.playerOrgUrl ||
-      (createDto as any).organizerLogo;
-    if (playerOrgVal) {
-      createDto.playerOrgUrl = playerOrgVal;
-    }
-
-    const prOrgVal =
-      uploadedFiles.prOrgUrl ||
-      createDto.prOrgUrl ||
-      (createDto as any).secondaryOrganizerLogo;
-    if (prOrgVal) {
-      createDto.prOrgUrl = prOrgVal;
     }
 
     const logoVal =
+      uploadedFiles.tournamentLogo ||
+      createDto.tournamentLogo ||
       uploadedFiles.tournamentLogoUrl ||
       createDto.tournamentLogoUrl ||
-      createDto.logo ||
-      (createDto as any).tournamentLogo;
+      createDto.logo;
     if (logoVal) {
+      createDto.tournamentLogo = logoVal;
       createDto.tournamentLogoUrl = logoVal;
     }
-    delete (createDto as any).tournamentLogo;
+
+    const primaryOrgVal =
+      uploadedFiles.primaryOrganization ||
+      createDto.primaryOrganization ||
+      uploadedFiles.playerOrgUrl ||
+      createDto.playerOrgUrl ||
+      (createDto as any).organizerLogo;
+    if (primaryOrgVal) {
+      createDto.primaryOrganization = primaryOrgVal;
+      createDto.playerOrgUrl = primaryOrgVal;
+    }
+
+    const secondaryOrgVal =
+      uploadedFiles.secondaryOrganization ||
+      createDto.secondaryOrganization ||
+      uploadedFiles.prOrgUrl ||
+      createDto.prOrgUrl ||
+      (createDto as any).secondaryOrganizerLogo;
+    if (secondaryOrgVal) {
+      createDto.secondaryOrganization = secondaryOrgVal;
+      createDto.prOrgUrl = secondaryOrgVal;
+    }
+
+    const fanLogoVal =
+      uploadedFiles.fanPassLogo ||
+      createDto.fanPassLogo;
+    if (fanLogoVal) {
+      createDto.fanPassLogo = fanLogoVal;
+    }
+
+    const fanBgVal =
+      uploadedFiles.fanPassBg ||
+      createDto.fanPassBg ||
+      uploadedFiles.fanPassArtUrl ||
+      createDto.fanPassArtUrl;
+    if (fanBgVal) {
+      createDto.fanPassBg = fanBgVal;
+      createDto.fanPassArtUrl = fanBgVal;
+    }
     delete (createDto as any).banner;
 
     if (uploadedFiles.rules.length > 0) {
@@ -269,6 +304,12 @@ export class TournamentController {
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileFieldsInterceptor([
+      { name: 'tournamentLogo', maxCount: 1 },
+      { name: 'tournamentBanner', maxCount: 1 },
+      { name: 'primaryOrganization', maxCount: 1 },
+      { name: 'secondaryOrganization', maxCount: 1 },
+      { name: 'fanPassLogo', maxCount: 1 },
+      { name: 'fanPassBg', maxCount: 1 },
       { name: 'canvasImage', maxCount: 1 },
       { name: 'bannerUrl', maxCount: 1 },
       { name: 'banner', maxCount: 1 },
@@ -290,6 +331,12 @@ export class TournamentController {
     @Body() updateDto: UpdateTournamentDto,
     @UploadedFiles()
     files: {
+      tournamentLogo?: Express.Multer.File[];
+      tournamentBanner?: Express.Multer.File[];
+      primaryOrganization?: Express.Multer.File[];
+      secondaryOrganization?: Express.Multer.File[];
+      fanPassLogo?: Express.Multer.File[];
+      fanPassBg?: Express.Multer.File[];
       canvasImage?: Express.Multer.File[];
       bannerUrl?: Express.Multer.File[];
       banner?: Express.Multer.File[];
@@ -299,7 +346,6 @@ export class TournamentController {
       prOrgUrl?: Express.Multer.File[];
       secondaryOrganizerLogo?: Express.Multer.File[];
       tournamentLogoUrl?: Express.Multer.File[];
-      tournamentLogo?: Express.Multer.File[];
       logo?: Express.Multer.File[];
       rules?: Express.Multer.File[];
       termsAndConditions?: Express.Multer.File[];
@@ -309,41 +355,66 @@ export class TournamentController {
     const uploadedFiles = await uploadTournamentFiles(files);
 
     const bannerVal =
+      uploadedFiles.tournamentBanner ||
+      updateDto.tournamentBanner ||
       uploadedFiles.canvasImage ||
       updateDto.canvasImage ||
       updateDto.bannerUrl ||
-      (updateDto as any).banner ||
-      updateDto.fanPassArtUrl;
+      (updateDto as any).banner;
     if (bannerVal) {
+      updateDto.tournamentBanner = bannerVal;
       updateDto.canvasImage = bannerVal;
-      updateDto.fanPassArtUrl = bannerVal;
-    }
-
-    const playerOrgVal =
-      uploadedFiles.playerOrgUrl ||
-      updateDto.playerOrgUrl ||
-      (updateDto as any).organizerLogo;
-    if (playerOrgVal) {
-      updateDto.playerOrgUrl = playerOrgVal;
-    }
-
-    const prOrgVal =
-      uploadedFiles.prOrgUrl ||
-      updateDto.prOrgUrl ||
-      (updateDto as any).secondaryOrganizerLogo;
-    if (prOrgVal) {
-      updateDto.prOrgUrl = prOrgVal;
     }
 
     const logoVal =
+      uploadedFiles.tournamentLogo ||
+      updateDto.tournamentLogo ||
       uploadedFiles.tournamentLogoUrl ||
       updateDto.tournamentLogoUrl ||
-      updateDto.logo ||
-      (updateDto as any).tournamentLogo;
+      updateDto.logo;
     if (logoVal) {
+      updateDto.tournamentLogo = logoVal;
       updateDto.tournamentLogoUrl = logoVal;
     }
-    delete (updateDto as any).tournamentLogo;
+
+    const primaryOrgVal =
+      uploadedFiles.primaryOrganization ||
+      updateDto.primaryOrganization ||
+      uploadedFiles.playerOrgUrl ||
+      updateDto.playerOrgUrl ||
+      (updateDto as any).organizerLogo;
+    if (primaryOrgVal) {
+      updateDto.primaryOrganization = primaryOrgVal;
+      updateDto.playerOrgUrl = primaryOrgVal;
+    }
+
+    const secondaryOrgVal =
+      uploadedFiles.secondaryOrganization ||
+      updateDto.secondaryOrganization ||
+      uploadedFiles.prOrgUrl ||
+      updateDto.prOrgUrl ||
+      (updateDto as any).secondaryOrganizerLogo;
+    if (secondaryOrgVal) {
+      updateDto.secondaryOrganization = secondaryOrgVal;
+      updateDto.prOrgUrl = secondaryOrgVal;
+    }
+
+    const fanLogoVal =
+      uploadedFiles.fanPassLogo ||
+      updateDto.fanPassLogo;
+    if (fanLogoVal) {
+      updateDto.fanPassLogo = fanLogoVal;
+    }
+
+    const fanBgVal =
+      uploadedFiles.fanPassBg ||
+      updateDto.fanPassBg ||
+      uploadedFiles.fanPassArtUrl ||
+      updateDto.fanPassArtUrl;
+    if (fanBgVal) {
+      updateDto.fanPassBg = fanBgVal;
+      updateDto.fanPassArtUrl = fanBgVal;
+    }
     delete (updateDto as any).banner;
 
     if (uploadedFiles.rules.length > 0) {

@@ -992,11 +992,15 @@ export class TournamentTabsService {
 
     return {
       tournamentId: tournament.tournamentId,
-      organizerLogo: presigned.playerOrgUrl || tournament.playerOrgUrl || null,
-      secondaryOrganizerLogo: presigned.prOrgUrl || tournament.prOrgUrl || null,
-      tournamentLogo:
-        presigned.tournamentLogoUrl || tournament.tournamentLogoUrl || null,
-      canvasImage: presigned.canvasImage || tournament.canvasImage || null,
+      tournamentLogo: presigned.tournamentLogo || null,
+      tournamentBanner: presigned.tournamentBanner || null,
+      primaryOrganization: presigned.primaryOrganization || null,
+      secondaryOrganization: presigned.secondaryOrganization || null,
+      fanPassLogo: presigned.fanPassLogo || null,
+      fanPassBg: presigned.fanPassBg || null,
+      organizerLogo: presigned.primaryOrganization || presigned.playerOrgUrl || null,
+      secondaryOrganizerLogo: presigned.secondaryOrganization || presigned.prOrgUrl || null,
+      canvasImage: presigned.fanPassBg || null,
       sponsors,
       playerCardTemplate: tournament.playerCardTemplate || null,
     };
@@ -1009,27 +1013,35 @@ export class TournamentTabsService {
     await this.findTournamentOrThrow(tournamentId);
 
     const data: Prisma.TournamentUpdateInput = {};
-    if (dto.organizerLogo !== undefined || dto.playerOrgUrl !== undefined) {
-      data.playerOrgUrl = extractStorageKey(
-        dto.organizerLogo || dto.playerOrgUrl,
-      );
+    const primaryOrgVal =
+      dto.primaryOrganization ?? dto.playerOrgUrl ?? dto.organizerLogo;
+    if (primaryOrgVal !== undefined) {
+      data.primaryOrganization = extractStorageKey(primaryOrgVal);
+      data.playerOrgUrl = data.primaryOrganization;
     }
-    if (
-      dto.secondaryOrganizerLogo !== undefined ||
-      dto.prOrgUrl !== undefined
-    ) {
-      data.prOrgUrl = extractStorageKey(
-        dto.secondaryOrganizerLogo || dto.prOrgUrl,
-      );
+    const secondaryOrgVal =
+      dto.secondaryOrganization ?? dto.prOrgUrl ?? dto.secondaryOrganizerLogo;
+    if (secondaryOrgVal !== undefined) {
+      data.secondaryOrganization = extractStorageKey(secondaryOrgVal);
+      data.prOrgUrl = data.secondaryOrganization;
     }
     const logoVal =
-      dto.tournamentLogoUrl ?? dto.logo ?? dto.tournamentLogo;
+      dto.tournamentLogo ?? dto.tournamentLogoUrl ?? dto.logo;
     if (logoVal !== undefined) {
-      data.tournamentLogoUrl = extractStorageKey(logoVal);
+      data.tournamentLogo = extractStorageKey(logoVal);
+      data.tournamentLogoUrl = data.tournamentLogo;
     }
-    const bannerVal = dto.canvasImage ?? dto.bannerUrl ?? dto.banner;
+    const bannerVal =
+      dto.tournamentBanner ?? dto.bannerUrl ?? dto.banner;
     if (bannerVal !== undefined) {
-      data.canvasImage = extractStorageKey(bannerVal);
+      data.tournamentBanner = extractStorageKey(bannerVal);
+    }
+    if (dto.fanPassLogo !== undefined) {
+      data.fanPassLogo = extractStorageKey(dto.fanPassLogo);
+    }
+    const fanBgVal = dto.fanPassBg ?? dto.fanPassArtUrl ?? dto.canvasImage;
+    if (fanBgVal !== undefined) {
+      data.fanPassBg = extractStorageKey(fanBgVal);
     }
     if (dto.playerCardTemplate !== undefined) {
       data.playerCardTemplate = dto.playerCardTemplate;
@@ -1119,12 +1131,16 @@ export class TournamentTabsService {
 
     return {
       tournamentId: tournament.tournamentId,
-      organizerLogo: presigned.playerOrgUrl || tournament.playerOrgUrl || null,
-      secondaryOrganizerLogo: presigned.prOrgUrl || tournament.prOrgUrl || null,
-      tournamentLogo:
-        presigned.tournamentLogoUrl || tournament.tournamentLogoUrl || null,
-      fanPassArtUrl: presigned.canvasImage || tournament.canvasImage || null,
-      canvasImage: presigned.canvasImage || tournament.canvasImage || null,
+      tournamentLogo: presigned.tournamentLogo || null,
+      tournamentBanner: presigned.tournamentBanner || null,
+      primaryOrganization: presigned.primaryOrganization || null,
+      secondaryOrganization: presigned.secondaryOrganization || null,
+      fanPassLogo: presigned.fanPassLogo || null,
+      fanPassBg: presigned.fanPassBg || null,
+      organizerLogo: presigned.primaryOrganization || presigned.playerOrgUrl || null,
+      secondaryOrganizerLogo: presigned.secondaryOrganization || presigned.prOrgUrl || null,
+      fanPassArtUrl: presigned.fanPassBg || null,
+      canvasImage: presigned.fanPassBg || null,
       sponsors,
       fanPassTemplate: tournament.fanPassTemplate || null,
     };
@@ -1137,28 +1153,31 @@ export class TournamentTabsService {
     await this.findTournamentOrThrow(tournamentId);
 
     const data: Prisma.TournamentUpdateInput = {};
-    if (dto.organizerLogo !== undefined || dto.playerOrgUrl !== undefined) {
-      data.playerOrgUrl = extractStorageKey(
-        dto.organizerLogo || dto.playerOrgUrl,
-      );
+    const primaryOrgVal =
+      dto.primaryOrganization ?? dto.playerOrgUrl ?? dto.organizerLogo;
+    if (primaryOrgVal !== undefined) {
+      data.primaryOrganization = extractStorageKey(primaryOrgVal);
+      data.playerOrgUrl = data.primaryOrganization;
     }
-    if (
-      dto.secondaryOrganizerLogo !== undefined ||
-      dto.prOrgUrl !== undefined
-    ) {
-      data.prOrgUrl = extractStorageKey(
-        dto.secondaryOrganizerLogo || dto.prOrgUrl,
-      );
+    const secondaryOrgVal =
+      dto.secondaryOrganization ?? dto.prOrgUrl ?? dto.secondaryOrganizerLogo;
+    if (secondaryOrgVal !== undefined) {
+      data.secondaryOrganization = extractStorageKey(secondaryOrgVal);
+      data.prOrgUrl = data.secondaryOrganization;
     }
-    const logoVal =
-      dto.tournamentLogoUrl ?? dto.logo ?? dto.tournamentLogo;
-    if (logoVal !== undefined) {
-      data.tournamentLogoUrl = extractStorageKey(logoVal);
+    if (dto.fanPassLogo !== undefined) {
+      data.fanPassLogo = extractStorageKey(dto.fanPassLogo);
     }
-    const bannerVal =
-      dto.fanPassArtUrl ?? dto.canvasImage ?? dto.bannerUrl ?? dto.banner;
-    if (bannerVal !== undefined) {
-      data.canvasImage = extractStorageKey(bannerVal);
+    const fanBgVal = dto.fanPassBg ?? dto.fanPassArtUrl ?? dto.canvasImage;
+    if (fanBgVal !== undefined) {
+      data.fanPassBg = extractStorageKey(fanBgVal);
+    }
+    if (dto.tournamentLogo !== undefined) {
+      data.tournamentLogo = extractStorageKey(dto.tournamentLogo);
+      data.tournamentLogoUrl = data.tournamentLogo;
+    }
+    if (dto.tournamentBanner !== undefined) {
+      data.tournamentBanner = extractStorageKey(dto.tournamentBanner);
     }
     if (dto.fanPassTemplate !== undefined) {
       data.fanPassTemplate = dto.fanPassTemplate;
@@ -1428,13 +1447,20 @@ export class TournamentTabsService {
       status: tournament.status,
       isDraft: tournament.status === 'DRAFT',
 
-      logo: presigned.tournamentLogoUrl || null,
-      tournamentLogoUrl: presigned.tournamentLogoUrl || null,
-      bannerUrl: presigned.canvasImage || null,
-      canvasImage: presigned.canvasImage || null,
-      organizerLogo: presigned.playerOrgUrl || null,
-      secondaryOrganizerLogo: presigned.prOrgUrl || null,
-      fanPassArtUrl: presigned.canvasImage || null,
+      tournamentLogo: presigned.tournamentLogo || null,
+      tournamentBanner: presigned.tournamentBanner || null,
+      primaryOrganization: presigned.primaryOrganization || null,
+      secondaryOrganization: presigned.secondaryOrganization || null,
+      fanPassLogo: presigned.fanPassLogo || null,
+      fanPassBg: presigned.fanPassBg || null,
+
+      logo: presigned.tournamentLogo || presigned.tournamentLogoUrl || null,
+      tournamentLogoUrl: presigned.tournamentLogo || presigned.tournamentLogoUrl || null,
+      bannerUrl: presigned.tournamentBanner || presigned.canvasImage || null,
+      canvasImage: presigned.tournamentBanner || presigned.canvasImage || null,
+      organizerLogo: presigned.primaryOrganization || presigned.playerOrgUrl || null,
+      secondaryOrganizerLogo: presigned.secondaryOrganization || presigned.prOrgUrl || null,
+      fanPassArtUrl: presigned.fanPassBg || null,
 
       rulesUrl: rulesList[0] || null,
       rules: rulesList,
@@ -1567,22 +1593,41 @@ export class TournamentTabsService {
       data.frequencyArray = dto.frequencyArray;
 
     const bannerVal =
-      dto.canvasImage ?? dto.bannerUrl ?? dto.banner ?? dto.fanPassArtUrl;
-    if (bannerVal !== undefined)
-      data.canvasImage = extractStorageKey(bannerVal);
+      dto.tournamentBanner ?? dto.canvasImage ?? dto.bannerUrl ?? dto.banner;
+    if (bannerVal !== undefined) {
+      data.tournamentBanner = extractStorageKey(bannerVal);
+      data.canvasImage = data.tournamentBanner;
+    }
 
     const logoVal =
-      dto.tournamentLogoUrl ?? dto.logo ?? dto.tournamentLogo;
-    if (logoVal !== undefined)
-      data.tournamentLogoUrl = extractStorageKey(logoVal);
+      dto.tournamentLogo ?? dto.tournamentLogoUrl ?? dto.logo;
+    if (logoVal !== undefined) {
+      data.tournamentLogo = extractStorageKey(logoVal);
+      data.tournamentLogoUrl = data.tournamentLogo;
+    }
 
-    const playerOrgVal = dto.playerOrgUrl ?? dto.organizerLogo;
-    if (playerOrgVal !== undefined)
-      data.playerOrgUrl = extractStorageKey(playerOrgVal);
+    const primaryOrgVal =
+      dto.primaryOrganization ?? dto.playerOrgUrl ?? dto.organizerLogo;
+    if (primaryOrgVal !== undefined) {
+      data.primaryOrganization = extractStorageKey(primaryOrgVal);
+      data.playerOrgUrl = data.primaryOrganization;
+    }
 
-    const prOrgVal = dto.prOrgUrl ?? dto.secondaryOrganizerLogo;
-    if (prOrgVal !== undefined)
-      data.prOrgUrl = extractStorageKey(prOrgVal);
+    const prOrgVal =
+      dto.secondaryOrganization ?? dto.prOrgUrl ?? dto.secondaryOrganizerLogo;
+    if (prOrgVal !== undefined) {
+      data.secondaryOrganization = extractStorageKey(prOrgVal);
+      data.prOrgUrl = data.secondaryOrganization;
+    }
+
+    if (dto.fanPassLogo !== undefined) {
+      data.fanPassLogo = extractStorageKey(dto.fanPassLogo);
+    }
+
+    const fanBgVal = dto.fanPassBg ?? dto.fanPassArtUrl;
+    if (fanBgVal !== undefined) {
+      data.fanPassBg = extractStorageKey(fanBgVal);
+    }
 
     if (dto.rulesUrl !== undefined)
       data.rules = [extractStorageKey(dto.rulesUrl)];

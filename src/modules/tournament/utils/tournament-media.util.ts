@@ -75,24 +75,46 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
   if (!tournament) return tournament;
   const formatted: Record<string, any> = { ...tournament };
 
-  if (formatted.canvasImage) {
-    formatted.canvasImage = await safePresignUrl(String(formatted.canvasImage));
+  const rawLogo = formatted.tournamentLogo || formatted.tournamentLogoUrl;
+  if (rawLogo) {
+    formatted.tournamentLogo = await safePresignUrl(String(rawLogo));
+    formatted.tournamentLogoUrl = formatted.tournamentLogo;
   }
 
-  if (formatted.tournamentLogoUrl) {
-    formatted.tournamentLogoUrl = await safePresignUrl(
-      String(formatted.tournamentLogoUrl),
+  const rawBanner = formatted.tournamentBanner || formatted.canvasImage;
+  if (rawBanner) {
+    formatted.tournamentBanner = await safePresignUrl(String(rawBanner));
+    formatted.canvasImage = formatted.tournamentBanner;
+  }
+
+  const rawPrimaryOrg =
+    formatted.primaryOrganization || formatted.playerOrgUrl;
+  if (rawPrimaryOrg) {
+    formatted.primaryOrganization = await safePresignUrl(String(rawPrimaryOrg));
+    formatted.playerOrgUrl = formatted.primaryOrganization;
+  }
+
+  const rawSecondaryOrg =
+    formatted.secondaryOrganization || formatted.prOrgUrl;
+  if (rawSecondaryOrg) {
+    formatted.secondaryOrganization = await safePresignUrl(
+      String(rawSecondaryOrg),
     );
+    formatted.prOrgUrl = formatted.secondaryOrganization;
   }
 
-  if (formatted.playerOrgUrl) {
-    formatted.playerOrgUrl = await safePresignUrl(
-      String(formatted.playerOrgUrl),
-    );
+  const rawFanLogo = formatted.fanPassLogo;
+  if (rawFanLogo) {
+    formatted.fanPassLogo = await safePresignUrl(String(rawFanLogo));
+  } else {
+    formatted.fanPassLogo = null;
   }
 
-  if (formatted.prOrgUrl) {
-    formatted.prOrgUrl = await safePresignUrl(String(formatted.prOrgUrl));
+  const rawFanBg = formatted.fanPassBg;
+  if (rawFanBg) {
+    formatted.fanPassBg = await safePresignUrl(String(rawFanBg));
+  } else {
+    formatted.fanPassBg = null;
   }
 
   if (formatted.rules && Array.isArray(formatted.rules)) {
@@ -211,12 +233,18 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
     formatted.prizePoolCurrency = formatted.currency;
   }
 
-  formatted.logo = formatted.tournamentLogoUrl || formatted.canvasImage || null;
-  formatted.bannerUrl = formatted.canvasImage || null;
-  formatted.organizerLogo = formatted.playerOrgUrl || formatted.prOrgUrl || '';
-  formatted.secondaryOrganizerLogo =
-    formatted.prOrgUrl || formatted.secondaryOrganizerLogo || null;
-  formatted.fanPassArtUrl = formatted.canvasImage || null;
+  formatted.tournamentLogo = formatted.tournamentLogo || null;
+  formatted.tournamentBanner = formatted.tournamentBanner || null;
+  formatted.primaryOrganization = formatted.primaryOrganization || null;
+  formatted.secondaryOrganization = formatted.secondaryOrganization || null;
+  formatted.fanPassLogo = formatted.fanPassLogo || null;
+  formatted.fanPassBg = formatted.fanPassBg || null;
+
+  formatted.logo = formatted.tournamentLogo || null;
+  formatted.bannerUrl = formatted.tournamentBanner || null;
+  formatted.organizerLogo = formatted.primaryOrganization || '';
+  formatted.secondaryOrganizerLogo = formatted.secondaryOrganization || null;
+  formatted.fanPassArtUrl = formatted.fanPassBg || null;
   formatted.rulesUrl =
     (formatted.rules &&
       formatted.rules.find((value: string) => isHttpUrl(value))) ||

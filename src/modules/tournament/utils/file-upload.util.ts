@@ -2,6 +2,12 @@ import { BadRequestException } from '@nestjs/common';
 import { uploadImageToS3, deleteImageFromS3 } from '../../utils/s3.util';
 
 export async function uploadTournamentFiles(files: {
+  tournamentLogo?: Express.Multer.File[];
+  tournamentBanner?: Express.Multer.File[];
+  primaryOrganization?: Express.Multer.File[];
+  secondaryOrganization?: Express.Multer.File[];
+  fanPassLogo?: Express.Multer.File[];
+  fanPassBg?: Express.Multer.File[];
   canvasImage?: Express.Multer.File[];
   bannerUrl?: Express.Multer.File[];
   banner?: Express.Multer.File[];
@@ -11,12 +17,17 @@ export async function uploadTournamentFiles(files: {
   prOrgUrl?: Express.Multer.File[];
   secondaryOrganizerLogo?: Express.Multer.File[];
   tournamentLogoUrl?: Express.Multer.File[];
-  tournamentLogo?: Express.Multer.File[];
   logo?: Express.Multer.File[];
   rules?: Express.Multer.File[];
   termsAndConditions?: Express.Multer.File[];
   tsAndTc?: Express.Multer.File[];
 }): Promise<{
+  tournamentLogo: string | null;
+  tournamentBanner: string | null;
+  primaryOrganization: string | null;
+  secondaryOrganization: string | null;
+  fanPassLogo: string | null;
+  fanPassBg: string | null;
   canvasImage: string | null;
   fanPassArtUrl: string | null;
   playerOrgUrl: string | null;
@@ -26,40 +37,57 @@ export async function uploadTournamentFiles(files: {
   termsAndConditions: string[];
   tsAndTc: string[];
 }> {
-  let s3CanvasImage: string | null = null;
-  let s3PlayerOrgUrl: string | null = null;
-  let s3PrOrgUrl: string | null = null;
-  let s3TournamentLogoUrl: string | null = null;
+  let s3TournamentLogo: string | null = null;
+  let s3TournamentBanner: string | null = null;
+  let s3PrimaryOrganization: string | null = null;
+  let s3SecondaryOrganization: string | null = null;
+  let s3FanPassLogo: string | null = null;
+  let s3FanPassBg: string | null = null;
   const s3RulesFilenames: string[] = [];
   const s3TsAndTcFilenames: string[] = [];
 
   try {
-    const canvasFile =
+    const bannerFile =
+      files?.tournamentBanner?.[0] ||
       files?.canvasImage?.[0] ||
       files?.bannerUrl?.[0] ||
-      files?.banner?.[0] ||
-      files?.fanPassArtUrl?.[0];
-    if (canvasFile) {
-      s3CanvasImage = await uploadImageToS3(canvasFile);
-    }
-
-    const playerOrgFile = files?.playerOrgUrl?.[0] || files?.organizerLogo?.[0];
-    if (playerOrgFile) {
-      s3PlayerOrgUrl = await uploadImageToS3(playerOrgFile);
-    }
-
-    const prOrgFile =
-      files?.prOrgUrl?.[0] || files?.secondaryOrganizerLogo?.[0];
-    if (prOrgFile) {
-      s3PrOrgUrl = await uploadImageToS3(prOrgFile);
+      files?.banner?.[0];
+    if (bannerFile) {
+      s3TournamentBanner = await uploadImageToS3(bannerFile);
     }
 
     const logoFile =
-      files?.tournamentLogoUrl?.[0] ||
       files?.tournamentLogo?.[0] ||
+      files?.tournamentLogoUrl?.[0] ||
       files?.logo?.[0];
     if (logoFile) {
-      s3TournamentLogoUrl = await uploadImageToS3(logoFile);
+      s3TournamentLogo = await uploadImageToS3(logoFile);
+    }
+
+    const primaryOrgFile =
+      files?.primaryOrganization?.[0] ||
+      files?.playerOrgUrl?.[0] ||
+      files?.organizerLogo?.[0];
+    if (primaryOrgFile) {
+      s3PrimaryOrganization = await uploadImageToS3(primaryOrgFile);
+    }
+
+    const secondaryOrgFile =
+      files?.secondaryOrganization?.[0] ||
+      files?.prOrgUrl?.[0] ||
+      files?.secondaryOrganizerLogo?.[0];
+    if (secondaryOrgFile) {
+      s3SecondaryOrganization = await uploadImageToS3(secondaryOrgFile);
+    }
+
+    const fanLogoFile = files?.fanPassLogo?.[0];
+    if (fanLogoFile) {
+      s3FanPassLogo = await uploadImageToS3(fanLogoFile);
+    }
+
+    const fanBgFile = files?.fanPassBg?.[0] || files?.fanPassArtUrl?.[0];
+    if (fanBgFile) {
+      s3FanPassBg = await uploadImageToS3(fanBgFile);
     }
 
     if (files?.rules?.length) {
@@ -78,11 +106,17 @@ export async function uploadTournamentFiles(files: {
     }
   } catch {
     await rollbackTournamentFiles({
-      canvasImage: s3CanvasImage,
-      fanPassArtUrl: s3CanvasImage,
-      playerOrgUrl: s3PlayerOrgUrl,
-      prOrgUrl: s3PrOrgUrl,
-      tournamentLogoUrl: s3TournamentLogoUrl,
+      tournamentLogo: s3TournamentLogo,
+      tournamentBanner: s3TournamentBanner,
+      primaryOrganization: s3PrimaryOrganization,
+      secondaryOrganization: s3SecondaryOrganization,
+      fanPassLogo: s3FanPassLogo,
+      fanPassBg: s3FanPassBg,
+      canvasImage: s3TournamentBanner,
+      fanPassArtUrl: s3FanPassBg,
+      playerOrgUrl: s3PrimaryOrganization,
+      prOrgUrl: s3SecondaryOrganization,
+      tournamentLogoUrl: s3TournamentLogo,
       rules: s3RulesFilenames,
       termsAndConditions: s3TsAndTcFilenames,
       tsAndTc: s3TsAndTcFilenames,
@@ -93,11 +127,17 @@ export async function uploadTournamentFiles(files: {
   }
 
   return {
-    canvasImage: s3CanvasImage,
-    fanPassArtUrl: s3CanvasImage,
-    playerOrgUrl: s3PlayerOrgUrl,
-    prOrgUrl: s3PrOrgUrl,
-    tournamentLogoUrl: s3TournamentLogoUrl,
+    tournamentLogo: s3TournamentLogo,
+    tournamentBanner: s3TournamentBanner,
+    primaryOrganization: s3PrimaryOrganization,
+    secondaryOrganization: s3SecondaryOrganization,
+    fanPassLogo: s3FanPassLogo,
+    fanPassBg: s3FanPassBg,
+    canvasImage: s3TournamentBanner,
+    fanPassArtUrl: s3FanPassBg,
+    playerOrgUrl: s3PrimaryOrganization,
+    prOrgUrl: s3SecondaryOrganization,
+    tournamentLogoUrl: s3TournamentLogo,
     rules: s3RulesFilenames,
     termsAndConditions: s3TsAndTcFilenames,
     tsAndTc: s3TsAndTcFilenames,
@@ -105,6 +145,12 @@ export async function uploadTournamentFiles(files: {
 }
 
 export async function rollbackTournamentFiles(files: {
+  tournamentLogo?: string | null;
+  tournamentBanner?: string | null;
+  primaryOrganization?: string | null;
+  secondaryOrganization?: string | null;
+  fanPassLogo?: string | null;
+  fanPassBg?: string | null;
   canvasImage?: string | null;
   fanPassArtUrl?: string | null;
   playerOrgUrl?: string | null;
@@ -114,17 +160,30 @@ export async function rollbackTournamentFiles(files: {
   termsAndConditions?: string[];
   tsAndTc?: string[];
 }) {
-  const canvasImg = files.canvasImage || files.fanPassArtUrl;
-  if (canvasImg) {
-    await deleteImageFromS3(canvasImg);
+  const bannerImg = files.tournamentBanner || files.canvasImage;
+  if (bannerImg) {
+    await deleteImageFromS3(bannerImg);
   }
-  if (files.playerOrgUrl) {
-    await deleteImageFromS3(files.playerOrgUrl);
+  const logoImg = files.tournamentLogo || files.tournamentLogoUrl;
+  if (logoImg) {
+    await deleteImageFromS3(logoImg);
   }
-  if (files.prOrgUrl) {
-    await deleteImageFromS3(files.prOrgUrl);
+  const primaryOrgImg = files.primaryOrganization || files.playerOrgUrl;
+  if (primaryOrgImg) {
+    await deleteImageFromS3(primaryOrgImg);
   }
-  if (files.tournamentLogoUrl) {
+  const secondaryOrgImg = files.secondaryOrganization || files.prOrgUrl;
+  if (secondaryOrgImg) {
+    await deleteImageFromS3(secondaryOrgImg);
+  }
+  if (files.fanPassLogo) {
+    await deleteImageFromS3(files.fanPassLogo);
+  }
+  const fanBgImg = files.fanPassBg || files.fanPassArtUrl;
+  if (fanBgImg) {
+    await deleteImageFromS3(fanBgImg);
+  }
+  if (files.tournamentLogoUrl && files.tournamentLogoUrl !== files.tournamentLogo) {
     await deleteImageFromS3(files.tournamentLogoUrl);
   }
   if (files.rules?.length) {

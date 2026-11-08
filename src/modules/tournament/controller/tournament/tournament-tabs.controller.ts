@@ -259,6 +259,12 @@ export class TournamentTabsController {
   })
   @UseInterceptors(
     FileFieldsInterceptor([
+      { name: 'tournamentLogo', maxCount: 1 },
+      { name: 'tournamentBanner', maxCount: 1 },
+      { name: 'primaryOrganization', maxCount: 1 },
+      { name: 'secondaryOrganization', maxCount: 1 },
+      { name: 'fanPassLogo', maxCount: 1 },
+      { name: 'fanPassBg', maxCount: 1 },
       { name: 'canvasImage', maxCount: 1 },
       { name: 'bannerUrl', maxCount: 1 },
       { name: 'banner', maxCount: 1 },
@@ -267,7 +273,6 @@ export class TournamentTabsController {
       { name: 'prOrgUrl', maxCount: 1 },
       { name: 'secondaryOrganizerLogo', maxCount: 1 },
       { name: 'tournamentLogoUrl', maxCount: 1 },
-      { name: 'tournamentLogo', maxCount: 1 },
       { name: 'logo', maxCount: 1 },
     ]),
   )
@@ -276,6 +281,12 @@ export class TournamentTabsController {
     @Body() dto: UpdatePlayerCardTemplateTabDto,
     @UploadedFiles()
     files?: {
+      tournamentLogo?: Express.Multer.File[];
+      tournamentBanner?: Express.Multer.File[];
+      primaryOrganization?: Express.Multer.File[];
+      secondaryOrganization?: Express.Multer.File[];
+      fanPassLogo?: Express.Multer.File[];
+      fanPassBg?: Express.Multer.File[];
       canvasImage?: Express.Multer.File[];
       bannerUrl?: Express.Multer.File[];
       banner?: Express.Multer.File[];
@@ -284,30 +295,41 @@ export class TournamentTabsController {
       prOrgUrl?: Express.Multer.File[];
       secondaryOrganizerLogo?: Express.Multer.File[];
       tournamentLogoUrl?: Express.Multer.File[];
-      tournamentLogo?: Express.Multer.File[];
       logo?: Express.Multer.File[];
     },
   ) {
     let uploadedFiles: any = null;
     if (files && Object.keys(files).length > 0) {
       uploadedFiles = await uploadTournamentFiles(files);
-      if (uploadedFiles.canvasImage) {
-        dto.canvasImage = uploadedFiles.canvasImage;
-        dto.bannerUrl = uploadedFiles.canvasImage;
-        dto.banner = uploadedFiles.canvasImage;
+      if (files?.tournamentBanner && uploadedFiles.tournamentBanner) {
+        dto.tournamentBanner = uploadedFiles.tournamentBanner;
+        dto.bannerUrl = uploadedFiles.tournamentBanner;
+        dto.banner = uploadedFiles.tournamentBanner;
       }
-      if (uploadedFiles.playerOrgUrl) {
-        dto.playerOrgUrl = uploadedFiles.playerOrgUrl;
-        dto.organizerLogo = uploadedFiles.playerOrgUrl;
+      if (uploadedFiles.primaryOrganization) {
+        dto.primaryOrganization = uploadedFiles.primaryOrganization;
+        dto.playerOrgUrl = uploadedFiles.primaryOrganization;
+        dto.organizerLogo = uploadedFiles.primaryOrganization;
       }
-      if (uploadedFiles.prOrgUrl) {
-        dto.prOrgUrl = uploadedFiles.prOrgUrl;
-        dto.secondaryOrganizerLogo = uploadedFiles.prOrgUrl;
+      if (uploadedFiles.secondaryOrganization) {
+        dto.secondaryOrganization = uploadedFiles.secondaryOrganization;
+        dto.prOrgUrl = uploadedFiles.secondaryOrganization;
+        dto.secondaryOrganizerLogo = uploadedFiles.secondaryOrganization;
       }
-      if (uploadedFiles.tournamentLogoUrl) {
-        dto.tournamentLogoUrl = uploadedFiles.tournamentLogoUrl;
-        dto.logo = uploadedFiles.tournamentLogoUrl;
-        dto.tournamentLogo = uploadedFiles.tournamentLogoUrl;
+      if (uploadedFiles.tournamentLogo) {
+        dto.tournamentLogo = uploadedFiles.tournamentLogo;
+        dto.tournamentLogoUrl = uploadedFiles.tournamentLogo;
+        dto.logo = uploadedFiles.tournamentLogo;
+      }
+      if (uploadedFiles.fanPassLogo) {
+        dto.fanPassLogo = uploadedFiles.fanPassLogo;
+      }
+      if (uploadedFiles.fanPassBg) {
+        dto.fanPassBg = uploadedFiles.fanPassBg;
+        dto.fanPassArtUrl = uploadedFiles.fanPassBg;
+      } else if (uploadedFiles.canvasImage && !files?.tournamentBanner) {
+        dto.fanPassBg = uploadedFiles.canvasImage;
+        dto.fanPassArtUrl = uploadedFiles.canvasImage;
       }
     }
 
@@ -349,6 +371,12 @@ export class TournamentTabsController {
   })
   @UseInterceptors(
     FileFieldsInterceptor([
+      { name: 'tournamentLogo', maxCount: 1 },
+      { name: 'tournamentBanner', maxCount: 1 },
+      { name: 'primaryOrganization', maxCount: 1 },
+      { name: 'secondaryOrganization', maxCount: 1 },
+      { name: 'fanPassLogo', maxCount: 1 },
+      { name: 'fanPassBg', maxCount: 1 },
       { name: 'canvasImage', maxCount: 1 },
       { name: 'bannerUrl', maxCount: 1 },
       { name: 'banner', maxCount: 1 },
@@ -367,6 +395,12 @@ export class TournamentTabsController {
     @Body() dto: UpdateFanPassTemplateTabDto,
     @UploadedFiles()
     files?: {
+      tournamentLogo?: Express.Multer.File[];
+      tournamentBanner?: Express.Multer.File[];
+      primaryOrganization?: Express.Multer.File[];
+      secondaryOrganization?: Express.Multer.File[];
+      fanPassLogo?: Express.Multer.File[];
+      fanPassBg?: Express.Multer.File[];
       canvasImage?: Express.Multer.File[];
       bannerUrl?: Express.Multer.File[];
       banner?: Express.Multer.File[];
@@ -376,31 +410,41 @@ export class TournamentTabsController {
       prOrgUrl?: Express.Multer.File[];
       secondaryOrganizerLogo?: Express.Multer.File[];
       tournamentLogoUrl?: Express.Multer.File[];
-      tournamentLogo?: Express.Multer.File[];
       logo?: Express.Multer.File[];
     },
   ) {
     let uploadedFiles: any = null;
     if (files && Object.keys(files).length > 0) {
       uploadedFiles = await uploadTournamentFiles(files);
-      if (uploadedFiles.canvasImage) {
+      if (uploadedFiles.fanPassLogo) {
+        dto.fanPassLogo = uploadedFiles.fanPassLogo;
+      }
+      if (uploadedFiles.fanPassBg) {
+        dto.fanPassBg = uploadedFiles.fanPassBg;
+        dto.fanPassArtUrl = uploadedFiles.fanPassBg;
+      } else if (uploadedFiles.canvasImage && !files?.tournamentBanner) {
+        dto.fanPassBg = uploadedFiles.canvasImage;
         dto.fanPassArtUrl = uploadedFiles.canvasImage;
-        dto.canvasImage = uploadedFiles.canvasImage;
-        dto.bannerUrl = uploadedFiles.canvasImage;
-        dto.banner = uploadedFiles.canvasImage;
       }
-      if (uploadedFiles.playerOrgUrl) {
-        dto.playerOrgUrl = uploadedFiles.playerOrgUrl;
-        dto.organizerLogo = uploadedFiles.playerOrgUrl;
+      if (files?.tournamentBanner && uploadedFiles.tournamentBanner) {
+        dto.tournamentBanner = uploadedFiles.tournamentBanner;
+        dto.bannerUrl = uploadedFiles.tournamentBanner;
+        dto.banner = uploadedFiles.tournamentBanner;
       }
-      if (uploadedFiles.prOrgUrl) {
-        dto.prOrgUrl = uploadedFiles.prOrgUrl;
-        dto.secondaryOrganizerLogo = uploadedFiles.prOrgUrl;
+      if (uploadedFiles.primaryOrganization) {
+        dto.primaryOrganization = uploadedFiles.primaryOrganization;
+        dto.playerOrgUrl = uploadedFiles.primaryOrganization;
+        dto.organizerLogo = uploadedFiles.primaryOrganization;
       }
-      if (uploadedFiles.tournamentLogoUrl) {
-        dto.tournamentLogoUrl = uploadedFiles.tournamentLogoUrl;
-        dto.logo = uploadedFiles.tournamentLogoUrl;
-        dto.tournamentLogo = uploadedFiles.tournamentLogoUrl;
+      if (uploadedFiles.secondaryOrganization) {
+        dto.secondaryOrganization = uploadedFiles.secondaryOrganization;
+        dto.prOrgUrl = uploadedFiles.secondaryOrganization;
+        dto.secondaryOrganizerLogo = uploadedFiles.secondaryOrganization;
+      }
+      if (uploadedFiles.tournamentLogo) {
+        dto.tournamentLogo = uploadedFiles.tournamentLogo;
+        dto.tournamentLogoUrl = uploadedFiles.tournamentLogo;
+        dto.logo = uploadedFiles.tournamentLogo;
       }
     }
 
@@ -549,6 +593,12 @@ export class TournamentTabsController {
   })
   @UseInterceptors(
     FileFieldsInterceptor([
+      { name: 'tournamentLogo', maxCount: 1 },
+      { name: 'tournamentBanner', maxCount: 1 },
+      { name: 'primaryOrganization', maxCount: 1 },
+      { name: 'secondaryOrganization', maxCount: 1 },
+      { name: 'fanPassLogo', maxCount: 1 },
+      { name: 'fanPassBg', maxCount: 1 },
       { name: 'canvasImage', maxCount: 1 },
       { name: 'bannerUrl', maxCount: 1 },
       { name: 'banner', maxCount: 1 },
@@ -558,7 +608,6 @@ export class TournamentTabsController {
       { name: 'prOrgUrl', maxCount: 1 },
       { name: 'secondaryOrganizerLogo', maxCount: 1 },
       { name: 'tournamentLogoUrl', maxCount: 1 },
-      { name: 'tournamentLogo', maxCount: 1 },
       { name: 'logo', maxCount: 1 },
       { name: 'rules', maxCount: 10 },
       { name: 'termsAndConditions', maxCount: 10 },
@@ -570,6 +619,12 @@ export class TournamentTabsController {
     @Body() dto: UpdateSettingsTabDto,
     @UploadedFiles()
     files?: {
+      tournamentLogo?: Express.Multer.File[];
+      tournamentBanner?: Express.Multer.File[];
+      primaryOrganization?: Express.Multer.File[];
+      secondaryOrganization?: Express.Multer.File[];
+      fanPassLogo?: Express.Multer.File[];
+      fanPassBg?: Express.Multer.File[];
       canvasImage?: Express.Multer.File[];
       bannerUrl?: Express.Multer.File[];
       banner?: Express.Multer.File[];
@@ -579,7 +634,6 @@ export class TournamentTabsController {
       prOrgUrl?: Express.Multer.File[];
       secondaryOrganizerLogo?: Express.Multer.File[];
       tournamentLogoUrl?: Express.Multer.File[];
-      tournamentLogo?: Express.Multer.File[];
       logo?: Express.Multer.File[];
       rules?: Express.Multer.File[];
       termsAndConditions?: Express.Multer.File[];
@@ -589,24 +643,33 @@ export class TournamentTabsController {
     let uploadedFiles: any = null;
     if (files && Object.keys(files).length > 0) {
       uploadedFiles = await uploadTournamentFiles(files);
-      if (uploadedFiles.canvasImage) {
-        dto.canvasImage = uploadedFiles.canvasImage;
-        dto.bannerUrl = uploadedFiles.canvasImage;
-        dto.banner = uploadedFiles.canvasImage;
-        dto.fanPassArtUrl = uploadedFiles.canvasImage;
+      if (uploadedFiles.tournamentBanner) {
+        dto.tournamentBanner = uploadedFiles.tournamentBanner;
+        dto.canvasImage = uploadedFiles.tournamentBanner;
+        dto.bannerUrl = uploadedFiles.tournamentBanner;
+        dto.banner = uploadedFiles.tournamentBanner;
       }
-      if (uploadedFiles.playerOrgUrl) {
-        dto.playerOrgUrl = uploadedFiles.playerOrgUrl;
-        dto.organizerLogo = uploadedFiles.playerOrgUrl;
+      if (uploadedFiles.primaryOrganization) {
+        dto.primaryOrganization = uploadedFiles.primaryOrganization;
+        dto.playerOrgUrl = uploadedFiles.primaryOrganization;
+        dto.organizerLogo = uploadedFiles.primaryOrganization;
       }
-      if (uploadedFiles.prOrgUrl) {
-        dto.prOrgUrl = uploadedFiles.prOrgUrl;
-        dto.secondaryOrganizerLogo = uploadedFiles.prOrgUrl;
+      if (uploadedFiles.secondaryOrganization) {
+        dto.secondaryOrganization = uploadedFiles.secondaryOrganization;
+        dto.prOrgUrl = uploadedFiles.secondaryOrganization;
+        dto.secondaryOrganizerLogo = uploadedFiles.secondaryOrganization;
       }
-      if (uploadedFiles.tournamentLogoUrl) {
-        dto.tournamentLogoUrl = uploadedFiles.tournamentLogoUrl;
-        dto.logo = uploadedFiles.tournamentLogoUrl;
-        dto.tournamentLogo = uploadedFiles.tournamentLogoUrl;
+      if (uploadedFiles.tournamentLogo) {
+        dto.tournamentLogo = uploadedFiles.tournamentLogo;
+        dto.tournamentLogoUrl = uploadedFiles.tournamentLogo;
+        dto.logo = uploadedFiles.tournamentLogo;
+      }
+      if (uploadedFiles.fanPassLogo) {
+        dto.fanPassLogo = uploadedFiles.fanPassLogo;
+      }
+      if (uploadedFiles.fanPassBg) {
+        dto.fanPassBg = uploadedFiles.fanPassBg;
+        dto.fanPassArtUrl = uploadedFiles.fanPassBg;
       }
       if (uploadedFiles.rules?.length > 0) {
         dto.rules = uploadedFiles.rules;

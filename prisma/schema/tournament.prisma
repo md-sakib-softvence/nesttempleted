@@ -29,6 +29,15 @@ model Tournament {
   playerOrgUrl           String?
   prOrgUrl               String?
   tournamentLogoUrl      String?
+
+  // Dedicated Tournament Media & Branding Fields
+  tournamentLogo         String?
+  tournamentBanner       String?
+  primaryOrganization    String?
+  secondaryOrganization  String?
+  fanPassLogo            String?
+  fanPassBg              String?
+
   rules                  String[]
   tsAndTc                String[]
   schedulingMode         SchedulingMode          @default(MANUAL)
