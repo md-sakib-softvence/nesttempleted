@@ -390,7 +390,11 @@ export class TournamentMatchesService {
 
     if (
       targetMatch.status === 'COMPLETED' ||
-      targetMatch.status === 'CANCELLED'
+      targetMatch.status === 'CANCELLED' ||
+      targetMatch.status === 'UNDER_REVIEW' ||
+      targetMatch.isSchedulable === false ||
+      targetMatch.isAutoAdvance ||
+      targetMatch.conditional
     ) {
       throw new BadRequestException(
         `Cannot reschedule a match that is ${targetMatch.status.toLowerCase()}.`,
@@ -443,7 +447,7 @@ export class TournamentMatchesService {
       const windowState = evaluateSelfSchedulingWindow(
         targetMatch.selfSchedulingOpenedAt,
       );
-      if (windowState.phase === 3 && !targetMatch.emergencyTokenUsed) {
+      if (windowState.phase === 3) {
         throw new ForbiddenException(
           'The 96-hour self-scheduling deadline has expired. This match is closed for manual booking and queued for system auto-assignment.',
         );
@@ -505,13 +509,21 @@ export class TournamentMatchesService {
       match.bookedAt = new Date().toISOString();
     }
 
-    await this.prisma.tournament.update({
-      where: { tournamentId: tournament.tournamentId },
+    const saved = await this.prisma.tournament.updateMany({
+      where: {
+        tournamentId: tournament.tournamentId,
+        version: tournament.version,
+      },
       data: {
         schedule: updatedSchedule as any,
         version: { increment: 1 },
       },
     });
+    if (saved.count !== 1) {
+      throw new ConflictException(
+        'The tournament schedule changed while you were booking. Refresh the available slots and try again.',
+      );
+    }
 
     await createActivities(
       this.prisma,
@@ -1916,6 +1928,18 @@ export class TournamentMatchesService {
       throw new NotFoundException('Tournament not found');
     }
 
+    if (
+      tournament.schedulingMode !== SchedulingMode.PLAYER_SELF ||
+      tournament.schedulingPaused ||
+      (tournament as any).schedulingWindowOpen === false
+    ) {
+      return {
+        tournamentId: tournament.tournamentId,
+        tournamentName: tournament.name,
+        pendingMatches: [],
+      };
+    }
+
     const schedule = tournament.schedule as any as TournamentSchedulePayload;
     if (!schedule?.structure?.matches) {
       return { tournamentName: tournament.name, pendingMatches: [] };
@@ -1926,11 +1950,27 @@ export class TournamentMatchesService {
       const isParticipant =
         m.player1Id === playerId || m.player2Id === playerId;
       const isUnallocated = !m.date || !m.time || !m.venueId;
+      const participantsResolved =
+        !!m.player1Id &&
+        !!m.player2Id &&
+        !m.player1Id.startsWith('TBD') &&
+        !m.player2Id.startsWith('TBD') &&
+        !m.player1Id.startsWith('BYE') &&
+        !m.player2Id.startsWith('BYE');
       const isPlayable =
         !m.isAutoAdvance &&
+        !m.conditional &&
+        m.isSchedulable !== false &&
+        m.status !== 'UNDER_REVIEW' &&
         m.status !== 'COMPLETED' &&
         m.status !== 'CANCELLED';
-      return isParticipant && isUnallocated && isPlayable;
+      return (
+        isParticipant &&
+        participantsResolved &&
+        !!m.selfSchedulingOpenedAt &&
+        isUnallocated &&
+        isPlayable
+      );
     });
 
     const opponentIds = pending
@@ -1968,7 +2008,12 @@ export class TournamentMatchesService {
         },
         openedAt: m.selfSchedulingOpenedAt || null,
         phase: windowState.phase,
-        phaseStatus: m.schedulingPhase || windowState.phaseStatus,
+        phaseStatus:
+          m.schedulingPhase === MatchSchedulingPhase.CAPACITY_BLOCKED ||
+          m.schedulingPhase === MatchSchedulingPhase.ADMIN_ACTION_REQUIRED ||
+          m.schedulingPhase === MatchSchedulingPhase.AUTO_ASSIGNED
+            ? m.schedulingPhase
+            : windowState.phaseStatus,
         isEscalated: windowState.isEscalated,
         escalationWarning: windowState.isEscalated
           ? 'Your initial 48-hour self-scheduling period has expired. This match is now escalated. Please select a slot before the automatic assignment deadline.'
@@ -1980,8 +2025,7 @@ export class TournamentMatchesService {
         timeUntilAutoAssignmentFormatted:
           windowState.timeUntilAutoAssignmentFormatted,
         isAutoAssignmentDue: windowState.isAutoAssignmentDue,
-        canPlayerSelectSlot:
-          windowState.canPlayerSelectSlot || !!m.emergencyTokenUsed,
+        canPlayerSelectSlot: windowState.canPlayerSelectSlot,
         proposedSlot: m.proposedSlot || null,
         emergencyTokenUsed: !!m.emergencyTokenUsed,
         schedulingExceptionReason: m.schedulingExceptionReason || null,
@@ -2012,6 +2056,16 @@ export class TournamentMatchesService {
       throw new NotFoundException('Tournament not found');
     }
 
+    if (
+      tournament.schedulingMode !== SchedulingMode.PLAYER_SELF ||
+      tournament.schedulingPaused ||
+      (tournament as any).schedulingWindowOpen === false
+    ) {
+      throw new BadRequestException(
+        'Player self-scheduling is not currently available for this tournament.',
+      );
+    }
+
     const schedule = tournament.schedule as any as TournamentSchedulePayload;
     if (!schedule?.calendar) {
       throw new BadRequestException('Schedule calendar is not generated yet');
@@ -2022,6 +2076,42 @@ export class TournamentMatchesService {
     );
     if (!targetMatch) {
       throw new NotFoundException(`Match #${matchId} not found`);
+    }
+
+    const participantsResolved =
+      !!targetMatch.player1Id &&
+      !!targetMatch.player2Id &&
+      !targetMatch.player1Id.startsWith('TBD') &&
+      !targetMatch.player2Id.startsWith('TBD') &&
+      !targetMatch.player1Id.startsWith('BYE') &&
+      !targetMatch.player2Id.startsWith('BYE');
+    if (
+      !participantsResolved ||
+      targetMatch.isSchedulable === false ||
+      targetMatch.isAutoAdvance ||
+      targetMatch.conditional ||
+      targetMatch.status === 'UNDER_REVIEW' ||
+      targetMatch.status === 'COMPLETED' ||
+      targetMatch.status === 'CANCELLED' ||
+      (targetMatch.date && targetMatch.time && targetMatch.venueId)
+    ) {
+      throw new BadRequestException(
+        'This match is not eligible for player self-scheduling.',
+      );
+    }
+    if (!targetMatch.selfSchedulingOpenedAt) {
+      throw new BadRequestException(
+        'Self-scheduling has not yet opened for this match.',
+      );
+    }
+
+    const playerWindowState = evaluateSelfSchedulingWindow(
+      targetMatch.selfSchedulingOpenedAt,
+    );
+    if (!playerWindowState.canPlayerSelectSlot) {
+      throw new ForbiddenException(
+        'The player self-scheduling window has closed. The match is queued for system assignment.',
+      );
     }
 
     if (
@@ -2131,8 +2221,8 @@ export class TournamentMatchesService {
               badge = 'PEAK';
             }
 
-            // Phase 3 disables player booking unless emergency token is used
-            if (windowState.phase === 3 && !targetMatch.emergencyTokenUsed) {
+            // Phase 3 closes player booking; the system or tournament admin handles it.
+            if (windowState.phase === 3) {
               isDisabled = true;
             }
 
@@ -2184,8 +2274,7 @@ export class TournamentMatchesService {
       timeUntilAutoAssignmentMs: windowState.timeUntilAutoAssignmentMs,
       autoAssignmentDueAt: windowState.autoAssignmentDueAt,
       isAutoAssignmentDue: windowState.isAutoAssignmentDue,
-      canPlayerSelectSlot:
-        windowState.canPlayerSelectSlot || !!targetMatch.emergencyTokenUsed,
+      canPlayerSelectSlot: windowState.canPlayerSelectSlot,
       proposedSlot: targetMatch.proposedSlot || null,
       scheduleByDate,
     };
@@ -2428,6 +2517,9 @@ export class TournamentMatchesService {
 
       const matches = schedule.structure.matches;
       let hasUpdates = false;
+      const tournamentResults: any[] = [];
+      const activityEvents: Array<{ title: string; description: string }> = [];
+      const playerNotifications: Array<{ userId: string; description: string }> = [];
 
       for (const match of matches) {
         const isAllocated = !!(match.date && match.time && match.venueId);
@@ -2467,7 +2559,7 @@ export class TournamentMatchesService {
           now,
         );
 
-        if (windowState.phase === 3 && !match.emergencyTokenUsed) {
+        if (windowState.phase === 3) {
           const candidate = findEarliestValidSlot(
             schedule.calendar,
             match.id,
@@ -2492,65 +2584,89 @@ export class TournamentMatchesService {
             Object.assign(schedule, updatedSchedule);
             hasUpdates = true;
 
-            results.push({
+            tournamentResults.push({
               tournamentId: tournament.tournamentId,
               matchId: match.id,
               action: 'AUTO_ASSIGNED',
               allocation: candidate,
             });
 
-            await createActivities(
-              this.prisma,
-              'Auto-Assignment Completed',
-              `Match #${match.id} auto-assigned to ${candidate.venueName} screen ${candidate.screenName} on ${candidate.date} @ ${candidate.time}`,
-              'TOURNAMENT',
-            );
-
-            for (const pId of [match.player1Id, match.player2Id]) {
-              try {
-                await this.prisma.notification.create({
-                  data: {
-                    userId: pId,
-                    title: 'Match Automatically Scheduled',
-                    description: `Your match #${match.id} was automatically scheduled for ${candidate.date} at ${candidate.time} on ${candidate.venueName} - ${candidate.screenName} following self-scheduling deadline expiration.`,
-                    status: 'INFORMATION',
-                  },
-                });
-              } catch {
-                // Ignore notification failure if player cannot be notified
-              }
-            }
-          } else {
-            match.schedulingPhase = MatchSchedulingPhase.CAPACITY_BLOCKED;
-            match.schedulingExceptionReason =
-              'NO_VALID_CAPACITY: All published physical capacity occupied or conflicting';
-            hasUpdates = true;
-
-            results.push({
-              tournamentId: tournament.tournamentId,
-              matchId: match.id,
-              action: 'CAPACITY_BLOCKED',
-              reason: match.schedulingExceptionReason,
+            activityEvents.push({
+              title: 'Auto-Assignment Completed',
+              description: `Match #${match.id} auto-assigned to ${candidate.venueName} screen ${candidate.screenName} on ${candidate.date} @ ${candidate.time}`,
             });
 
-            await createActivities(
-              this.prisma,
-              'Auto-Assignment Capacity Exception',
-              `Match #${match.id} reached Phase 3 but no valid capacity exists. Admin action required.`,
-              'TOURNAMENT',
-            );
+            for (const pId of [match.player1Id, match.player2Id]) {
+              playerNotifications.push({
+                userId: pId,
+                description: `Your match #${match.id} was automatically scheduled for ${candidate.date} at ${candidate.time} on ${candidate.venueName} - ${candidate.screenName} following self-scheduling deadline expiration.`,
+              });
+            }
+          } else {
+            const reason =
+              'NO_VALID_CAPACITY: All published physical capacity occupied or conflicting';
+            if (
+              match.schedulingPhase !== MatchSchedulingPhase.CAPACITY_BLOCKED ||
+              match.schedulingExceptionReason !== reason
+            ) {
+              match.schedulingPhase = MatchSchedulingPhase.CAPACITY_BLOCKED;
+              match.schedulingExceptionReason = reason;
+              hasUpdates = true;
+
+              tournamentResults.push({
+                tournamentId: tournament.tournamentId,
+                matchId: match.id,
+                action: 'CAPACITY_BLOCKED',
+                reason,
+              });
+              activityEvents.push({
+                title: 'Auto-Assignment Capacity Exception',
+                description: `Match #${match.id} reached Phase 3 but no valid capacity exists. Admin action required.`,
+              });
+            }
           }
         }
       }
 
       if (hasUpdates) {
-        await this.prisma.tournament.update({
-          where: { tournamentId: tournament.tournamentId },
+        const saved = await this.prisma.tournament.updateMany({
+          where: {
+            tournamentId: tournament.tournamentId,
+            version: tournament.version,
+          },
           data: {
             schedule: schedule as any,
             version: { increment: 1 },
           },
         });
+
+        // A concurrent player/admin booking changed the schedule. Do not emit
+        // success events for an auto-assignment that was not persisted.
+        if (saved.count === 1) {
+          results.push(...tournamentResults);
+          for (const event of activityEvents) {
+            await createActivities(
+              this.prisma,
+              event.title,
+              event.description,
+              'TOURNAMENT',
+            );
+          }
+          for (const notification of playerNotifications) {
+            try {
+              await this.prisma.notification.create({
+                data: {
+                  userId: notification.userId,
+                  title: 'Match Automatically Scheduled',
+                  description: notification.description,
+                  status: 'INFORMATION',
+                },
+              });
+            } catch {
+              // Ignore notification failure if player cannot be notified.
+            }
+          }
+        }
       }
     }
 
