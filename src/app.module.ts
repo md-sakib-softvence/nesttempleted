@@ -13,11 +13,11 @@ import { NotificationModule } from './modules/notification/notification.module';
 import { MailModule } from './modules/mail/mail.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { PlayerModule } from './modules/player/player.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { EmployeeModule } from './modules/employee/employee.module';
 import { FanModule } from './modules/fan/fan.module';
-import { PlayerModule } from './modules/player/player.module';
 import { MarketingDataModule } from './modules/marketing-data/marketing-data.module';
 import { SystemModule } from './modules/system/system.module';
 import { TournamentModule } from './modules/tournament/tournament.module';
@@ -48,11 +48,12 @@ import { SearchModule } from './modules/search/search.module';
     SeriesModule,
     TicketModule,
     SearchModule,
+    // Register /admin/payouts before AdminController's dynamic /admin/:id route.
+    PlayerModule,
     AdminModule,
     AuthModule,
     EmployeeModule,
     FanModule,
-    PlayerModule,
     MarketingDataModule,
     SystemModule,
     AnnouncementModule,

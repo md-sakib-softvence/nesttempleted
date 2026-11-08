@@ -1,19 +1,19 @@
 model Player {
-  playerId                     String    @id @default(uuid())
-  showPlayerId                 String    @unique
-  firstName                    String
-  lastName                     String
-  email                        String    @unique
-  password                     String
-  phoneNumber                  String
-  username                     String?
+  playerId        String    @id @default(uuid())
+  showPlayerId    String    @unique
+  firstName       String
+  lastName        String
+  email           String    @unique
+  password        String
+  phoneNumber     String
+  username        String?
   /// Unique case-insensitively by the Player_gamerTag_normalized_key SQL index.
-  gamerTag                     String?
-  surname                      String?
-  isDeleted                    Boolean   @default(false)
-  moderationNotes              String?
-  moderatedAt                  DateTime?
-  moderatedBy                  String?
+  gamerTag        String?
+  surname         String?
+  isDeleted       Boolean   @default(false)
+  moderationNotes String?
+  moderatedAt     DateTime?
+  moderatedBy     String?
 
   profilePicture          String?
   photoStatus             PhotoModerationStatus    @default(APPROVED)

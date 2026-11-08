@@ -165,11 +165,28 @@ export class PlayerWalletController {
     });
   }
 
+  @Get('payouts/mine')
+  @Roles(Role.PLAYER, 'player')
+  @ApiOperation({ summary: 'Get the logged-in player payout request history' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'reference', required: false, type: String, description: 'Filter to a specific payout reference' })
+  async getMyPayouts(
+    @Req() req: RequestWithUser,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('reference') reference?: string,
+  ) {
+    const data = await this.playerWalletService.getMyPayouts(req.user.userId, { page, limit, reference });
+    return sendResponse({ message: 'Payout history retrieved successfully', data, meta: data.pagination });
+  }
+
   /**
    * 5. Tab 2: 💰 PAYOUT LEDGER - Disburse Payout Request Form
    * Submits a NUBAN bank account payout settlement with atomic verification.
    */
   @Post('withdraw')
+  @Roles(Role.PLAYER, 'player')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Disburse Payout Requests (REQUEST LEDGER SETTLEMENT)',
@@ -189,7 +206,7 @@ export class PlayerWalletController {
     @Body() dto: RequestPayoutDto,
   ) {
     const playerId = req.user.userId;
-    const data = await this.playerWalletService.requestPayout(playerId, dto);
+    const data = await this.playerWalletService.requestPayout(playerId, dto, req.user.email);
     return sendResponse({
       message: data.message,
       data: data.data,

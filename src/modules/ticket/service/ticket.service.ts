@@ -15,7 +15,7 @@ import { CreateTierDto } from '../dto/create-tier.dto';
 import { UpdateTierDto } from '../dto/update-tier.dto';
 import { QueryTicketDto } from '../dto/query-ticket.dto';
 import { TransferTicketDto } from '../dto/transfer-ticket.dto';
-import { TicketStatus, TicketType } from '@prisma/client';
+import { TicketAudienceRole, TicketStatus, TicketType } from '@prisma/client';
 import { TicketScanGateway } from '../gateway/ticket-scan.gateway';
 import * as crypto from 'crypto';
 
@@ -172,6 +172,7 @@ export class TicketService {
       return {
         tierId: tier.tierId,
         name: tier.name,
+        audienceRole: tier.audienceRole,
         type: tier.type,
         price: tier.price,
         currency: tier.currency,
@@ -227,7 +228,7 @@ export class TicketService {
 
     if (quantity !== 1) {
       throw new BadRequestException(
-        'Only one ticket may be purchased per fan for a tournament.',
+        'Only one ticket may be purchased per account for a tournament.',
       );
     }
 
@@ -247,6 +248,7 @@ export class TicketService {
     const existingTicket = await this.prisma.ticket.findFirst({
       where: {
         tournamentId: dto.tournamentId,
+        purchaserRole: purchaser.userType,
         status: { in: [TicketStatus.ACTIVE, TicketStatus.USED] },
         OR: ownerFilters,
       },
@@ -254,7 +256,7 @@ export class TicketService {
     });
     if (existingTicket) {
       throw new ConflictException(
-        `You already have a ticket for "${tournament.name}". One ticket per fan is allowed.`,
+        `You already have a ticket for "${tournament.name}". One ticket per account is allowed.`,
       );
     }
 
@@ -300,6 +302,11 @@ export class TicketService {
           'This ticket tier is currently not active',
         );
       }
+      if (selectedTier.audienceRole !== purchaser.userType) {
+        throw new ForbiddenException(
+          `This ticket tier is for ${selectedTier.audienceRole.toLowerCase()} accounts.`,
+        );
+      }
       if (selectedTier.sold + quantity > selectedTier.capacity) {
         const remainingTier = Math.max(
           0,
@@ -312,6 +319,15 @@ export class TicketService {
       unitPrice = selectedTier.price;
       ticketType = selectedTier.type;
     } else {
+      if (tournament.ticketTiers.length > 0) {
+        const hasRoleTier = tournament.ticketTiers.some(
+          (tier) => tier.audienceRole === purchaser.userType && tier.status === 'ACTIVE',
+        );
+        if (!hasRoleTier) {
+          throw new ForbiddenException(`No active ticket tiers are available for ${purchaser.userType.toLowerCase()} accounts.`);
+        }
+        throw new BadRequestException('Select an available ticket tier before checkout.');
+      }
       unitPrice = tournament.entryFee;
     }
 
@@ -545,13 +561,27 @@ export class TicketService {
         data: { status: 'DUPLICATE_TICKET' },
       });
       throw new ConflictException(
-        'Only one ticket may be issued to a fan for a tournament.',
+        'Only one ticket may be issued to an account for a tournament.',
       );
     }
 
     const selectedTier = tierId
       ? tournament.ticketTiers.find((tier) => tier.tierId === tierId)
       : undefined;
+    if (tierId && !selectedTier) {
+      await this.prisma.payment.updateMany({
+        where: { txRef },
+        data: { status: 'INVALID_TIER' },
+      });
+      throw new NotFoundException(`Ticket tier ${tierId} was not found for this tournament.`);
+    }
+    if (selectedTier && selectedTier.audienceRole !== String(userRole).toUpperCase()) {
+      await this.prisma.payment.updateMany({
+        where: { txRef },
+        data: { status: 'AUDIENCE_MISMATCH' },
+      });
+      throw new ForbiddenException('The purchased ticket tier is not available for this account type.');
+    }
     const expectedUnitPrice = selectedTier?.price ?? tournament.entryFee;
     const expectedAmount = Number((expectedUnitPrice * quantity).toFixed(2));
     const chargedAmount = Number(txData.amount);
@@ -569,6 +599,7 @@ export class TicketService {
       const existingTicket = await this.prisma.ticket.findFirst({
         where: {
           tournamentId,
+          purchaserRole: String(userRole).toUpperCase(),
           status: { in: [TicketStatus.ACTIVE, TicketStatus.USED] },
           OR: [{ purchasedBy: userId }, { fanId: userId }, { playerId: userId }],
         },
@@ -754,7 +785,7 @@ export class TicketService {
       verified: true,
       message: `${quantity} ticket(s) issued successfully`,
       oneTicketOneTimeOnly: true,
-      canBuyMultipleTimes: true,
+      canBuyMultipleTimes: false,
       purchaserRole: userRole,
       purchaserId: userId,
       tickets: formattedTickets,
@@ -1412,13 +1443,20 @@ export class TicketService {
   /**
    * 6. Get Current User's Tickets
    */
-  async getMyTickets(userId: string) {
+  async getMyTickets(userId: string, roleHint?: string) {
     if (!userId) {
       throw new UnauthorizedException('Authentication required');
     }
 
+    const roleValue = String(roleHint || '').toUpperCase();
+    const purchaserRole = roleValue.includes('PLAYER')
+      ? 'PLAYER'
+      : roleValue.includes('FAN')
+        ? 'FAN'
+        : undefined;
     const tickets = await this.prisma.ticket.findMany({
       where: {
+        ...(purchaserRole ? { purchaserRole } : {}),
         OR: [{ purchasedBy: userId }, { fanId: userId }, { playerId: userId }],
       },
       include: {
@@ -1992,6 +2030,7 @@ export class TicketService {
       data: {
         tournamentId: dto.tournamentId,
         name: dto.name,
+        audienceRole: dto.audienceRole || TicketAudienceRole.FAN,
         type: dto.type || TicketType.DAY_PASS,
         price: dto.price,
         currency: dto.currency || tournament.currency || 'NGN',
@@ -2002,9 +2041,12 @@ export class TicketService {
     });
   }
 
-  async getTiersByTournament(tournamentId: string) {
+  async getTiersByTournament(tournamentId: string, audienceRole?: TicketAudienceRole) {
+    if (audienceRole && !Object.values(TicketAudienceRole).includes(audienceRole)) {
+      throw new BadRequestException('audienceRole must be FAN or PLAYER.');
+    }
     const tiers = await this.prisma.ticketTier.findMany({
-      where: { tournamentId },
+      where: { tournamentId, ...(audienceRole ? { audienceRole } : {}) },
       orderBy: { price: 'asc' },
     });
     return tiers.map((tier) => ({
@@ -2028,6 +2070,7 @@ export class TicketService {
       data: {
         ...(dto.name ? { name: dto.name } : {}),
         ...(dto.type ? { type: dto.type } : {}),
+        ...(dto.audienceRole ? { audienceRole: dto.audienceRole } : {}),
         ...(dto.price !== undefined ? { price: dto.price } : {}),
         ...(dto.currency ? { currency: dto.currency } : {}),
         ...(dto.capacity !== undefined ? { capacity: dto.capacity } : {}),
@@ -2061,11 +2104,15 @@ export class TicketService {
     return { message: 'Ticket tier deleted successfully' };
   }
 
-  async getAllTiers(tournamentId?: string) {
+  async getAllTiers(tournamentId?: string, audienceRole?: TicketAudienceRole) {
+    if (audienceRole && !Object.values(TicketAudienceRole).includes(audienceRole)) {
+      throw new BadRequestException('audienceRole must be FAN or PLAYER.');
+    }
     const where: any = {};
     if (tournamentId) {
       where.tournamentId = tournamentId;
     }
+    if (audienceRole) where.audienceRole = audienceRole;
     return this.prisma.ticketTier.findMany({
       where,
       include: {
@@ -2113,6 +2160,12 @@ export class TicketService {
         ? body.pricePaid
         : (tier?.price ?? tournament.entryFee ?? 0);
     const type = body.type || tier?.type || TicketType.DAY_PASS;
+    const purchaserRole = (
+      body.purchaserRole || (body.playerId ? 'PLAYER' : 'FAN')
+    ).toUpperCase();
+    if (tier && tier.audienceRole !== purchaserRole) {
+      throw new ForbiddenException('The selected ticket tier is for a different account type.');
+    }
     const ticketId = crypto.randomUUID();
     const count = await this.prisma.ticket.count({
       where: { tournamentId: body.tournamentId },
@@ -2120,9 +2173,6 @@ export class TicketService {
     const randomChunk1 = crypto.randomBytes(2).toString('hex').toUpperCase();
     const randomChunk2 = crypto.randomBytes(2).toString('hex').toUpperCase();
     const showTicketId = `TCK-2026-${randomChunk1}-${randomChunk2}`;
-    const purchaserRole = (
-      body.purchaserRole || (body.playerId ? 'PLAYER' : 'FAN')
-    ).toUpperCase();
     const userId =
       body.purchasedBy || body.fanId || body.playerId || `user-${Date.now()}`;
 

@@ -22,6 +22,16 @@ export class RequestPayoutDto {
   })
   bankAccount: string;
 
+  @ApiProperty({ description: 'Destination bank or supported payment institution' })
+  @IsString()
+  @IsNotEmpty()
+  bankName: string;
+
+  @ApiProperty({ description: 'Account holder name supplied by the player for admin verification' })
+  @IsString()
+  @IsNotEmpty()
+  accountName: string;
+
   @ApiProperty({
     description: 'Payout withdrawal amount in Naira (₦)',
     example: 5000,
@@ -40,20 +50,4 @@ export class RequestPayoutDto {
   @IsOptional()
   bankCode?: string;
 
-  @ApiPropertyOptional({
-    description:
-      'Bank institution name (e.g., GTBank, Access Bank, Zenith Bank)',
-    example: 'Guaranty Trust Bank',
-  })
-  @IsString()
-  @IsOptional()
-  bankName?: string;
-
-  @ApiPropertyOptional({
-    description: 'Beneficiary account holder name',
-    example: 'Alex Mercer',
-  })
-  @IsString()
-  @IsOptional()
-  accountName?: string;
 }

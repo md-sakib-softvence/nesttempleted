@@ -1,6 +1,6 @@
 import { IsString, IsNumber, Min, IsOptional, IsEnum } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { TicketType } from '@prisma/client';
+import { TicketAudienceRole, TicketType } from '@prisma/client';
 
 export class UpdateTierDto {
   @ApiPropertyOptional({
@@ -18,6 +18,11 @@ export class UpdateTierDto {
   @IsEnum(TicketType)
   @IsOptional()
   type?: TicketType;
+
+  @ApiPropertyOptional({ enum: TicketAudienceRole })
+  @IsEnum(TicketAudienceRole)
+  @IsOptional()
+  audienceRole?: TicketAudienceRole;
 
   @ApiPropertyOptional({
     description: 'Price per ticket',

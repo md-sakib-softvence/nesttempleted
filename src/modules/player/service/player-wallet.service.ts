@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Logger,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RequestPayoutDto } from '../dto/request-payout.dto';
@@ -16,12 +17,22 @@ import {
 } from '@prisma/client';
 import * as crypto from 'crypto';
 import { createActivities } from '../../utils/activity.util';
+import { NotificationGateway } from '../../notification/notification.gateway';
+import {
+  CompletePayoutDto,
+  FailPayoutDto,
+  ReviewPayoutDto,
+  StartPayoutProcessingDto,
+} from '../dto/update-payout-status.dto';
 
 @Injectable()
 export class PlayerWalletService {
   private readonly logger = new Logger(PlayerWalletService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationGateway: NotificationGateway,
+  ) {}
 
   /**
    * Idempotent wallet resolver: Retrieves existing wallet or safely instantiates
@@ -34,7 +45,7 @@ export class PlayerWalletService {
       where: { playerId },
       include: {
         payouts: {
-          where: { status: PayoutStatus.PENDING },
+          where: { status: { in: [PayoutStatus.PENDING, PayoutStatus.APPROVED, PayoutStatus.PROCESSING] } },
         },
       },
     });
@@ -45,7 +56,7 @@ export class PlayerWalletService {
         where: { userId: playerId },
         include: {
           payouts: {
-            where: { status: PayoutStatus.PENDING },
+            where: { status: { in: [PayoutStatus.PENDING, PayoutStatus.APPROVED, PayoutStatus.PROCESSING] } },
           },
         },
       });
@@ -65,7 +76,7 @@ export class PlayerWalletService {
         },
         include: {
           payouts: {
-            where: { status: PayoutStatus.PENDING },
+            where: { status: { in: [PayoutStatus.PENDING, PayoutStatus.APPROVED, PayoutStatus.PROCESSING] } },
           },
         },
       });
@@ -171,6 +182,382 @@ export class PlayerWalletService {
       pagination,
       meta: pagination,
     };
+  }
+
+  async getMyPayouts(
+    playerId: string,
+    options: { page?: number | string; limit?: number | string; reference?: string } = {},
+  ) {
+    const wallet = await this.getOrCreateWallet(playerId);
+    const page = Math.max(1, Number(options.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(options.limit) || 20));
+    const where = {
+      playerId,
+      ...(options.reference?.trim() ? { reference: options.reference.trim() } : {}),
+    };
+    const [total, items] = await Promise.all([
+      this.prisma.payoutRequest.count({ where }),
+      this.prisma.payoutRequest.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          payoutId: true,
+          reference: true,
+          bankName: true,
+          accountName: true,
+          accountNumber: true,
+          amount: true,
+          currency: true,
+          status: true,
+          rejectionReason: true,
+          failureReason: true,
+          transferReference: true,
+          createdAt: true,
+          updatedAt: true,
+          processedAt: true,
+          reviewedAt: true,
+          reviewedBy: true,
+          events: { orderBy: { createdAt: 'asc' } },
+        },
+      }),
+    ]);
+    return {
+      walletId: wallet.walletId,
+      items: items.map((item) => ({
+        ...item,
+        accountNumber: `******${item.accountNumber.slice(-4)}`,
+      })),
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  async listPayoutRequests(options: {
+    status?: string;
+    page?: number | string;
+    limit?: number | string;
+  } = {}) {
+    const page = Math.max(1, Number(options.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(options.limit) || 20));
+    const validStatuses = Object.values(PayoutStatus) as string[];
+    if (options.status && !validStatuses.includes(options.status.toUpperCase())) {
+      throw new BadRequestException(`Invalid payout status: ${options.status}`);
+    }
+    const where = options.status
+      ? { status: options.status.toUpperCase() as PayoutStatus }
+      : {};
+    const [total, items] = await Promise.all([
+      this.prisma.payoutRequest.count({ where }),
+      this.prisma.payoutRequest.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          player: {
+            select: {
+              playerId: true,
+              showPlayerId: true,
+              firstName: true,
+              lastName: true,
+              gamerTag: true,
+              email: true,
+              phoneNumber: true,
+              documents: {
+                select: { status: true, type: true },
+              },
+            },
+          },
+          events: { orderBy: { createdAt: 'asc' } },
+        },
+      }),
+    ]);
+    return {
+      items,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  async reviewPayout(payoutId: string, dto: ReviewPayoutDto, adminId: string, adminRole = 'ADMIN', adminEmail?: string) {
+    if (dto.status === 'REJECTED' && !dto.rejectionReason?.trim()) {
+      throw new BadRequestException('A reason is required when rejecting a payout.');
+    }
+    let notificationPlayerId: string | undefined;
+    const result = await this.prisma.$transaction(async (tx) => {
+      const payout = await tx.payoutRequest.findUnique({
+        where: { payoutId },
+        include: { player: { select: { documents: { where: { status: 'VERIFIED' }, select: { id: true } } } } },
+      });
+      if (!payout) throw new NotFoundException('Payout request not found');
+      const reviewableStatuses: PayoutStatus[] = [PayoutStatus.PENDING, PayoutStatus.APPROVED];
+      if (!reviewableStatuses.includes(payout.status)) {
+        throw new ConflictException(`Cannot review a payout in ${payout.status} status.`);
+      }
+      if (dto.status === 'APPROVED') {
+        if (!payout.player.documents.length) {
+          throw new ForbiddenException('Player must have at least one verified identity document before payout approval.');
+        }
+        const result = await tx.payoutRequest.updateMany({
+          where: { payoutId, status: payout.status },
+          data: { status: PayoutStatus.APPROVED, reviewedAt: new Date(), reviewedBy: adminId },
+        });
+        if (!result.count) throw new ConflictException('Payout status changed; refresh and try again.');
+        await this.recordPayoutEvent(tx, {
+          payoutId,
+          action: 'APPROVED',
+          fromStatus: payout.status,
+          toStatus: PayoutStatus.APPROVED,
+          actorId: adminId,
+          actorRole: adminRole,
+          actorEmail: adminEmail,
+        });
+        const approvalMessage = `Your payout request ${payout.reference} was approved and is awaiting manual bank transfer processing. Approval does not mean the transfer is complete.`;
+        await tx.notification.create({
+          data: {
+            userId: payout.playerId,
+            status: 'INFORMATION',
+            title: 'Payout request approved',
+            description: approvalMessage,
+          },
+        });
+        await tx.playerActivityLog.create({
+          data: {
+            playerId: payout.playerId,
+            eventType: 'PAYOUT_APPROVED',
+            title: 'Payout request approved',
+            description: `${approvalMessage} Amount: ${payout.amount} ${payout.currency}.`,
+            actorId: adminId,
+            actorRole: adminRole,
+            fromValue: payout.status,
+            toValue: PayoutStatus.APPROVED,
+          },
+        });
+        notificationPlayerId = payout.playerId;
+      } else {
+        await this.refundPayout(tx, payout, 'REJECTED', dto.rejectionReason!.trim(), adminId, adminRole, adminEmail);
+        notificationPlayerId = payout.playerId;
+      }
+      return tx.payoutRequest.findUnique({ where: { payoutId } });
+    });
+    if (notificationPlayerId) this.notificationGateway.publishCreated(notificationPlayerId);
+    return result;
+  }
+
+  async startPayoutProcessing(payoutId: string, dto: StartPayoutProcessingDto, adminId: string, adminRole = 'ADMIN', adminEmail?: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const payout = await tx.payoutRequest.findUnique({ where: { payoutId } });
+      if (!payout) throw new NotFoundException('Payout request not found');
+      const result = await tx.payoutRequest.updateMany({
+        where: { payoutId, status: PayoutStatus.APPROVED },
+        data: {
+          status: PayoutStatus.PROCESSING,
+          transferReference: dto.transferReference.trim(),
+          processedBy: adminId,
+          processedAt: new Date(),
+        },
+      });
+      if (!result.count) throw new ConflictException('Only approved payouts can be moved to processing.');
+      await this.recordPayoutEvent(tx, {
+        payoutId,
+        action: 'PROCESSING',
+        fromStatus: PayoutStatus.APPROVED,
+        toStatus: PayoutStatus.PROCESSING,
+        actorId: adminId,
+        actorRole: adminRole,
+        actorEmail: adminEmail,
+        transferReference: dto.transferReference.trim(),
+      });
+      return tx.payoutRequest.findUnique({ where: { payoutId } });
+    });
+  }
+
+  async completePayout(payoutId: string, dto: CompletePayoutDto, adminId: string, adminRole = 'ADMIN', adminEmail?: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const payout = await tx.payoutRequest.findUnique({ where: { payoutId } });
+      if (!payout) throw new NotFoundException('Payout request not found');
+      if (payout.status !== PayoutStatus.PROCESSING) {
+        throw new ConflictException('Only processing payouts can be completed.');
+      }
+      if (!payout.transferReference || payout.transferReference !== dto.transferReference.trim()) {
+        throw new BadRequestException('Transfer reference does not match the processing record.');
+      }
+      const changed = await tx.payoutRequest.updateMany({
+        where: { payoutId, status: PayoutStatus.PROCESSING },
+        data: { status: PayoutStatus.COMPLETED, processedBy: adminId, processedAt: new Date() },
+      });
+      if (!changed.count) throw new ConflictException('Payout status changed; refresh and try again.');
+      const released = await tx.wallet.updateMany({
+        where: { walletId: payout.walletId, escrowBalance: { gte: payout.amount } },
+        data: { escrowBalance: { decrement: payout.amount } },
+      });
+      if (!released.count) throw new ConflictException('Reserved payout funds are missing; contact finance support.');
+      await this.updatePayoutLedger(tx, payout.payoutId, TransactionStatus.SUCCESS);
+      await this.recordPayoutEvent(tx, {
+        payoutId,
+        action: 'COMPLETED',
+        fromStatus: PayoutStatus.PROCESSING,
+        toStatus: PayoutStatus.COMPLETED,
+        actorId: adminId,
+        actorRole: adminRole,
+        actorEmail: adminEmail,
+        transferReference: dto.transferReference.trim(),
+      });
+      return tx.payoutRequest.findUnique({ where: { payoutId } });
+    });
+  }
+
+  async failPayout(payoutId: string, dto: FailPayoutDto, adminId: string, adminRole = 'ADMIN', adminEmail?: string) {
+    let notificationPlayerId: string | undefined;
+    const result = await this.prisma.$transaction(async (tx) => {
+      const payout = await tx.payoutRequest.findUnique({ where: { payoutId } });
+      if (!payout) throw new NotFoundException('Payout request not found');
+      if (payout.status !== PayoutStatus.PROCESSING) {
+        throw new ConflictException('Only processing payouts can be marked failed.');
+      }
+      await this.refundPayout(tx, payout, 'FAILED', dto.reason.trim(), adminId, adminRole, adminEmail);
+      notificationPlayerId = payout.playerId;
+      return tx.payoutRequest.findUnique({ where: { payoutId } });
+    });
+    if (notificationPlayerId) this.notificationGateway.publishCreated(notificationPlayerId);
+    return result;
+  }
+
+  private async refundPayout(
+    tx: any,
+    payout: any,
+    status: 'REJECTED' | 'FAILED',
+    reason: string,
+    adminId: string,
+    adminRole = 'ADMIN',
+    adminEmail?: string,
+  ) {
+    const allowed = status === 'REJECTED'
+      ? [PayoutStatus.PENDING, PayoutStatus.APPROVED]
+      : [PayoutStatus.PROCESSING];
+    const changed = await tx.payoutRequest.updateMany({
+      where: { payoutId: payout.payoutId, status: { in: allowed } },
+      data: {
+        status: status === 'REJECTED' ? PayoutStatus.REJECTED : PayoutStatus.FAILED,
+        ...(status === 'REJECTED' ? { rejectionReason: reason } : { failureReason: reason }),
+        ...(status === 'REJECTED' ? { reviewedAt: new Date(), reviewedBy: adminId } : {}),
+        processedBy: adminId,
+        processedAt: new Date(),
+      },
+    });
+    if (!changed.count) throw new ConflictException('Payout status changed; refresh and try again.');
+
+    const walletUpdate = await tx.wallet.updateMany({
+      where: { walletId: payout.walletId, escrowBalance: { gte: payout.amount } },
+      data: {
+        cashBalance: { increment: payout.amount },
+        escrowBalance: { decrement: payout.amount },
+      },
+    });
+    if (!walletUpdate.count) throw new ConflictException('Reserved payout funds are missing; the refund was not applied.');
+    const wallet = await tx.wallet.findUniqueOrThrow({ where: { walletId: payout.walletId } });
+    await this.updatePayoutLedger(
+      tx,
+      payout.payoutId,
+      status === 'REJECTED' ? TransactionStatus.CANCELLED : TransactionStatus.FAILED,
+    );
+    await tx.walletTransaction.create({
+      data: {
+        walletId: payout.walletId,
+        reference: `WTR-${crypto.randomBytes(12).toString('hex').toUpperCase()}`,
+        type: WalletTransactionType.PAYOUT_REJECTED,
+        amount: payout.amount,
+        balanceAfter: wallet.cashBalance,
+        currency: payout.currency,
+        status: TransactionStatus.SUCCESS,
+        description: `Payout ${status.toLowerCase()} refund: ${reason}`,
+        metadata: { payoutId: payout.payoutId, payoutReference: payout.reference },
+      },
+    });
+    const reasonMessage = status === 'REJECTED'
+      ? `Your payout request ${payout.reference} was rejected. ${reason}`
+      : `Your payout request ${payout.reference} failed and the reserved funds were returned. ${reason}`;
+    await tx.notification.create({
+      data: {
+        userId: payout.playerId,
+        status: 'ALERT',
+        title: status === 'REJECTED' ? 'Payout request rejected' : 'Payout transfer failed',
+        description: reasonMessage,
+      },
+    });
+    await tx.playerActivityLog.create({
+      data: {
+        playerId: payout.playerId,
+        eventType: status === 'REJECTED' ? 'PAYOUT_REJECTED' : 'PAYOUT_FAILED',
+        title: status === 'REJECTED' ? 'Payout request rejected' : 'Payout transfer failed',
+        description: `${reasonMessage} Refund of ${payout.amount} ${payout.currency} was returned to your withdrawable balance.`,
+        actorId: adminId,
+        actorRole: adminRole,
+        fromValue: payout.status,
+        toValue: status,
+      },
+    });
+    await this.recordPayoutEvent(tx, {
+      payoutId: payout.payoutId,
+      action: status,
+      fromStatus: payout.status,
+      toStatus: status,
+      actorId: adminId,
+      actorRole: adminRole,
+      actorEmail: adminEmail,
+      reason,
+    });
+  }
+
+  private async recordPayoutEvent(
+    tx: any,
+    event: {
+      payoutId: string;
+      action: string;
+      fromStatus?: string | null;
+      toStatus: string;
+      actorId?: string | null;
+      actorRole: string;
+      actorEmail?: string | null;
+      reason?: string | null;
+      transferReference?: string | null;
+    },
+  ) {
+    const admin = event.actorId && event.actorRole.toUpperCase() !== 'PLAYER'
+      ? await tx.admin.findUnique({
+          where: { adminId: event.actorId },
+          select: { name: true, email: true },
+        })
+      : null;
+    return tx.payoutRequestEvent.create({
+      data: {
+        payoutId: event.payoutId,
+        action: event.action,
+        fromStatus: event.fromStatus || null,
+        toStatus: event.toStatus,
+        actorId: event.actorId || null,
+        actorRole: event.actorRole.toUpperCase(),
+        actorName: admin?.name || null,
+        actorEmail: admin?.email || event.actorEmail || null,
+        reason: event.reason || null,
+        transferReference: event.transferReference || null,
+      },
+    });
+  }
+
+  private async updatePayoutLedger(tx: any, payoutId: string, status: TransactionStatus) {
+    const entry = await tx.walletTransaction.findFirst({
+      where: {
+        type: WalletTransactionType.WITHDRAWAL_REQUEST,
+        metadata: { path: ['payoutId'], equals: payoutId },
+      },
+      select: { transactionId: true },
+    });
+    if (!entry) throw new NotFoundException('Payout ledger entry not found');
+    await tx.walletTransaction.update({
+      where: { transactionId: entry.transactionId },
+      data: { status },
+    });
   }
 
   /** Admin view of a selected player's financial totals and ledger entries. */
@@ -372,7 +759,7 @@ export class PlayerWalletService {
    * High Security & Double-Spending Protection:
    * Wrapped in an atomic DB transaction with pessimistic balance verification.
    */
-  async requestPayout(playerId: string, dto: RequestPayoutDto) {
+  async requestPayout(playerId: string, dto: RequestPayoutDto, playerEmail?: string) {
     if (!playerId) {
       throw new BadRequestException('Player ID is required');
     }
@@ -415,21 +802,24 @@ export class PlayerWalletService {
         );
       }
 
-      const newCashBalance = Number(
-        (wallet.cashBalance - payoutAmount).toFixed(2),
-      );
-      const newEscrowBalance = Number(
-        (wallet.escrowBalance + payoutAmount).toFixed(2),
-      );
+      const newCashBalance = Number((wallet.cashBalance - payoutAmount).toFixed(2));
+      const newEscrowBalance = Number((wallet.escrowBalance + payoutAmount).toFixed(2));
 
-      // 4. Atomically decrement withdrawable cash balance and allocate to clearing escrow
-      await tx.wallet.update({
-        where: { walletId: wallet.walletId },
+      // Compare-and-update prevents two simultaneous requests from spending the same balance.
+      const reserved = await tx.wallet.updateMany({
+        where: {
+          walletId: wallet.walletId,
+          status: WalletStatus.ACTIVE,
+          cashBalance: { gte: payoutAmount },
+        },
         data: {
-          cashBalance: newCashBalance,
-          escrowBalance: newEscrowBalance,
+          cashBalance: { decrement: payoutAmount },
+          escrowBalance: { increment: payoutAmount },
         },
       });
+      if (!reserved.count) {
+        throw new BadRequestException('Available balance changed or is insufficient. Refresh your wallet and try again.');
+      }
 
       const uniqueSuffix = crypto.randomBytes(4).toString('hex').toUpperCase();
       const payoutReference = `PAYOUT-${Date.now().toString(36).toUpperCase()}-${uniqueSuffix}`;
@@ -456,6 +846,15 @@ export class PlayerWalletService {
         },
       });
 
+      await this.recordPayoutEvent(tx, {
+        payoutId: payoutRecord.payoutId,
+        action: 'REQUESTED',
+        toStatus: PayoutStatus.PENDING,
+        actorId: playerId,
+        actorRole: 'PLAYER',
+        actorEmail: playerEmail,
+      });
+
       // 6. Record debit in Ledger History
       const ledgerEntry = await tx.walletTransaction.create({
         data: {
@@ -466,11 +865,11 @@ export class PlayerWalletService {
           balanceAfter: newCashBalance,
           currency: wallet.currency || 'NGN',
           status: TransactionStatus.PENDING,
-          description: `Disburse Payout Settlement to ${dto.bankName || 'Bank'} [${cleanAccount}]`,
+          description: `Disburse Payout Settlement to ${dto.bankName} [******${cleanAccount.slice(-4)}]`,
           metadata: {
             payoutId: payoutRecord.payoutId,
             payoutReference,
-            accountNumber: cleanAccount,
+            accountLast4: cleanAccount.slice(-4),
           },
         },
       });
