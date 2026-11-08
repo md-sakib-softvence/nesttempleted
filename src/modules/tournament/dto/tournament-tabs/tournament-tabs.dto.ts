@@ -279,12 +279,37 @@ export class UpdatePlayerCardTemplateTabDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  logo?: string;
+  tournamentLogo?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  tournamentLogo?: string;
+  tournamentBanner?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  primaryOrganization?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  secondaryOrganization?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  fanPassLogo?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  fanPassBg?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  logo?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -308,6 +333,11 @@ export class UpdatePlayerCardTemplateTabDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsString()
+  fanPassArtUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   sponsors?: any[];
 
   @ApiPropertyOptional()
@@ -316,6 +346,36 @@ export class UpdatePlayerCardTemplateTabDto {
 }
 
 export class UpdateFanPassTemplateTabDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  tournamentLogo?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  tournamentBanner?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  primaryOrganization?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  secondaryOrganization?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  fanPassLogo?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  fanPassBg?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -340,11 +400,6 @@ export class UpdateFanPassTemplateTabDto {
   @IsOptional()
   @IsString()
   logo?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  tournamentLogo?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -610,12 +665,37 @@ export class UpdateSettingsTabDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  logo?: string;
+  tournamentLogo?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  tournamentLogo?: string;
+  tournamentBanner?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  primaryOrganization?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  secondaryOrganization?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  fanPassLogo?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  fanPassBg?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  logo?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

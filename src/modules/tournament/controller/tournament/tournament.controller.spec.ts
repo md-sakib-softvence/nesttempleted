@@ -188,7 +188,7 @@ describe('TournamentController (Success Message & Spec API Verification)', () =>
     });
   });
 
-  it('update should map banner and tournamentLogo aliases into canvasImage and tournamentLogoUrl', async () => {
+  it('update should map banner and tournamentLogo aliases into tournamentBanner and tournamentLogo', async () => {
     const res = await controller.update(
       't1',
       {
@@ -199,9 +199,39 @@ describe('TournamentController (Success Message & Spec API Verification)', () =>
     );
     expect(res.success).toBe(true);
     expect(service.updateTournament).toHaveBeenCalledWith('t1', {
+      tournamentBanner: 'banner-image-key.png',
       canvasImage: 'banner-image-key.png',
-      fanPassArtUrl: 'banner-image-key.png',
+      tournamentLogo: 'logo-image-key.png',
       tournamentLogoUrl: 'logo-image-key.png',
+    });
+  });
+
+  it('update should handle all 6 independent media fields without cross-overwriting', async () => {
+    const res = await controller.update(
+      't1',
+      {
+        tournamentLogo: 'logo.png',
+        tournamentBanner: 'banner.png',
+        primaryOrganization: 'org1.png',
+        secondaryOrganization: 'org2.png',
+        fanPassLogo: 'fan-logo.png',
+        fanPassBg: 'fan-bg.png',
+      },
+      {},
+    );
+    expect(res.success).toBe(true);
+    expect(service.updateTournament).toHaveBeenCalledWith('t1', {
+      tournamentLogo: 'logo.png',
+      tournamentLogoUrl: 'logo.png',
+      tournamentBanner: 'banner.png',
+      canvasImage: 'banner.png',
+      primaryOrganization: 'org1.png',
+      playerOrgUrl: 'org1.png',
+      secondaryOrganization: 'org2.png',
+      prOrgUrl: 'org2.png',
+      fanPassLogo: 'fan-logo.png',
+      fanPassBg: 'fan-bg.png',
+      fanPassArtUrl: 'fan-bg.png',
     });
   });
 });

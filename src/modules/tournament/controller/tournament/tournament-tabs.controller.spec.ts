@@ -225,6 +225,23 @@ describe('TournamentTabsController', () => {
       banner: 'banner-abc.png',
       tournamentLogo: 'logo-xyz.png',
     });
+
+    await controller.patchSettingsTab('t-1', {
+      tournamentLogo: 'logo.png',
+      tournamentBanner: 'banner.png',
+      primaryOrganization: 'org1.png',
+      secondaryOrganization: 'org2.png',
+      fanPassLogo: 'fan-logo.png',
+      fanPassBg: 'fan-bg.png',
+    });
+    expect(tabsService.patchSettingsTab).toHaveBeenCalledWith('t-1', {
+      tournamentLogo: 'logo.png',
+      tournamentBanner: 'banner.png',
+      primaryOrganization: 'org1.png',
+      secondaryOrganization: 'org2.png',
+      fanPassLogo: 'fan-logo.png',
+      fanPassBg: 'fan-bg.png',
+    });
   });
 
   it('should dynamically get and patch tab by name', async () => {

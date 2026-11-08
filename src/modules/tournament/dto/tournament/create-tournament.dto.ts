@@ -690,6 +690,42 @@ export class CreateTournamentDto {
 
   // File & Media Upload / URL Fields
   @ApiPropertyOptional({
+    description: 'Tournament official logo (1:1 emblem)',
+  })
+  @IsOptional()
+  tournamentLogo?: any;
+
+  @ApiPropertyOptional({
+    description: 'Tournament hero banner (16:9 banner)',
+  })
+  @IsOptional()
+  tournamentBanner?: any;
+
+  @ApiPropertyOptional({
+    description: 'Primary host/organizer logo',
+  })
+  @IsOptional()
+  primaryOrganization?: any;
+
+  @ApiPropertyOptional({
+    description: 'Secondary PR/sponsor organizer logo',
+  })
+  @IsOptional()
+  secondaryOrganization?: any;
+
+  @ApiPropertyOptional({
+    description: 'Fan Pass logo',
+  })
+  @IsOptional()
+  fanPassLogo?: any;
+
+  @ApiPropertyOptional({
+    description: 'Fan Pass background artwork',
+  })
+  @IsOptional()
+  fanPassBg?: any;
+
+  @ApiPropertyOptional({
     description: 'Tournament hero banner URL or file (alias for canvasImage)',
     example: 'https://cdn.tapegaming.com/tournaments/banner.png',
   })
@@ -725,14 +761,6 @@ export class CreateTournamentDto {
   )
   @IsOptional()
   tournamentLogoUrl?: any;
-
-  @ApiPropertyOptional({
-    type: 'string',
-    format: 'binary',
-    description: 'Tournament Logo file (alias)',
-  })
-  @IsOptional()
-  tournamentLogo?: any;
 
   @ApiPropertyOptional({
     description: 'Rules document files or string URLs',
