@@ -1,4 +1,4 @@
-﻿ALTER TABLE "Player"
+ALTER TABLE "Player"
 ADD COLUMN "coins" INTEGER NOT NULL DEFAULT 0;
 
 CREATE TABLE "PlayerCoinTransaction" (

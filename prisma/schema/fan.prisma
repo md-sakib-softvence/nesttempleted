@@ -27,6 +27,7 @@ model Fan {
   tournamentApplications FanTournamentApplication[]
   predictions            FanPrediction[]
   coinTransactions       FanCoinTransaction[]
+  coinRefillRequests     FanCoinRefillRequest[]
 
   @@index([gamerTag])
 }

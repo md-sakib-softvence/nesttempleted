@@ -1150,10 +1150,12 @@ export class PlayerService {
           name: r.name,
           prizeDescription: r.prizeDescription,
           status: r.status,
+          registrationCloseDate: r.registrationCloseDate,
           tournamentId: r.tournamentId,
           tournamentName: r.tournament?.name || 'Tournament',
           totalEntries: entries.length,
           isJoined,
+          ticketNumber: entries.find((e: any) => e.userId === playerId)?.ticketNumber || null,
           myWin: myWin
             ? {
                 ticketNumber: myWin.ticketNumber,

@@ -54,15 +54,15 @@ model TicketTier {
   tournamentId String
   tournament   Tournament @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
 
-  name        String // e.g. "Day Pass", "VIP Pass", "Season Pass"
+  name         String // e.g. "Day Pass", "VIP Pass", "Season Pass"
   audienceRole TicketAudienceRole @default(FAN)
-  type        TicketType @default(DAY_PASS)
-  price       Float
-  currency    String     @default("NGN")
-  capacity    Int        @default(100) // Total available seats/tickets
-  sold        Int        @default(0) // Total sold so far
-  description String?
-  status      String     @default("ACTIVE") // ACTIVE, HIDDEN
+  type         TicketType         @default(DAY_PASS)
+  price        Float
+  currency     String             @default("NGN")
+  capacity     Int                @default(100) // Total available seats/tickets
+  sold         Int                @default(0) // Total sold so far
+  description  String?
+  status       String             @default("ACTIVE") // ACTIVE, HIDDEN
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

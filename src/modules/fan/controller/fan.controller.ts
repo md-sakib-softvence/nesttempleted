@@ -23,12 +23,12 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { FanService } from '../service/fan.service';
 import { FanPlayerRegistrationService } from '../service/fan-player-registration.service';
-import { FanCoinPurchaseService } from '../service/fan-coin-purchase.service';
+import { FanCoinRefillService } from '../service/fan-coin-refill.service';
 import { CreateFanDto } from '../dto/create-fan.dto';
-import { CreditFanCoinsDto } from '../dto/credit-fan-coins.dto';
 import { UpdateFanDto } from '../dto/update-fan.dto';
 import { CompleteFanTournamentApplicationDto } from '../dto/complete-fan-tournament-application.dto';
-import { PurchaseFanCoinsDto } from '../dto/purchase-fan-coins.dto';
+import { CreateFanCoinRefillRequestDto } from '../dto/create-fan-coin-refill-request.dto';
+import { ReviewFanCoinRefillRequestDto } from '../dto/review-fan-coin-refill-request.dto';
 import { VerifyFanTournamentPaymentDto } from '../dto/verify-fan-tournament-payment.dto';
 import { CreateFanTournamentApplicationDto } from '../dto/create-fan-tournament-application.dto';
 import { sendResponse } from '../../utils/response.util';
@@ -52,43 +52,70 @@ export class FanController {
   constructor(
     private readonly fanService: FanService,
     private readonly fanPlayerRegistrationService: FanPlayerRegistrationService,
-    private readonly fanCoinPurchaseService: FanCoinPurchaseService,
+    private readonly fanCoinRefillService: FanCoinRefillService,
   ) {}
 
-  @Get('coins/packages')
+  @Post('coins/requests')
   @Roles(Role.FAN, 'fan')
-  @ApiOperation({ summary: 'List available fan coin purchase packages' })
-  async getFanCoinPackages() {
-    const data = this.fanCoinPurchaseService.getPackages();
-    return sendResponse({ message: 'Fan coin packages retrieved', data });
+  @ApiOperation({ summary: 'Request a free coin refill after the fan balance reaches zero' })
+  async createFanCoinRefillRequest(
+    @Req() req: Request & { user: { userId: string } },
+    @Body() dto: CreateFanCoinRefillRequestDto,
+  ) {
+    const data = await this.fanCoinRefillService.createRequest(req.user.userId, dto);
+    return sendResponse({ message: 'Coin refill request sent to admin', data });
   }
 
-  @Post('coins/purchases')
+  @Get('coins/requests')
   @Roles(Role.FAN, 'fan')
-  @ApiOperation({ summary: 'Start a Flutterwave checkout for a fan coin package' })
-  async startFanCoinPurchase(
+  @ApiOperation({ summary: 'Get the authenticated fan coin balance and refill request history' })
+  async getMyFanCoinRefillRequests(
     @Req() req: Request & { user: { userId: string } },
-    @Body() dto: PurchaseFanCoinsDto,
   ) {
-    const data = await this.fanCoinPurchaseService.startPurchase(
-      req.user.userId,
-      dto.packageId,
-    );
-    return sendResponse({ message: 'Fan coin checkout created', data });
+    const data = await this.fanCoinRefillService.listMyRequests(req.user.userId);
+    return sendResponse({ message: 'Your coin refill requests retrieved', data });
   }
 
-  @Post('coins/purchases/:txRef/verify')
-  @Roles(Role.FAN, 'fan')
-  @ApiOperation({ summary: 'Verify a fan coin payment and credit coins once' })
-  async verifyFanCoinPurchase(
-    @Req() req: Request & { user: { userId: string } },
-    @Param('txRef') txRef: string,
+  @Get('admin/coins/requests')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  @ApiOperation({ summary: 'List fan free coin refill requests for admin review' })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['PENDING', 'APPROVED', 'REJECTED', 'ALL'],
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async listFanCoinRefillRequestsForAdmin(
+    @Query('status') status?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
   ) {
-    const data = await this.fanCoinPurchaseService.verifyPurchase(
-      req.user.userId,
-      txRef,
-    );
-    return sendResponse({ message: 'Fan coin payment verified', data });
+    const data = await this.fanCoinRefillService.listAdminRequests({
+      status,
+      page,
+      limit,
+    });
+    return sendResponse({
+      message: 'Fan coin refill requests retrieved successfully',
+      data,
+      meta: data.pagination,
+    });
+  }
+
+  @Patch('admin/coins/requests/:requestId/review')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  @ApiOperation({ summary: 'Approve and grant free coins or reject a fan refill request' })
+  async reviewFanCoinRefillRequest(
+    @Param('requestId') requestId: string,
+    @Body() dto: ReviewFanCoinRefillRequestDto,
+    @Req() req: Request & { user: { userId: string; role: string; email?: string } },
+  ) {
+    const data = await this.fanCoinRefillService.reviewRequest(requestId, dto, req.user);
+    return sendResponse({
+      message: dto.decision === 'APPROVED' ? 'Coin refill request approved' : 'Coin refill request rejected',
+      data,
+    });
   }
 
   @Post('tournaments/:id/registrations')
@@ -278,25 +305,6 @@ export class FanController {
       }
       throw error;
     }
-  }
-
-  @Patch(':id/coins/credit')
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Credit coins to a fan account' })
-  async creditFanCoins(
-    @Param('id') id: string,
-    @Body() dto: CreditFanCoinsDto,
-  ) {
-    const data = await this.fanService.creditCoins(
-      id,
-      dto.amount,
-      dto.reason,
-    );
-
-    return sendResponse({
-      message: `${dto.amount} coins credited successfully`,
-      data,
-    });
   }
 
   @Patch(':id')

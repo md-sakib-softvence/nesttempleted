@@ -109,44 +109,6 @@ export class FanService {
     return newFan;
   }
 
-  async creditCoins(fanId: string, amount: number, reason?: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const fan = await tx.fan.findUnique({
-        where: { fanId },
-        select: { fanId: true, isDeleted: true },
-      });
-
-      if (!fan || fan.isDeleted) {
-        throw new NotFoundException('Fan not found');
-      }
-
-      const updatedFan = await tx.fan.update({
-        where: { fanId },
-        data: { coins: { increment: amount } },
-        select: {
-          fanId: true,
-          showFanId: true,
-          firstName: true,
-          surname: true,
-          email: true,
-          coins: true,
-        },
-      });
-
-      await tx.fanCoinTransaction.create({
-        data: {
-          fanId,
-          type: 'ADMIN_CREDIT',
-          amount,
-          balanceAfter: updatedFan.coins,
-          description: reason?.trim() || 'Coins credited by an administrator',
-        },
-      });
-
-      return updatedFan;
-    });
-  }
-
   async updateFan(id: string, updateFanDto: UpdateFanDto) {
     const existingFan = await this.prisma.fan.findUnique({
       where: { fanId: id },

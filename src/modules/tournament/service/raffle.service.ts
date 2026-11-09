@@ -13,6 +13,7 @@ import {
   calculatePaginationMeta,
   QueryOptions,
 } from '../../utils/query.util';
+import { parseRaffleRegistrationCloseDate } from '../utils/raffle-date.util';
 
 @Injectable()
 export class RaffleService {
@@ -245,7 +246,7 @@ export class RaffleService {
         numberOfWinners: dto.numberOfWinners || 1,
         drawDate: dto.drawDate ? new Date(dto.drawDate) : null,
         registrationCloseDate: dto.registrationCloseDate
-          ? new Date(dto.registrationCloseDate)
+          ? parseRaffleRegistrationCloseDate(dto.registrationCloseDate)
           : null,
         entries: [],
         winners: [],
@@ -289,7 +290,7 @@ export class RaffleService {
     // 2. Check if registration close date has passed
     if (
       raffle.registrationCloseDate &&
-      new Date(raffle.registrationCloseDate) < new Date()
+      new Date(raffle.registrationCloseDate) <= new Date()
     ) {
       throw new BadRequestException('Raffle registration deadline has passed');
     }

@@ -8,8 +8,8 @@ import {
 } from './self-schedule.util';
 import { VenueSchedule } from './tournament-calculation.util';
 
-describe('Player Self Scheduling Escalation Engine v1.2 Contract', () => {
-  describe('1. Escalation Window Time Derivation & Phase State Machine', () => {
+describe('Player Schedule 24-hour Window', () => {
+  describe('1. Player choice deadline and automatic assignment phase', () => {
     it('returns NOT_OPEN when match.selfSchedulingOpenedAt is null or undefined (Section 2)', () => {
       const stateNull = evaluateSelfSchedulingWindow(null);
       expect(stateNull.phase).toBe(0);
@@ -25,10 +25,10 @@ describe('Player Self Scheduling Escalation Engine v1.2 Contract', () => {
       expect(stateUndef.phaseStatus).toBe(MatchSchedulingPhase.NOT_OPEN);
     });
 
-    it('evaluates Phase 1 (0 to 48 hours): player freely chooses slot, unescalated (Section 3)', () => {
+    it('allows a player to choose a slot during the first 24 hours', () => {
       // Opened Monday 10:00 AM (2026-10-26T10:00:00Z)
       const openedAt = '2026-10-26T10:00:00Z';
-      // 6 hours 28 minutes later -> Monday 16:28:00Z -> 41h 32m remaining in Phase 1
+      // 6 hours 28 minutes later -> Monday 16:28:00Z -> 17h 32m remaining
       const simTime = '2026-10-26T16:28:00Z';
 
       const state = evaluateSelfSchedulingWindow(openedAt, simTime);
@@ -38,36 +38,13 @@ describe('Player Self Scheduling Escalation Engine v1.2 Contract', () => {
       expect(state.isEscalated).toBe(false);
       expect(state.isAutoAssignmentDue).toBe(false);
       expect(state.elapsedHours).toBe(6);
-      expect(state.timeRemainingFormatted).toBe('41h 32m');
-      // Auto assignment is due at 96 hours (Friday 10:00 AM) -> 89h 32m remaining
-      expect(state.timeUntilAutoAssignmentFormatted).toBe('89h 32m');
+      expect(state.timeRemainingFormatted).toBe('17h 32m');
+      expect(state.timeUntilAutoAssignmentFormatted).toBe('17h 32m');
     });
 
-    it('evaluates Phase 2 (48 to 96 hours): escalated, warning active, player can still choose (Section 6 & 19)', () => {
-      // Opened Monday 10:00 AM (2026-10-26T10:00:00Z)
+    it('closes player booking and makes automatic assignment due at exactly 24 hours', () => {
       const openedAt = '2026-10-26T10:00:00Z';
-      // Thursday 3:00 PM (2026-10-29T15:00:00Z) -> exactly 77 hours elapsed
-      const simTime = '2026-10-29T15:00:00Z';
-
-      const state = evaluateSelfSchedulingWindow(openedAt, simTime);
-      expect(state.phase).toBe(2);
-      expect(state.phaseStatus).toBe(
-        MatchSchedulingPhase.SELF_SCHEDULING_ESCALATED,
-      );
-      expect(state.canPlayerSelectSlot).toBe(true);
-      expect(state.isEscalated).toBe(true);
-      expect(state.isAutoAssignmentDue).toBe(false);
-      expect(state.elapsedHours).toBe(77);
-      // Exactly 19 hours remaining before automatic assignment at 96 hours (Section 19)
-      expect(state.timeUntilAutoAssignmentFormatted).toBe('19h 0m');
-      expect(state.timeRemainingFormatted).toBe('19h 0m');
-    });
-
-    it('evaluates Phase 3 (96+ hours): player choice closes, automatic assignment due (Section 7 & 19)', () => {
-      // Opened Monday 10:00 AM (2026-10-26T10:00:00Z)
-      const openedAt = '2026-10-26T10:00:00Z';
-      // Friday 11:00 AM (2026-10-30T11:00:00Z) -> 97 hours elapsed
-      const simTime = '2026-10-30T11:00:00Z';
+      const simTime = '2026-10-27T10:00:00Z';
 
       const state = evaluateSelfSchedulingWindow(openedAt, simTime);
       expect(state.phase).toBe(3);
@@ -75,7 +52,21 @@ describe('Player Self Scheduling Escalation Engine v1.2 Contract', () => {
       expect(state.canPlayerSelectSlot).toBe(false);
       expect(state.isEscalated).toBe(false);
       expect(state.isAutoAssignmentDue).toBe(true);
-      expect(state.elapsedHours).toBe(97);
+      expect(state.elapsedHours).toBe(24);
+      expect(state.timeUntilAutoAssignmentFormatted).toBe('0h 0m');
+    });
+
+    it('keeps automatic assignment due after the 24-hour deadline', () => {
+      const openedAt = '2026-10-26T10:00:00Z';
+      const simTime = '2026-10-27T11:00:00Z';
+
+      const state = evaluateSelfSchedulingWindow(openedAt, simTime);
+      expect(state.phase).toBe(3);
+      expect(state.phaseStatus).toBe(MatchSchedulingPhase.AUTO_ASSIGNMENT_DUE);
+      expect(state.canPlayerSelectSlot).toBe(false);
+      expect(state.isEscalated).toBe(false);
+      expect(state.isAutoAssignmentDue).toBe(true);
+      expect(state.elapsedHours).toBe(25);
       expect(state.timeRemainingFormatted).toBe('0h 0m');
       expect(state.timeUntilAutoAssignmentMs).toBe(0);
     });

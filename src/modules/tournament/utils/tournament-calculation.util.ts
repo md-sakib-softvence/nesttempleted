@@ -1714,9 +1714,13 @@ export function allocateMatch(
     );
   }
 
-  if (targetSlot.canonicalMatchId && targetSlot.canonicalMatchId !== matchId) {
+  const occupiedBy =
+    targetSlot.canonicalMatchId ||
+    targetSlot.game?.canonicalMatchId ||
+    targetSlot.game?.id;
+  if (occupiedBy && occupiedBy !== matchId) {
     throw new BadRequestException(
-      `Screen "${screen.screenName}" timeslot ${time} on ${date} is already occupied by match ${targetSlot.canonicalMatchId}.`,
+      `Screen "${screen.screenName}" timeslot ${time} on ${date} is already occupied by match ${occupiedBy}.`,
     );
   }
 
@@ -1726,7 +1730,9 @@ export function allocateMatch(
         const d = s.days.find((dayItem) => dayItem.date === date);
         if (d) {
           const slot = d.timeslots.find((slotItem) => slotItem.time === time);
-          if (slot?.game && slot.canonicalMatchId !== matchId) {
+          const slotMatchId = slot &&
+            (slot.canonicalMatchId || slot.game?.canonicalMatchId || slot.game?.id);
+          if (slot?.game && slotMatchId !== matchId) {
             const game = slot.game;
             if (
               match.player1Id &&
@@ -1757,7 +1763,11 @@ export function allocateMatch(
     for (const s of v.screens) {
       for (const d of s.days) {
         for (const slot of d.timeslots) {
-          if (slot.canonicalMatchId === matchId) {
+          if (
+            slot.canonicalMatchId === matchId ||
+            slot.game?.canonicalMatchId === matchId ||
+            slot.game?.id === matchId
+          ) {
             slot.game = null;
             slot.canonicalMatchId = null;
           }

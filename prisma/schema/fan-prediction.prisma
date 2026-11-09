@@ -40,6 +40,33 @@ model FanCoinTransaction {
   @@index([predictionId])
 }
 
+model FanCoinRefillRequest {
+  requestId       String              @id @default(uuid())
+  fanId           String
+  fan             Fan                 @relation(fields: [fanId], references: [fanId], onDelete: Cascade)
+  requestedCoins  Int
+  approvedCoins   Int?
+  reason          String?
+  status          FanCoinRefillStatus @default(PENDING)
+  reviewNote      String?
+  reviewedById    String?
+  reviewedByRole  String?
+  reviewedByEmail String?
+  pendingFanId    String?             @unique
+  reviewedAt      DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([fanId, status, createdAt])
+  @@index([status, createdAt])
+}
+
+enum FanCoinRefillStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum FanPredictionStatus {
   PENDING
   WON
