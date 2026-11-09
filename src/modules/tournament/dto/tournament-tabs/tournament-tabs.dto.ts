@@ -7,6 +7,8 @@ import {
   IsBoolean,
   IsEnum,
   IsArray,
+  IsDateString,
+  ValidateNested,
 } from 'class-validator';
 import {
   TournamentFormat,
@@ -135,7 +137,34 @@ export class UpdateRegistrationsTabDto {
   selectedPlayerIds?: string[];
 }
 
+export class UpdateMatchdaySchedulingWindowDto {
+  @ApiPropertyOptional({ example: '2026-11-12' })
+  @IsDateString()
+  date!: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsBoolean()
+  isWindowOpen!: boolean;
+
+  @ApiPropertyOptional({ example: '2026-11-12T09:00:00.000Z' })
+  @IsOptional()
+  @IsString()
+  windowOpenTime?: string;
+
+  @ApiPropertyOptional({ example: '2026-11-12T18:00:00.000Z' })
+  @IsOptional()
+  @IsString()
+  windowCloseTime?: string;
+}
+
 export class UpdateScheduleTabDto {
+  @ApiPropertyOptional({ type: [UpdateMatchdaySchedulingWindowDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpdateMatchdaySchedulingWindowDto)
+  matchdayWindows?: UpdateMatchdaySchedulingWindowDto[];
+
   @ApiPropertyOptional({ enum: SchedulingMode })
   @IsOptional()
   @IsEnum(SchedulingMode)

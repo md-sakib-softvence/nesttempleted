@@ -65,7 +65,7 @@ export class PlayerWalletController {
   })
   async getRefillPackages() {
     return sendResponse({
-      message: 'Player refill packages retrieved',
+      message: 'Player wallet credit packages retrieved',
       data: this.playerRefillService.getPackages(),
     });
   }
@@ -80,8 +80,13 @@ export class PlayerWalletController {
     @Param('kind') kind: string,
     @Body('packageId') packageId: string,
   ) {
-    if (kind !== 'coins' && kind !== 'credits')
-      throw new BadRequestException('Refill kind must be coins or credits.');
+    if (kind === 'coins') {
+      throw new BadRequestException(
+        'Coins cannot be purchased. Coin grants must be reviewed by an admin.',
+      );
+    }
+    if (kind !== 'credits')
+      throw new BadRequestException('Only wallet credit refills are supported.');
     const data = await this.playerRefillService.startPurchase(
       req.user.userId,
       kind,
@@ -100,8 +105,13 @@ export class PlayerWalletController {
     @Param('kind') kind: string,
     @Param('txRef') txRef: string,
   ) {
-    if (kind !== 'coins' && kind !== 'credits')
-      throw new BadRequestException('Refill kind must be coins or credits.');
+    if (kind === 'coins') {
+      throw new BadRequestException(
+        'Coins cannot be purchased. Coin grants must be reviewed by an admin.',
+      );
+    }
+    if (kind !== 'credits')
+      throw new BadRequestException('Only wallet credit refills are supported.');
     const data = await this.playerRefillService.verifyPurchase(
       req.user.userId,
       kind,

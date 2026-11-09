@@ -10,7 +10,7 @@ import { TournamentMatchesService } from './tournament-matches.service';
  * SelfScheduleWorkerService
  *
  * Background scheduled worker that periodically inspects PLAYER_SELF tournaments
- * and automatically assigns matches that have reached Phase 3 (96h+ elapsed).
+ * and automatically assigns matches whose 24-hour player choice window expired.
  * If no valid slot exists, transitions the match into CAPACITY_BLOCKED / ADMIN_ACTION_REQUIRED.
  */
 @Injectable()
@@ -27,7 +27,7 @@ export class SelfScheduleWorkerService
 
   onModuleInit() {
     this.logger.log(
-      'Starting Self-Scheduling Phase 3 Auto-Assignment Worker...',
+      'Starting Player Schedule 24-hour Auto-Assignment Worker...',
     );
     // Initial run after 10 seconds, then repeat every 60 seconds
     setTimeout(() => {

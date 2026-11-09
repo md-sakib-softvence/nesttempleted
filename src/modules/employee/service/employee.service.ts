@@ -19,8 +19,10 @@ import {
 import { getPreSignedUrl, deleteImageFromS3 } from '../../utils/s3.util';
 import { generateEmployeeId } from '../utils/generate-id.util';
 import { createActivities } from '../../utils/activity.util';
-import { EmployeeRole } from '@prisma/client';
+import { EmployeeRole, EmployeeState, NotificationStatus } from '@prisma/client';
 import { CreateEmployeeTournamentAssignmentDto } from '../dto/create-employee-tournament-assignment.dto';
+import { SendEmployeeMessageDto } from '../dto/send-employee-message.dto';
+import { NotificationService } from '../../notification/notification.service';
 
 @Injectable()
 export class EmployeeService {
@@ -28,7 +30,44 @@ export class EmployeeService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private mailService: MailService,
+    private readonly notificationService: NotificationService,
   ) {}
+
+  async sendEmployeeMessage(id: string, dto: SendEmployeeMessageDto) {
+    const employee = await this.prisma.employee.findFirst({
+      where: {
+        OR: [{ employeeId: id }, { showEmployeeId: id }],
+        isDeleted: false,
+        state: EmployeeState.ACTIVE,
+      },
+      select: { employeeId: true, name: true, role: true },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Active staff member not found');
+    }
+
+    const message = dto.message.trim();
+    if (!message) {
+      throw new BadRequestException('Message cannot be empty');
+    }
+
+    const notification = await this.notificationService.create({
+      status: NotificationStatus.INFORMATION,
+      title: dto.title?.trim() || 'Message from Administration',
+      description: message,
+      userId: employee.employeeId,
+    });
+
+    return {
+      notification,
+      recipient: {
+        employeeId: employee.employeeId,
+        name: employee.name,
+        role: employee.role,
+      },
+    };
+  }
 
   async createEmployee(createEmployeeDto: CreateEmployeeDto) {
     const existingEmployee = await this.prisma.employee.findUnique({

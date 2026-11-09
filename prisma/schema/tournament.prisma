@@ -31,27 +31,27 @@ model Tournament {
   tournamentLogoUrl      String?
 
   // Dedicated Tournament Media & Branding Fields
-  tournamentLogo         String?
-  tournamentBanner       String?
-  primaryOrganization    String?
-  secondaryOrganization  String?
-  fanPassLogo            String?
-  fanPassBg              String?
+  tournamentLogo        String?
+  tournamentBanner      String?
+  primaryOrganization   String?
+  secondaryOrganization String?
+  fanPassLogo           String?
+  fanPassBg             String?
 
-  rules                  String[]
-  tsAndTc                String[]
-  schedulingMode         SchedulingMode          @default(MANUAL)
-  schedule               Json?
-  status                 TournamentStatus        @default(UPCOMING)
-  registrationOpen       Boolean                 @default(false)
-  requireJerseySize      Boolean                 @default(false)
-  schedulingPaused       Boolean                 @default(false)
-  playerCardTemplate     Json?
-  fanPassTemplate        Json?
-  isDeleted              Boolean                 @default(false)
-  version                Int                     @default(1)
-  createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @updatedAt
+  rules              String[]
+  tsAndTc            String[]
+  schedulingMode     SchedulingMode   @default(MANUAL)
+  schedule           Json?
+  status             TournamentStatus @default(UPCOMING)
+  registrationOpen   Boolean          @default(false)
+  requireJerseySize  Boolean          @default(false)
+  schedulingPaused   Boolean          @default(false)
+  playerCardTemplate Json?
+  fanPassTemplate    Json?
+  isDeleted          Boolean          @default(false)
+  version            Int              @default(1)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 
   manageEventCosts    ManageEventCost[]
   manageEventPrizes   ManageEventPrize[]
@@ -338,32 +338,32 @@ enum TournamentGameType {
 }
 
 model Payment {
-  id               String                    @id @default(uuid())
-  applicationId    String?
-  application      FanTournamentApplication? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  tournamentId     String?
-  tournament       Tournament?               @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
-  purchaserId      String?
-  purchaserRole    String?
-  ticketTierId     String?
-  quantity         Int                       @default(1)
-  seatNumber       String?
-  purpose          String?
-  gateway          String
-  status           String                    @default("PENDING")
-  amount           Float
-  currency         Currency
-  txRef            String?                   @unique
-  flwTransactionId String?                   @unique
-  checkoutUrl      String?
-  paidAmount       Float?
-  paidCurrency     Currency?
-  paidAt           DateTime?
-  providerDetails  Json?
-  coinTransaction  FanCoinTransaction?
+  id                    String                    @id @default(uuid())
+  applicationId         String?
+  application           FanTournamentApplication? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  tournamentId          String?
+  tournament            Tournament?               @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
+  purchaserId           String?
+  purchaserRole         String?
+  ticketTierId          String?
+  quantity              Int                       @default(1)
+  seatNumber            String?
+  purpose               String?
+  gateway               String
+  status                String                    @default("PENDING")
+  amount                Float
+  currency              Currency
+  txRef                 String?                   @unique
+  flwTransactionId      String?                   @unique
+  checkoutUrl           String?
+  paidAmount            Float?
+  paidCurrency          Currency?
+  paidAt                DateTime?
+  providerDetails       Json?
+  coinTransaction       FanCoinTransaction?
   playerCoinTransaction PlayerCoinTransaction?
-  createdAt        DateTime                  @default(now())
-  updatedAt        DateTime                  @updatedAt
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
 
   @@index([applicationId, status])
   @@index([tournamentId, status])

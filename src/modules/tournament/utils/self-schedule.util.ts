@@ -2,9 +2,9 @@ import { VenueSchedule } from './tournament-calculation.util';
 
 export enum MatchSchedulingPhase {
   NOT_OPEN = 'NOT_OPEN',
-  SELF_SCHEDULING_OPEN = 'SELF_SCHEDULING_OPEN', // Phase 1: 0 - 48h
-  SELF_SCHEDULING_ESCALATED = 'SELF_SCHEDULING_ESCALATED', // Phase 2: 48 - 96h
-  AUTO_ASSIGNMENT_DUE = 'AUTO_ASSIGNMENT_DUE', // Phase 3: 96h+
+  SELF_SCHEDULING_OPEN = 'SELF_SCHEDULING_OPEN', // Player selects within first 24h
+  SELF_SCHEDULING_ESCALATED = 'SELF_SCHEDULING_ESCALATED', // Reserved for compatibility
+  AUTO_ASSIGNMENT_DUE = 'AUTO_ASSIGNMENT_DUE', // 24h+
   AUTO_ASSIGNED = 'AUTO_ASSIGNED',
   CAPACITY_BLOCKED = 'CAPACITY_BLOCKED',
   ADMIN_ACTION_REQUIRED = 'ADMIN_ACTION_REQUIRED',
@@ -56,6 +56,11 @@ export interface SlotValidationResult {
   isPolicyClosed?: boolean;
 }
 
+/** Older persisted calendars may have a game object without canonicalMatchId. */
+function occupiedByMatchId(slot: VenueSchedule['screens'][number]['days'][number]['timeslots'][number]): string | null {
+  return slot.canonicalMatchId || slot.game?.canonicalMatchId || slot.game?.id || null;
+}
+
 /**
  * Format milliseconds into human-readable e.g. "41h 32m"
  */
@@ -68,14 +73,13 @@ export function formatRemainingHoursMinutes(ms: number): string {
 }
 
 /**
- * Evaluates the 3-stage self-scheduling escalation window.
+ * Evaluates the player scheduling window.
  * This is a pure function used by both production engine and simulation.
  *
- * Rules (Player Self-Scheduling Escalation Contract v1.2):
+ * Rules (Player Schedule):
  * - NOT_OPEN: openedAt is not set (match not eligible, participants unresolved)
- * - 0 - 48h: Phase 1 (Self Scheduling - Player freely chooses)
- * - 48 - 96h: Phase 2 (Escalated Self Scheduling - Overdue warning, countdown, same capacity rules)
- * - 96h+: Phase 3 (Auto Assignment - Player choice closes, system auto-assigns)
+ * - 0 - 24h: Phase 1 (a participant may choose an available slot)
+ * - 24h+: Phase 3 (player choice closes and system auto-assigns)
  */
 export function evaluateSelfSchedulingWindow(
   openedAt?: string | Date | null,
@@ -104,17 +108,16 @@ export function evaluateSelfSchedulingWindow(
   const elapsedMs = Math.max(0, now - start);
   const elapsedHours = Math.floor(elapsedMs / (1000 * 60 * 60));
 
-  const phase1LimitMs = 48 * 60 * 60 * 1000;
-  const phase2LimitMs = 96 * 60 * 60 * 1000;
+  const playerChoiceLimitMs = 24 * 60 * 60 * 1000;
 
-  const autoAssignmentDueAt = new Date(start + phase2LimitMs).toISOString();
-  const timeUntilAutoAssignmentMs = Math.max(0, start + phase2LimitMs - now);
+  const autoAssignmentDueAt = new Date(start + playerChoiceLimitMs).toISOString();
+  const timeUntilAutoAssignmentMs = Math.max(0, start + playerChoiceLimitMs - now);
   const timeUntilAutoAssignmentFormatted = formatRemainingHoursMinutes(
     timeUntilAutoAssignmentMs,
   );
 
-  if (elapsedHours < 48) {
-    const endsAt = new Date(start + phase1LimitMs);
+  if (elapsedMs < playerChoiceLimitMs) {
+    const endsAt = new Date(start + playerChoiceLimitMs);
     const rem = Math.max(0, endsAt.getTime() - now);
     return {
       phase: 1,
@@ -131,30 +134,12 @@ export function evaluateSelfSchedulingWindow(
       isEscalated: false,
       elapsedHours,
     };
-  } else if (elapsedHours < 96) {
-    const endsAt = new Date(start + phase2LimitMs);
-    const rem = Math.max(0, endsAt.getTime() - now);
-    return {
-      phase: 2,
-      phaseStatus: MatchSchedulingPhase.SELF_SCHEDULING_ESCALATED,
-      phaseStartedAt: new Date(start + phase1LimitMs).toISOString(),
-      phaseEndsAt: endsAt.toISOString(),
-      timeRemainingMs: rem,
-      timeRemainingFormatted: formatRemainingHoursMinutes(rem),
-      autoAssignmentDueAt,
-      timeUntilAutoAssignmentMs,
-      timeUntilAutoAssignmentFormatted,
-      isAutoAssignmentDue: false,
-      canPlayerSelectSlot: true,
-      isEscalated: true,
-      elapsedHours,
-    };
   } else {
     return {
       phase: 3,
       phaseStatus: MatchSchedulingPhase.AUTO_ASSIGNMENT_DUE,
-      phaseStartedAt: new Date(start + phase2LimitMs).toISOString(),
-      phaseEndsAt: new Date(start + phase2LimitMs).toISOString(),
+      phaseStartedAt: autoAssignmentDueAt,
+      phaseEndsAt: autoAssignmentDueAt,
       timeRemainingMs: 0,
       timeRemainingFormatted: '0h 0m',
       autoAssignmentDueAt,
@@ -180,7 +165,7 @@ export function isPeakTimeslot(time: string): boolean {
 
 /**
  * Shared slot eligibility validator (Contract Rule 9):
- * Automatic assignment, manual booking, and the simulator must use the identical validator.
+ * Automatic assignment, manual booking, and player slot discovery must use the same validator.
  */
 export function validateSlotForMatch(
   calendar: VenueSchedule[],
@@ -212,11 +197,12 @@ export function validateSlotForMatch(
     return { isValid: false, reason: 'Timeslot does not exist' };
   }
 
-  if (slot.canonicalMatchId && slot.canonicalMatchId !== targetMatchId) {
+  const occupiedBy = occupiedByMatchId(slot);
+  if (occupiedBy && occupiedBy !== targetMatchId) {
     return {
       isValid: false,
       isOccupied: true,
-      reason: `Timeslot is occupied by match ${slot.canonicalMatchId}`,
+      reason: `Timeslot is occupied by match ${occupiedBy}`,
     };
   }
 
@@ -263,8 +249,8 @@ export function validateSlotForMatch(
           const checkSlot = (d.timeslots || []).find(
             (ts) =>
               ts.time === target.time &&
-              ts.canonicalMatchId &&
-              ts.canonicalMatchId !== targetMatchId,
+              occupiedByMatchId(ts) &&
+              occupiedByMatchId(ts) !== targetMatchId,
           );
           if (checkSlot && checkSlot.game) {
             const g = checkSlot.game;
@@ -325,7 +311,8 @@ export function getEligibleSlotsForMatch(
     for (const s of v.screens || []) {
       for (const d of s.days || []) {
         for (const t of d.timeslots || []) {
-          if (!t.canonicalMatchId || t.canonicalMatchId === targetMatchId) {
+          const occupiedBy = occupiedByMatchId(t);
+          if (!occupiedBy || occupiedBy === targetMatchId) {
             vacantSlots.push({
               venueId: v.venueId,
               venueName: v.venueName,
@@ -359,7 +346,7 @@ export function getEligibleSlotsForMatch(
       targetMatchId,
       player1Id,
       player2Id,
-      false, // simulation/candidate search checks basic calendar window
+      true, // Respect admin-published matchday windows for both players and auto-assignment.
     );
     if (val.isValid) {
       eligible.push({

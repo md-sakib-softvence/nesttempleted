@@ -696,7 +696,7 @@ export class TournamentController {
     summary:
       'Get Pending Matches for Player Self-Scheduling (Reservation Scheduler)',
     description:
-      'Returns all active, unallocated canonical matches where player is a participant, with derived 3-stage escalation window metadata.',
+      'Returns eligible unallocated matches for the participant, including the 24-hour player choice window and automatic-assignment status.',
   })
   async getPendingSelfScheduleMatches(
     @Param('id') tournamentId: string,
@@ -775,9 +775,9 @@ export class TournamentController {
   @Post(':id/process-auto-assignment')
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
   @ApiOperation({
-    summary: 'Manually trigger Phase 3 automatic assignment evaluation',
+    summary: 'Manually trigger automatic assignment after the player window',
     description:
-      'Scans for overdue self-scheduling matches (96h+ elapsed) and deterministically assigns the earliest valid physical slot or marks CAPACITY_BLOCKED.',
+      'Scans for player-scheduling matches whose 24-hour player window has expired and assigns the earliest valid slot or marks CAPACITY_BLOCKED.',
   })
   async processAutoAssignment(@Param('id') tournamentId: string) {
     const data =

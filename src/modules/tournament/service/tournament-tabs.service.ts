@@ -38,6 +38,7 @@ import { mapPrizeRule } from '../dto/tournament/create-tournament.dto';
 import { TournamentLeaderboardService } from './tournament-leaderboard.service';
 import { TournamentRegistrationService } from './tournament-registration.service';
 import { TournamentScheduleService } from './tournament-schedule.service';
+import { parseRaffleRegistrationCloseDate } from '../utils/raffle-date.util';
 
 @Injectable()
 export class TournamentTabsService {
@@ -691,7 +692,7 @@ export class TournamentTabsService {
   }
 
   async patchScheduleTab(tournamentId: string, dto: UpdateScheduleTabDto) {
-    await this.findTournamentOrThrow(tournamentId);
+    const tournament = await this.findTournamentOrThrow(tournamentId);
 
     const data: Prisma.TournamentUpdateInput = {};
     if (dto.schedulingMode !== undefined)
@@ -711,6 +712,58 @@ export class TournamentTabsService {
       data.frequencyStatus = dto.frequencyStatus;
     if (dto.frequencyArray !== undefined)
       data.frequencyArray = dto.frequencyArray;
+
+    if (dto.matchdayWindows?.length) {
+      const currentSchedule = (tournament.schedule as any) || {};
+      const calendar = currentSchedule.calendar;
+      if (!Array.isArray(calendar)) {
+        throw new BadRequestException(
+          'Generate the tournament calendar before configuring matchday windows.',
+        );
+      }
+
+      const requestedDates = new Set(dto.matchdayWindows.map((item) => item.date));
+      const existingDates = new Set<string>();
+      for (const venue of calendar) {
+        for (const screen of venue.screens || []) {
+          for (const day of screen.days || []) {
+            if (requestedDates.has(day.date)) existingDates.add(day.date);
+          }
+        }
+      }
+      const unknownDate = dto.matchdayWindows.find(
+        (item) => !existingDates.has(item.date),
+      );
+      if (unknownDate) {
+        throw new BadRequestException(
+          `Matchday ${unknownDate.date} is not part of this tournament calendar.`,
+        );
+      }
+
+      const policyByDate = new Map(
+        dto.matchdayWindows.map((item) => [
+          item.date,
+          {
+            isWindowOpen: item.isWindowOpen,
+            windowOpenTime: item.windowOpenTime || '',
+            windowCloseTime: item.windowCloseTime || '',
+          },
+        ]),
+      );
+      data.schedule = {
+        ...currentSchedule,
+        calendar: calendar.map((venue: any) => ({
+          ...venue,
+          screens: (venue.screens || []).map((screen: any) => ({
+            ...screen,
+            days: (screen.days || []).map((day: any) => {
+              const policy = policyByDate.get(day.date);
+              return policy ? { ...day, schedulingPolicy: policy } : day;
+            }),
+          })),
+        })),
+      } as Prisma.InputJsonValue;
+    }
 
     if (dto.action === 'pause') {
       data.schedulingPaused = true;
@@ -941,7 +994,9 @@ export class TournamentTabsService {
     if (dto.status !== undefined) data.status = dto.status;
     if (dto.drawDate !== undefined) data.drawDate = new Date(dto.drawDate);
     if (dto.registrationCloseDate !== undefined)
-      data.registrationCloseDate = new Date(dto.registrationCloseDate);
+      data.registrationCloseDate = parseRaffleRegistrationCloseDate(
+        dto.registrationCloseDate,
+      );
 
     await this.prisma.raffle.update({
       where: { raffleId: dto.raffleId },

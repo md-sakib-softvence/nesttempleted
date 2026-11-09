@@ -214,6 +214,10 @@ export class TournamentCoreService {
           createTournamentDto.registrationCutOffMode ||
           RegistrationCutOffMode.CAPACITY,
         schedulingMode,
+        ...(schedulingMode === SchedulingMode.PLAYER_SELF &&
+          createTournamentDto.schedulingWindowOpen !== undefined && {
+            schedulingPaused: !createTournamentDto.schedulingWindowOpen,
+          }),
         startDate: new Date(startDate || Date.now() + 86400000),
         deadline: new Date(deadline || Date.now() + 7 * 86400000),
         capacity:
@@ -417,6 +421,13 @@ export class TournamentCoreService {
         participants,
         groupsCount,
         thirdPlacePlayoffEnabled,
+        schedulingPolicy:
+          schedulingMode === SchedulingMode.PLAYER_SELF
+            ? {
+                isWindowOpen:
+                  createTournamentDto.schedulingWindowOpen ?? false,
+              }
+            : undefined,
       });
 
     // Update tournament with generated schedule in database

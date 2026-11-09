@@ -29,7 +29,6 @@ export class PlayerRefillService {
 
   getPackages() {
     return {
-      coins: this.parsePackages('FAN_COIN_PACKAGES', 'coins'),
       cashCredits: this.parsePackages('PLAYER_CASH_CREDIT_PACKAGES', 'credits'),
     };
   }

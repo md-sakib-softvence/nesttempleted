@@ -26,6 +26,7 @@ import { EmployeeService } from '../service/employee.service';
 import { CreateEmployeeDto } from '../dto/create-employee.dto';
 import { CreateEmployeeTournamentAssignmentDto } from '../dto/create-employee-tournament-assignment.dto';
 import { UpdateEmployeeDto } from '../dto/update-employee.dto';
+import { SendEmployeeMessageDto } from '../dto/send-employee-message.dto';
 import { sendResponse } from '../../utils/response.util';
 import { QueryOptions } from '../../utils/query.util';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
@@ -440,6 +441,22 @@ export class EmployeeController {
     );
     return sendResponse({
       message: 'Tournament assignment removed successfully',
+      data,
+    });
+  }
+
+  @Post(':id/communication')
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
+  @ApiOperation({
+    summary: 'Send a private notification to an employee, manager, or ambassador',
+  })
+  async sendEmployeeMessage(
+    @Param('id') id: string,
+    @Body() dto: SendEmployeeMessageDto,
+  ) {
+    const data = await this.employeeService.sendEmployeeMessage(id, dto);
+    return sendResponse({
+      message: 'Staff notification sent successfully',
       data,
     });
   }

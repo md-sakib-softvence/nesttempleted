@@ -30,13 +30,20 @@ export class RolesGuard implements CanActivate {
       return false;
     }
 
+    // Login endpoints may sign the role as either `player` or `PLAYER`.
+    // Normalize both sides so route authorization does not depend on casing.
+    const userRole = String(user.role).trim().toUpperCase();
+
     // Super admin has access to everything
-    if (user.role === Role.SUPER_ADMIN || user.role === 'SUPER_ADMIN') {
+    if (userRole === Role.SUPER_ADMIN || userRole === 'SUPER_ADMIN') {
       return true;
     }
 
     return requiredRoles.some(
-      (role) => user.role === role || user.role?.includes(role),
+      (role) => {
+        const requiredRole = String(role).trim().toUpperCase();
+        return userRole === requiredRole || userRole.includes(requiredRole);
+      },
     );
   }
 }

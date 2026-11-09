@@ -350,7 +350,7 @@ export class TournamentMatchesService {
     if (isPlayer) {
       if (tournament.schedulingMode !== SchedulingMode.PLAYER_SELF) {
         throw new BadRequestException(
-          'Player self-scheduling is not enabled for this tournament.',
+          'Player Schedule is not enabled for this tournament.',
         );
       }
 
@@ -360,7 +360,7 @@ export class TournamentMatchesService {
 
       if (!isWindowOpen) {
         throw new BadRequestException(
-          'Self-scheduling window is currently closed for this tournament.',
+          'Player Schedule is currently paused for this tournament.',
         );
       }
 
@@ -439,17 +439,17 @@ export class TournamentMatchesService {
       // 2b. Check self-scheduling window open
       if (!targetMatch.selfSchedulingOpenedAt) {
         throw new BadRequestException(
-          'Self-scheduling has not yet opened for this match.',
+          'Player Schedule has not opened for this match yet.',
         );
       }
 
-      // 2c. Phase 3 deadline check (96+ hours)
+      // 2c. Players may choose a slot only during the first 24 hours.
       const windowState = evaluateSelfSchedulingWindow(
         targetMatch.selfSchedulingOpenedAt,
       );
       if (windowState.phase === 3) {
         throw new ForbiddenException(
-          'The 96-hour self-scheduling deadline has expired. This match is closed for manual booking and queued for system auto-assignment.',
+          'The 24-hour player scheduling window has expired. This match is closed for player booking and queued for system auto-assignment.',
         );
       }
 
@@ -466,7 +466,7 @@ export class TournamentMatchesService {
       if (policy) {
         if (policy.isWindowOpen === false) {
           throw new BadRequestException(
-            'Self-scheduling is closed for this matchday.',
+            'Player Schedule is closed for this matchday.',
           );
         }
         const now = Date.now();
@@ -509,28 +509,35 @@ export class TournamentMatchesService {
       match.bookedAt = new Date().toISOString();
     }
 
-    const saved = await this.prisma.tournament.updateMany({
-      where: {
-        tournamentId: tournament.tournamentId,
-        version: tournament.version,
-      },
-      data: {
-        schedule: updatedSchedule as any,
-        version: { increment: 1 },
-      },
-    });
-    if (saved.count !== 1) {
-      throw new ConflictException(
-        'The tournament schedule changed while you were booking. Refresh the available slots and try again.',
-      );
-    }
+    await this.prisma.$transaction(async (tx) => {
+      const saved = await tx.tournament.updateMany({
+        where: {
+          tournamentId: tournament.tournamentId,
+          version: tournament.version,
+        },
+        data: {
+          schedule: updatedSchedule as any,
+          version: { increment: 1 },
+        },
+      });
+      if (saved.count !== 1) {
+        throw new ConflictException(
+          'The tournament schedule changed while you were booking. Refresh the available slots and try again.',
+        );
+      }
 
-    await createActivities(
-      this.prisma,
-      'Match Fixture Booked',
-      `Match #${matchId} booked by ${currentUser.role || 'User'} #${currentUser.userId} on ${dto.date} at ${dto.time}`,
-      'TOURNAMENT',
-    );
+      // ActivityLog.role is a Role enum (PLAYER, ADMIN, etc.), not a free-form
+      // category. Passing "TOURNAMENT" made Prisma throw after the booking had
+      // already been saved, so the client saw a 400 even though the match was
+      // allocated. Keep the booking and its audit record atomic and use the
+      // authenticated actor's valid role.
+      await createActivities(
+        tx as any,
+        'Match Fixture Booked',
+        `Match #${matchId} booked by ${currentUser.role || Role.PLAYER} #${currentUser.userId} on ${dto.date} at ${dto.time}`,
+        currentUser.role || Role.PLAYER,
+      );
+    });
 
     return {
       message: 'Match fixture successfully scheduled',
@@ -2015,9 +2022,7 @@ export class TournamentMatchesService {
             ? m.schedulingPhase
             : windowState.phaseStatus,
         isEscalated: windowState.isEscalated,
-        escalationWarning: windowState.isEscalated
-          ? 'Your initial 48-hour self-scheduling period has expired. This match is now escalated. Please select a slot before the automatic assignment deadline.'
-          : null,
+        escalationWarning: null,
         timeRemainingMs: windowState.timeRemainingMs,
         timeRemainingFormatted: windowState.timeRemainingFormatted,
         autoAssignmentDueAt: windowState.autoAssignmentDueAt,
@@ -2161,8 +2166,12 @@ export class TournamentMatchesService {
           }
 
           for (const slot of d.timeslots) {
-            const isBooked =
-              !!slot.canonicalMatchId && slot.canonicalMatchId !== matchId;
+            const occupiedBy =
+              slot.canonicalMatchId ||
+              slot.game?.canonicalMatchId ||
+              slot.game?.id ||
+              null;
+            const isBooked = !!occupiedBy && occupiedBy !== matchId;
             const isPeak = isPeakTimeslot(slot.time);
 
             // Check player overlap conflict across the tournament calendar
@@ -2177,8 +2186,12 @@ export class TournamentMatchesService {
                     const checkSlot = checkDay.timeslots.find(
                       (cs: any) =>
                         cs.time === slot.time &&
-                        cs.canonicalMatchId &&
-                        cs.canonicalMatchId !== matchId,
+                        (cs.canonicalMatchId ||
+                          cs.game?.canonicalMatchId ||
+                          cs.game?.id) &&
+                        (cs.canonicalMatchId ||
+                          cs.game?.canonicalMatchId ||
+                          cs.game?.id) !== matchId,
                     );
                     if (checkSlot?.game) {
                       const g = checkSlot.game;
@@ -2209,12 +2222,22 @@ export class TournamentMatchesService {
               proposal.time === slot.time;
 
             let badge = '';
-            let isDisabled = isBooked || isPlayerConflict;
+            const policy = d.schedulingPolicy;
+            const now = Date.now();
+            const isPolicyClosed =
+              policy?.isWindowOpen === false ||
+              (!!policy?.windowOpenTime &&
+                now < new Date(policy.windowOpenTime).getTime()) ||
+              (!!policy?.windowCloseTime &&
+                now >= new Date(policy.windowCloseTime).getTime());
+            let isDisabled = isBooked || isPlayerConflict || isPolicyClosed;
 
             if (isBooked) {
               badge = 'BOOKED';
             } else if (isPlayerConflict) {
               badge = 'CONFLICT';
+            } else if (isPolicyClosed) {
+              badge = 'CLOSED';
             } else if (isCastedSlot) {
               badge = 'CASTED';
             } else if (isPeak) {
@@ -2232,6 +2255,7 @@ export class TournamentMatchesService {
               time: slot.time,
               isBooked,
               isPlayerConflict,
+              isPolicyClosed,
               isPeakSlot: isPeak,
               isCastedSlot: !!isCastedSlot,
               isDisabled,
@@ -2492,7 +2516,7 @@ export class TournamentMatchesService {
   }
 
   /**
-   * 8. Process Due Auto-Assignments (Server-Side Phase 3 Auto-Assignment Engine)
+   * 8. Process due Player Schedule auto-assignments after the 24-hour choice window.
    */
   async processDueAutoAssignments(tournamentId?: string) {
     const whereClause: any = {
@@ -2599,7 +2623,7 @@ export class TournamentMatchesService {
             for (const pId of [match.player1Id, match.player2Id]) {
               playerNotifications.push({
                 userId: pId,
-                description: `Your match #${match.id} was automatically scheduled for ${candidate.date} at ${candidate.time} on ${candidate.venueName} - ${candidate.screenName} following self-scheduling deadline expiration.`,
+                description: `Your match #${match.id} was automatically scheduled for ${candidate.date} at ${candidate.time} on ${candidate.venueName} - ${candidate.screenName} after the 24-hour Player Schedule window expired.`,
               });
             }
           } else {
@@ -2621,7 +2645,7 @@ export class TournamentMatchesService {
               });
               activityEvents.push({
                 title: 'Auto-Assignment Capacity Exception',
-                description: `Match #${match.id} reached Phase 3 but no valid capacity exists. Admin action required.`,
+                description: `Match #${match.id} reached the end of its 24-hour Player Schedule window but has no valid slot. Admin action required.`,
               });
             }
           }
