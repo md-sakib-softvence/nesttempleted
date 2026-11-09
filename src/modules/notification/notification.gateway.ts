@@ -7,6 +7,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { EmployeeRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -35,8 +36,8 @@ export class NotificationGateway implements OnGatewayConnection {
           'super_secret_change_in_production',
       });
       const role = String(user.role || '').toUpperCase();
-      if (!user.userId || !['FAN', 'PLAYER'].includes(role)) {
-        throw new Error('Player or fan access required');
+      if (!user.userId) {
+        throw new Error('Authenticated account required');
       }
 
       if (role === 'FAN') {
@@ -45,19 +46,32 @@ export class NotificationGateway implements OnGatewayConnection {
           select: { fanId: true },
         });
         if (!fan) throw new Error('Active fan account required');
-      } else {
+      } else if (role === 'PLAYER') {
         const player = await this.prisma.player.findFirst({
           where: { playerId: user.userId, status: 'ACTIVE', isDeleted: false },
           select: { playerId: true },
         });
         if (!player) throw new Error('Active player account required');
+      } else if (['EMPLOYEE', 'MANAGER', 'AMBASSADOR', 'SECURITY'].includes(role)) {
+        const employee = await this.prisma.employee.findFirst({
+          where: {
+            employeeId: user.userId,
+            state: 'ACTIVE',
+            isDeleted: false,
+            role: role as EmployeeRole,
+          },
+          select: { employeeId: true },
+        });
+        if (!employee) throw new Error('Active staff account required');
+      } else {
+        throw new Error('Player, fan, or staff access required');
       }
 
       await client.join(`user:${user.userId}`);
       client.emit('notifications:ready');
     } catch {
       client.emit('notifications:unauthorized', {
-        message: 'Sign in with an active player or fan account.',
+        message: 'Sign in with an active player, fan, or staff account.',
       });
       client.disconnect(true);
     }
