@@ -14,12 +14,6 @@ export class CompleteFanTournamentApplicationDto {
   @MaxLength(80)
   preferredPlatform?: string;
 
-  @ApiPropertyOptional({ example: 'Real Madrid' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(80)
-  favoriteTeam?: string;
-
   @ApiPropertyOptional({ description: 'Base64 JPEG, PNG, GIF or WebP image; uploaded to AWS S3' })
   @IsOptional()
   @IsString()
