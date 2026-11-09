@@ -220,6 +220,11 @@ export class FanService {
 
     const marketing = where.marketing;
     delete where.marketing;
+    if (marketing === 'true' || marketing === true) {
+      where.marketingData = { isNot: null };
+    } else if (marketing === 'false' || marketing === false) {
+      where.marketingData = { is: null };
+    }
 
     if (query.isDeleted === 'all') {
       delete where.isDeleted;
@@ -229,20 +234,16 @@ export class FanService {
       where.isDeleted = false;
     }
 
-    const includeOptions: any = {};
-    if (marketing === 'true' || marketing === true) {
-      includeOptions.marketingData = true;
-    }
-
     const [data, total] = await Promise.all([
       this.prisma.fan.findMany({
         where,
         skip,
         take,
         orderBy,
-        ...(Object.keys(includeOptions).length > 0 && {
-          include: includeOptions,
-        }),
+        // The admin fan directory displays role, location and demographics
+        // from this relation, so return it for every list query (not only when
+        // the Marketing filter is selected).
+        include: { marketingData: true },
       }),
       this.prisma.fan.count({ where }),
     ]);

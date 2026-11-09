@@ -219,7 +219,6 @@ export class PlayerService {
       gamerTag: string;
       profilePicture?: string | null;
       preferredPlatform?: string | null;
-      favoriteTeam?: string | null;
     },
   ) {
     const showPlayerId = await generatePlayerId(this.prisma);
@@ -234,7 +233,6 @@ export class PlayerService {
         gamerTag: profile.gamerTag,
         profilePicture: profile.profilePicture || null,
         preferredPlatform: profile.preferredPlatform || null,
-        favoriteTeam: profile.favoriteTeam || null,
         document: [],
       },
     });

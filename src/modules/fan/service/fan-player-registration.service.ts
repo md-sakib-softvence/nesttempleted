@@ -530,7 +530,6 @@ export class FanPlayerRegistrationService {
         gamerTag,
         profilePicture,
         preferredPlatform: dto.preferredPlatform?.trim() || null,
-        favoriteTeam: dto.favoriteTeam?.trim() || null,
       });
 
       const occupiedCount = await tx.tournamentRegistration.count({
