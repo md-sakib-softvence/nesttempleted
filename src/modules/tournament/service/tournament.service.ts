@@ -492,6 +492,10 @@ export class TournamentService {
     );
   }
 
+  async syncConfirmedRosterToTournamentSchedule(tournamentId: string) {
+    return this.registration.syncConfirmedRosterToTournamentSchedule(tournamentId);
+  }
+
   async openRegistration(tournamentId: string, dto: OpenRegistrationDto) {
     return this.registration.openRegistration(tournamentId, dto);
   }
