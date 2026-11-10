@@ -13,6 +13,7 @@ import { LoginDto } from '../dto/login.dto';
 import { RefreshTokenDto } from '../dto/refresh-token.dto';
 import { ForgetPasswordDto } from '../dto/forget-password.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
+import { ResetPasswordDto } from '../dto/reset-password.dto';
 import { Public } from '../../../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { Request } from 'express';
@@ -61,6 +62,14 @@ export class AuthController {
   @ApiOperation({ summary: 'Request a password reset link' })
   forgetPassword(@Body() forgetPasswordDto: ForgetPasswordDto) {
     return this.authService.forgetPassword(forgetPasswordDto);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset a Fan or Player password using an email code' })
+  resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+    return this.authService.resetPasswordWithCode(resetPasswordDto);
   }
 
   @Post('change-password')

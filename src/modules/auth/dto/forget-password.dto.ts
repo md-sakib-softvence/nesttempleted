@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString, IsIn } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, IsIn } from 'class-validator';
 
 export class ForgetPasswordDto {
   @ApiProperty({ description: 'Email address' })
@@ -9,28 +9,10 @@ export class ForgetPasswordDto {
 
   @ApiProperty({
     description: 'User Role',
-    enum: [
-      'admin',
-      'super_admin',
-      'player',
-      'fan',
-      'security_guard',
-      'employee',
-      'manager',
-      'ambassador',
-    ],
+    enum: ['fan', 'player'],
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  @IsIn([
-    'admin',
-    'super_admin',
-    'player',
-    'fan',
-    'security_guard',
-    'employee',
-    'manager',
-    'ambassador',
-  ])
-  role: string;
+  @IsIn(['fan', 'player'])
+  role?: 'fan' | 'player';
 }

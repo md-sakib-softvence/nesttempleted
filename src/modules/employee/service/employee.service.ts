@@ -547,6 +547,31 @@ export class EmployeeService {
     });
   }
 
+  async getMyTournamentVenueAssignments(employeeId: string) {
+    const employee = await this.prisma.employee.findFirst({
+      where: { employeeId, isDeleted: false, state: 'ACTIVE' },
+      select: { employeeId: true },
+    });
+    if (!employee) throw new NotFoundException('Active employee account not found');
+
+    return this.prisma.employeeTournamentAssignment.findMany({
+      where: { employeeId: employee.employeeId },
+      include: {
+        tournament: {
+          select: {
+            tournamentId: true,
+            name: true,
+            gameTitle: true,
+            startDate: true,
+          },
+        },
+        venue: { select: { venueId: true, name: true, address: true } },
+        screen: { select: { screenId: true, screenName: true } },
+      },
+      orderBy: { assignedAt: 'desc' },
+    });
+  }
+
   async createEmployeeTournamentAssignment(
     employeeId: string,
     dto: CreateEmployeeTournamentAssignmentDto,

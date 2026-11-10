@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsInt, IsString, Min, Max } from 'class-validator';
+import { IsNotEmpty, IsInt, IsString, Min, Max, IsOptional } from 'class-validator';
 
 export class PredictMatchDto {
   @ApiProperty({
@@ -26,5 +26,18 @@ export class PredictMatchDto {
   @Min(20)
   @Max(500)
   wagerCoins: number;
+
+  @ApiProperty({
+    description: 'Selected payout multiplier (1x to 10x); defaults to 2x for older clients',
+    example: 2,
+    minimum: 1,
+    maximum: 10,
+    required: false,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  multiplier?: number;
 
 }

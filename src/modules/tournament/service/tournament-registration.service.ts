@@ -889,6 +889,153 @@ export class TournamentRegistrationService {
     }
   }
 
+  /** Repair the bracket from the authoritative paid, confirmed roster. */
+  async syncConfirmedRosterToTournamentSchedule(tournamentId: string) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+      select: { tournamentId: true, isDeleted: true, schedule: true, schedulingMode: true },
+    });
+
+    if (!tournament || tournament.isDeleted) {
+      throw new NotFoundException('Tournament not found');
+    }
+    if (!tournament.schedule) {
+      throw new BadRequestException(
+        'Generate the tournament schedule before syncing confirmed players.',
+      );
+    }
+
+    const schedule = tournament.schedule as any;
+    const structure = schedule.structure || schedule;
+    const slots: any[] = structure.slots || schedule.slots || [];
+    const seeds: any[] = structure.seeds || schedule.seeds || [];
+    const matches: any[] = structure.matches || schedule.matches || [];
+    if (!slots.length || !matches.length) {
+      throw new BadRequestException(
+        'The tournament schedule has no player slots or matches to sync.',
+      );
+    }
+
+    const registrations = await this.prisma.tournamentRegistration.findMany({
+      where: {
+        tournamentId,
+        status: TournamentRegistrationStatus.CONFIRMED,
+        paymentStatus: { in: ['PAID', 'SUCCESS'] },
+      },
+      include: {
+        player: {
+          select: {
+            playerId: true,
+            firstName: true,
+            lastName: true,
+            gamerTag: true,
+            username: true,
+          },
+        },
+      },
+      orderBy: [{ createdAt: 'asc' }, { registrationId: 'asc' }],
+    });
+
+    const slotNumbers = slots
+      .map((slot) => Number(slot.slotNumber))
+      .filter((number) => Number.isInteger(number) && number > 0)
+      .sort((a, b) => a - b);
+    if (!slotNumbers.length) {
+      throw new BadRequestException('No valid tournament slots were found.');
+    }
+
+    const available = new Set(slotNumbers);
+    const assignments: Array<{ registrationId: string; playerId: string; slotNumber: number; playerName: string }> = [];
+    for (const registration of registrations) {
+      const currentSlot = registration.assignedSlot;
+      const slotNumber = currentSlot && available.has(currentSlot)
+        ? currentSlot
+        : slotNumbers.find((candidate) => available.has(candidate));
+      if (!slotNumber) {
+        throw new BadRequestException(
+          `There are not enough tournament slots for ${registrations.length} confirmed players.`,
+        );
+      }
+      available.delete(slotNumber);
+      const playerName =
+        `${registration.player.firstName || ''} ${registration.player.lastName || ''}`.trim() ||
+        registration.player.gamerTag ||
+        registration.player.username ||
+        `Player ${slotNumber}`;
+      assignments.push({
+        registrationId: registration.registrationId,
+        playerId: registration.player.playerId,
+        slotNumber,
+        playerName,
+      });
+    }
+
+    const assignmentBySlot = new Map(assignments.map((assignment) => [assignment.slotNumber, assignment]));
+    for (const slot of slots) {
+      const assignment = assignmentBySlot.get(Number(slot.slotNumber));
+      if (!assignment) continue;
+      slot.status = 'ASSIGNED';
+      slot.participantId = assignment.playerId;
+      slot.participantName = assignment.playerName;
+    }
+    for (const seed of seeds) {
+      const slotNumber = Number(seed.slotNumber ?? seed.seedNumber);
+      const assignment = assignmentBySlot.get(slotNumber);
+      if (assignment) seed.participantId = assignment.playerId;
+    }
+
+    const resolveParticipant = (reference: any) => {
+      if (!reference || !['TOURNAMENT_SLOT', 'SEED'].includes(reference.type)) return undefined;
+      const slotNumber = Number(reference.value);
+      return Number.isInteger(slotNumber) ? assignmentBySlot.get(slotNumber) : undefined;
+    };
+    for (const match of matches) {
+      const first = resolveParticipant(match.participant1Ref);
+      const second = resolveParticipant(match.participant2Ref);
+      if (first) {
+        match.player1Id = first.playerId;
+        match.player1Name = first.playerName;
+      }
+      if (second) {
+        match.player2Id = second.playerId;
+        match.player2Name = second.playerName;
+      }
+      if (
+        match.player1Id && match.player2Id &&
+        !match.isAutoAdvance && !match.conditional && match.isSchedulable !== false &&
+        match.status !== 'COMPLETED' && match.status !== 'CANCELLED' &&
+        tournament.schedulingMode === 'PLAYER_SELF' && !match.selfSchedulingOpenedAt
+      ) {
+        // Start the player scheduling clock when a fixture first has both players.
+        match.selfSchedulingOpenedAt = new Date().toISOString();
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const assignment of assignments) {
+        const registration = registrations.find((item) => item.registrationId === assignment.registrationId);
+        if (registration?.assignedSlot !== assignment.slotNumber) {
+          await tx.tournamentRegistration.update({
+            where: { registrationId: assignment.registrationId },
+            data: { assignedSlot: assignment.slotNumber },
+          });
+        }
+      }
+      await tx.tournament.update({
+        where: { tournamentId },
+        data: { schedule },
+      });
+    });
+
+    return {
+      tournamentId,
+      confirmedPaidPlayers: registrations.length,
+      assignedSlots: assignments.length,
+      updatedMatches: matches.filter((match) => match.player1Id && match.player2Id).length,
+      assignments: assignments.map(({ playerId, playerName, slotNumber }) => ({ playerId, playerName, slotNumber })),
+    };
+  }
+
   /**
    * Release participant from tournament schedule (slots, seeds, canonical matches).
    */
