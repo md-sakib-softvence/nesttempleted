@@ -12,8 +12,12 @@ import { ForgetPasswordDto } from '../dto/forget-password.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { formatAuthResponse } from '../utils/auth-response.util';
 import { refreshTokenUtil } from '../utils/refresh-token.util';
-import { forgetPasswordUtil } from '../utils/forget-password.util';
+import {
+  forgetPasswordUtil,
+  resetPasswordWithCodeUtil,
+} from '../utils/forget-password.util';
 import { changePasswordUtil } from '../utils/change-password.util';
+import { ResetPasswordDto } from '../dto/reset-password.dto';
 import { MailService } from '../../mail/mail.service';
 import { createActivities } from '../../utils/activity.util';
 
@@ -153,10 +157,12 @@ export class AuthService {
     return forgetPasswordUtil(
       dto,
       this.prisma,
-      this.jwtService,
-      this.configService,
       this.mailService,
     );
+  }
+
+  async resetPasswordWithCode(dto: ResetPasswordDto) {
+    return resetPasswordWithCodeUtil(dto, this.prisma);
   }
 
   async changePassword(

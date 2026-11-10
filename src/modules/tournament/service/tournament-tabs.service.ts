@@ -188,6 +188,7 @@ export class TournamentTabsService {
         possibleMatchCount,
         playedCount,
         remainingCount,
+        descriptionDocumentUrl: presigned.rules?.[0] || null,
         bannerUrl,
         logo,
         description,
