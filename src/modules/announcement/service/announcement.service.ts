@@ -26,7 +26,9 @@ export class AnnouncementService {
       // In-app broadcasts for fans are persisted as personal notifications so
       // each fan can read and dismiss only their own messages from the bell.
       if (
-        createAnnouncementDto.audience === 'FANS_ALL' &&
+        ['GLOBAL', 'FANS_ALL'].includes(
+          String(createAnnouncementDto.audience || 'GLOBAL').toUpperCase(),
+        ) &&
         createAnnouncementDto.status !== 'DRAFT' &&
         (createAnnouncementDto.channels || ['APP']).includes('APP')
       ) {

@@ -28,6 +28,7 @@ import { TournamentRegistrationService } from './service/tournament-registration
 import { TournamentMatchesService } from './service/tournament-matches.service';
 import { TournamentLeaderboardService } from './service/tournament-leaderboard.service';
 import { SelfScheduleWorkerService } from './service/self-schedule-worker.service';
+import { NotificationModule } from '../notification/notification.module';
 
 import { TournamentTabsController } from './controller/tournament/tournament-tabs.controller';
 import { TournamentTabsService } from './service/tournament-tabs.service';
@@ -35,7 +36,7 @@ import { TournamentGuidelineController } from './controller/tournament/tournamen
 import { TournamentGuidelineService } from './service/tournament-guideline.service';
 
 @Module({
-  imports: [ConfigModule, JwtModule.register({})],
+  imports: [ConfigModule, JwtModule.register({}), NotificationModule],
   controllers: [
     MatchIncidentController,
     RaffleController,
