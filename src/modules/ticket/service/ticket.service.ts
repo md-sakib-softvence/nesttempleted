@@ -1988,6 +1988,7 @@ export class TicketService {
       this.prisma.fan.findMany({
         where: {
           isDeleted: false,
+          status: 'ACTIVE',
           OR: [
             { phoneNumber: { contains: phoneSuffix } },
             ...(dto.recipientEmail
@@ -2000,6 +2001,7 @@ export class TicketService {
       this.prisma.player.findMany({
         where: {
           isDeleted: false,
+          status: 'ACTIVE',
           OR: [
             { phoneNumber: { contains: phoneSuffix } },
             ...(dto.recipientEmail

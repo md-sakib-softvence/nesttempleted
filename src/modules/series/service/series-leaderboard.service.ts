@@ -22,21 +22,46 @@ export class SeriesLeaderboardService {
       throw new NotFoundException(`Series with ID '${seriesId}' not found`);
     }
 
-    const participants = await this.prisma.seriesParticipant.findMany({
-      where: { seriesId, status: 'ACTIVE' },
-      orderBy: [{ currentRank: 'asc' }, { totalPoints: 'desc' }],
-      include: {
-        player: {
-          select: {
-            playerId: true,
-            gamerTag: true,
-            firstName: true,
-            lastName: true,
+    const loadActiveParticipants = () =>
+      this.prisma.seriesParticipant.findMany({
+        where: { seriesId, status: 'ACTIVE' },
+        orderBy: [{ currentRank: 'asc' }, { totalPoints: 'desc' }],
+        include: {
+          player: {
+            select: {
+              playerId: true,
+              gamerTag: true,
+              firstName: true,
+              lastName: true,
+            },
           },
+          adjustments: true,
         },
-        adjustments: true,
-      },
-    });
+      });
+
+    let participants = await loadActiveParticipants();
+
+    // Public leaderboard reads must include players who registered for a linked
+    // tournament even when an admin has not manually run the recalculation yet.
+    // Only trigger the write when registrations exist, so empty series remain read-only.
+    if (participants.length === 0) {
+      const linkedTournaments = await this.prisma.seriesTournament.findMany({
+        where: { seriesId },
+        select: { tournamentId: true },
+      });
+      const tournamentIds = linkedTournaments.map((item) => item.tournamentId);
+
+      if (tournamentIds.length > 0) {
+        const registrationCount = await this.prisma.tournamentRegistration.count({
+          where: { tournamentId: { in: tournamentIds } },
+        });
+
+        if (registrationCount > 0) {
+          await this.recalculateSeriesStandings(seriesId, true);
+          participants = await loadActiveParticipants();
+        }
+      }
+    }
 
     const standings = participants.map((p, idx) => {
       const manualAdjustments = p.adjustments.reduce(
