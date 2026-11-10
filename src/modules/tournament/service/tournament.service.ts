@@ -688,7 +688,7 @@ export class TournamentService {
       throw new BadRequestException('Coin stake must be a whole number between 20 and 500.');
     }
 
-    const odds = 2;
+    const odds = dto.multiplier ?? 2;
     const potentialPayout = dto.wagerCoins * odds;
     let prediction: { saved: any; remainingCoins: number };
     try {
