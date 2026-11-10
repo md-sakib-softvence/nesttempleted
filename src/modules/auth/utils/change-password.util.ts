@@ -140,12 +140,20 @@ export const changePasswordUtil = async (
   // Log security activity
   const title = 'Password Change';
   const description = `User ${userRecord.firstName || userRecord.name || userSession.email} (${userSession.email}) successfully changed their account password.`;
-  await createActivities(
-    prisma,
-    title,
-    description,
-    userSession.role.toUpperCase(),
-  );
+  // Employee auth tokens use the EmployeeRole value `SECURITY`, while the
+  // ActivityLog Role enum stores the corresponding value as `SECURITY_GUARD`.
+  // Keep audit logging best-effort: a log failure must not make a committed
+  // password update look like it failed to the user.
+  const activityRole = role === 'security' ? 'SECURITY_GUARD' : role.toUpperCase();
+  try {
+    await createActivities(prisma, title, description, activityRole);
+  } catch (error) {
+    logger.warn(
+      `Password changed, but its audit log could not be recorded: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 
   // Optional: send email notification
   if (mailService && userRecord.email) {

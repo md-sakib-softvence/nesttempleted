@@ -972,6 +972,20 @@ export class TournamentController {
     });
   }
 
+  @Post(':id/registrations/sync-confirmed-roster')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  @ApiOperation({
+    summary: 'Sync paid confirmed tournament registrations into bracket slots',
+  })
+  async syncConfirmedRoster(@Param('id') id: string) {
+    const data =
+      await this.tournamentService.syncConfirmedRosterToTournamentSchedule(id);
+    return sendResponse({
+      message: 'Confirmed players synced to the tournament schedule successfully',
+      data,
+    });
+  }
+
   @Patch(':id/registrations/:registrationId/status')
   @ApiOperation({
     summary:

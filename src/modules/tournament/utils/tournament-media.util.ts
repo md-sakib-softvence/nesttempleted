@@ -129,6 +129,18 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
     );
   }
 
+  // Older tournament records may store the uploaded PDF's S3 key in `description`.
+  // Keep the original field for compatibility, but expose a browser-ready URL so
+  // clients do not incorrectly request /<filename> from the API server.
+  if (
+    typeof formatted.description === 'string' &&
+    isStoredDocumentKey(formatted.description.trim())
+  ) {
+    formatted.descriptionDocumentUrl = await presignLegacyDocument(
+      formatted.description.trim(),
+    );
+  }
+
   // Schedule normalization
   const rawSchedule = formatted.schedule;
   let schedulePayload: any = null;
