@@ -58,7 +58,7 @@ describe('TicketService transfer notifications', () => {
     await expect(
       service.transferTicket(
         { userId: 'fan-sender', role: 'FAN' },
-        { ticketId: 'ticket-1', recipientPhone: '+2348012345678' },
+        { ticketId: 'ticket-1', recipientPhone: '+234 (801) 234-5678' },
       ),
     ).resolves.toEqual(
       expect.objectContaining({
