@@ -557,14 +557,9 @@ export class EmployeeService {
     return this.prisma.employeeTournamentAssignment.findMany({
       where: { employeeId: employee.employeeId },
       include: {
-        tournament: {
-          select: {
-            tournamentId: true,
-            name: true,
-            gameTitle: true,
-            startDate: true,
-          },
-        },
+        // The staff dashboard needs the assigned tournament summary. Keep this
+        // scoped to assigned rows instead of making it fetch every tournament.
+        tournament: { include: { venues: { include: { screens: true } } } },
         venue: { select: { venueId: true, name: true, address: true } },
         screen: { select: { screenId: true, screenName: true } },
       },
