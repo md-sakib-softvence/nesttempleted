@@ -378,6 +378,21 @@ export class EmployeeController {
     });
   }
 
+  @Get('my-tournament-venue-assignments')
+  @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, ...Object.values(EmployeeRole))
+  @ApiOperation({ summary: 'Get tournament and venue access assigned to the logged-in employee' })
+  async getMyTournamentVenueAssignments(
+    @Req() req: Request & { user: { userId: string } },
+  ) {
+    const data = await this.employeeService.getMyTournamentVenueAssignments(
+      req.user.userId,
+    );
+    return sendResponse({
+      message: 'Your tournament venue assignments retrieved successfully',
+      data,
+    });
+  }
+
   @Get('managers/:id')
   @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Get one manager employee by ID' })
