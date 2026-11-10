@@ -132,6 +132,7 @@ export class FanController {
       req.user.userId,
       tournamentId,
       dto,
+      typeof req.headers.origin === 'string' ? req.headers.origin : undefined,
     );
     return sendResponse({
       message: data.requiresPayment
