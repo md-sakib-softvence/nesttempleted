@@ -75,6 +75,7 @@ export class FanPlayerRegistrationService {
     fanId: string,
     tournamentId: string,
     dto: CreateFanTournamentApplicationDto,
+    requestOrigin?: string,
   ) {
     const [fan, tournament] = await Promise.all([
       this.prisma.fan.findUnique({ where: { fanId } }),
@@ -238,7 +239,7 @@ export class FanPlayerRegistrationService {
         currency: payment.currency,
         name: `${fan.firstName} ${fan.surname || ''}`.trim(),
         phoneNumber: fan.phoneNumber,
-        redirectUrl: this.getTournamentPaymentRedirectUrl(tournamentId),
+        redirectUrl: this.getTournamentPaymentRedirectUrl(tournamentId, requestOrigin),
         title: tournament.name,
         description: `Tournament entry for ${tournament.name}`,
         txRef,
@@ -339,13 +340,29 @@ export class FanPlayerRegistrationService {
     return { tournamentId: application.tournamentId };
   }
 
-  private getTournamentPaymentRedirectUrl(tournamentId: string) {
+  private getTournamentPaymentRedirectUrl(tournamentId: string, requestOrigin?: string) {
     const frontendUrl =
       this.configService.get<string>('FRONTEND_URL') ||
       this.configService.get<string>('app.frontendDomain');
     if (!frontendUrl) return undefined;
 
-    const base = frontendUrl.replace(/\/+$/, '');
+    let base = frontendUrl.replace(/\/+$/, '');
+    if (requestOrigin) {
+      try {
+        const requested = new URL(requestOrigin);
+        const configured = new URL(frontendUrl);
+        const canonicalHost = (hostname: string) => hostname.replace(/^www\./i, '').toLowerCase();
+        const sameSite = canonicalHost(requested.hostname) === canonicalHost(configured.hostname);
+        const sameLocalHost = ['localhost', '127.0.0.1'].includes(requested.hostname) &&
+          ['localhost', '127.0.0.1'].includes(configured.hostname);
+        const secureProtocol = requested.protocol === 'https:' || sameLocalHost;
+        if ((sameSite || sameLocalHost) && secureProtocol) {
+          base = requested.origin;
+        }
+      } catch {
+        // Ignore an invalid Origin and use the configured frontend URL.
+      }
+    }
     return `${base}/fan/tournaments/${encodeURIComponent(tournamentId)}?payment=flutterwave`;
   }
 

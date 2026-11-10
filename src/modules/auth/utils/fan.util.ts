@@ -63,10 +63,25 @@ export const fanLoginUtil = async (
     expiresIn: refreshExpiresIn as any,
   });
 
-  return formatAuthResponse(accessToken, refreshToken, {
+  // Tell the login UI whether an active Player panel is available for this
+  // Fan identity. This only reveals account presence after Fan credentials
+  // have already been verified.
+  const linkedPlayer = await prisma.player.findFirst({
+    where: {
+      email: { equals: fan.email, mode: 'insensitive' },
+      isDeleted: false,
+      status: 'ACTIVE',
+    },
+    select: { playerId: true },
+  });
+
+  return {
+    ...formatAuthResponse(accessToken, refreshToken, {
     userId: fan.fanId,
     email: fan.email,
     name: fan.firstName,
     role: loginDto.role,
-  });
+    }),
+    availableRoles: linkedPlayer ? ['fan', 'player'] : ['fan'],
+  };
 };

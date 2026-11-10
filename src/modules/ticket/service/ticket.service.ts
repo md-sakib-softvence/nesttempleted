@@ -23,6 +23,7 @@ import {
   TournamentRegistrationStatus,
 } from '@prisma/client';
 import { TicketScanGateway } from '../gateway/ticket-scan.gateway';
+import { NotificationService } from '../../notification/notification.service';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -33,6 +34,7 @@ export class TicketService {
     private readonly prisma: PrismaService,
     private readonly flutterwaveService: FlutterwaveService,
     private readonly ticketScanGateway: TicketScanGateway,
+    private readonly notificationService: NotificationService,
   ) {}
 
   /**
@@ -2140,6 +2142,32 @@ export class TicketService {
           },
         },
       });
+    });
+
+    const senderRole = String(currentUser.role || '').toUpperCase();
+    const transferNotifications = [
+      ...(senderRole === 'FAN' || senderRole === 'PLAYER'
+        ? [
+            this.notificationService.create({
+              userId: currentUser.userId,
+              status: 'INFORMATION',
+              title: 'Ticket transferred',
+              description: `Your ticket for ${ticket.tournament?.name || 'the tournament'} was transferred to ${recipientName || dto.recipientPhone}.`,
+            }),
+          ]
+        : []),
+      this.notificationService.create({
+        userId: recipientId,
+        status: 'INFORMATION',
+        title: 'Ticket received',
+        description: `You received a ticket for ${ticket.tournament?.name || 'a tournament'} from ${ticket.fan ? `${ticket.fan.firstName} ${ticket.fan.surname || ''}`.trim() : ticket.player ? `${ticket.player.firstName} ${ticket.player.lastName}`.trim() : 'another account'}. Open your wallet to view the pass.`,
+      }),
+    ];
+    const notificationResults = await Promise.allSettled(transferNotifications);
+    notificationResults.forEach((result) => {
+      if (result.status === 'rejected') {
+        this.logger.warn(`Could not create ticket transfer notification: ${String(result.reason)}`);
+      }
     });
 
     return {

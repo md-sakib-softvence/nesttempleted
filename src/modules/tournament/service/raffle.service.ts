@@ -3,6 +3,8 @@ import {
   NotFoundException,
   BadRequestException,
   UnauthorizedException,
+  Logger,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateRaffleDto } from '../dto/tournament/create-raffle.dto';
@@ -14,10 +16,16 @@ import {
   QueryOptions,
 } from '../../utils/query.util';
 import { parseRaffleRegistrationCloseDate } from '../utils/raffle-date.util';
+import { NotificationService } from '../../notification/notification.service';
 
 @Injectable()
 export class RaffleService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(RaffleService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly notificationService?: NotificationService,
+  ) {}
 
   /**
    * Get all raffles across tournaments (with optional search, filter & pagination)
@@ -464,13 +472,33 @@ export class RaffleService {
       qrCodeString: `RAFFLE:${raffle.raffleId}:${crypto.randomBytes(32).toString('base64url')}`,
     }));
 
-    return this.prisma.raffle.update({
+    const updatedRaffle = await this.prisma.raffle.update({
       where: { raffleId },
       data: {
         status: RaffleStatus.DRAWN,
         winners: winners as any,
       },
     });
+
+    if (this.notificationService) {
+      const notificationResults = await Promise.allSettled(
+        winners.map((winner) =>
+          this.notificationService!.create({
+            userId: winner.userId,
+            status: 'ALERT',
+            title: `You won: ${raffle.name}`,
+            description: `You won the ${raffle.name} giveaway. Prize: ${raffle.prizeDescription}. Open Giveaways to view your result and claim details.`,
+          }),
+        ),
+      );
+      notificationResults.forEach((result) => {
+        if (result.status === 'rejected') {
+          this.logger.warn(`Could not create raffle winner notification: ${String(result.reason)}`);
+        }
+      });
+    }
+
+    return updatedRaffle;
   }
 
   /**

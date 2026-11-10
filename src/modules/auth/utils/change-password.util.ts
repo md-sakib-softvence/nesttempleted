@@ -108,10 +108,33 @@ export const changePasswordUtil = async (
     Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
   );
 
-  // Update password in respective model
-  await (prisma as any)[entityName].update({
-    where: { [idField]: userSession.userId },
-    data: { password: hashedPassword },
+  // A Player created from a Fan account intentionally shares the same email
+  // and starts with the Fan's password hash. Keep both credentials in sync
+  // whenever either linked account changes its password.
+  await prisma.$transaction(async (tx) => {
+    await (tx as any)[entityName].update({
+      where: { [idField]: userSession.userId },
+      data: { password: hashedPassword },
+    });
+
+    if (role === 'fan' || role === 'player') {
+      const linkedModel = role === 'fan' ? 'player' : 'fan';
+      const linkedIdField = role === 'fan' ? 'playerId' : 'fanId';
+      const linkedAccount = await (tx as any)[linkedModel].findFirst({
+        where: {
+          email: { equals: userRecord.email, mode: 'insensitive' },
+          isDeleted: false,
+        },
+        select: { [linkedIdField]: true },
+      });
+
+      if (linkedAccount) {
+        await (tx as any)[linkedModel].update({
+          where: { [linkedIdField]: linkedAccount[linkedIdField] },
+          data: { password: hashedPassword },
+        });
+      }
+    }
   });
 
   // Log security activity
