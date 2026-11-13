@@ -203,7 +203,9 @@ describe('TournamentService (Admin Invariants & Concurrency Tests)', () => {
           reason: 'Typo in score',
           acknowledgement: false,
         }),
-      ).rejects.toThrow(ConflictException);
+      ).rejects.toThrow(
+        'Score correction requires acknowledgement and expectedVersion',
+      );
     });
   });
 

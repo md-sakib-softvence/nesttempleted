@@ -1,9 +1,12 @@
+import {
+  doubleEliminationPlacements,
+  structureFlags,
+} from './competition-runtime.util';
 import { getPreSignedUrl } from '../../utils/s3.util';
 
 const isHttpUrl = (value: string) => /^https?:\/\//i.test(value);
 const isS3HttpUrl = (value: string) =>
-  isHttpUrl(value) &&
-  (/amazonaws\.com/i.test(value) || /X-Amz-/i.test(value));
+  isHttpUrl(value) && (/amazonaws\.com/i.test(value) || /X-Amz-/i.test(value));
 const isStoredDocumentKey = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.[a-z0-9]+$/i.test(
     value,
@@ -87,15 +90,13 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
     formatted.canvasImage = formatted.tournamentBanner;
   }
 
-  const rawPrimaryOrg =
-    formatted.primaryOrganization || formatted.playerOrgUrl;
+  const rawPrimaryOrg = formatted.primaryOrganization || formatted.playerOrgUrl;
   if (rawPrimaryOrg) {
     formatted.primaryOrganization = await safePresignUrl(String(rawPrimaryOrg));
     formatted.playerOrgUrl = formatted.primaryOrganization;
   }
 
-  const rawSecondaryOrg =
-    formatted.secondaryOrganization || formatted.prOrgUrl;
+  const rawSecondaryOrg = formatted.secondaryOrganization || formatted.prOrgUrl;
   if (rawSecondaryOrg) {
     formatted.secondaryOrganization = await safePresignUrl(
       String(rawSecondaryOrg),
@@ -273,6 +274,7 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
 
   // Schedule Settings object
   const schedSettings = schedulePayload?.scheduleSettings || {};
+  const flags = structureFlags(schedulePayload?.structure);
   formatted.scheduleSettings = {
     startDate:
       schedSettings.startDate ||
@@ -289,8 +291,14 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
       schedSettings.lunchBreakStartTime || formatted.lunchBreakTime || '13:00',
     lunchBreakDuration:
       schedSettings.lunchBreakDuration ?? formatted.lunchDuration ?? 60,
-    thirdPlacePlayoffEnabled: schedSettings.thirdPlacePlayoffEnabled ?? true,
-    grandFinalResetEnabled: schedSettings.grandFinalResetEnabled ?? false,
+    thirdPlacePlayoffEnabled:
+      schedulePayload?.structure?.thirdPlacePlayoffEnabled ??
+      schedSettings.thirdPlacePlayoffEnabled ??
+      flags.thirdPlacePlayoffEnabled,
+    grandFinalResetEnabled:
+      schedulePayload?.structure?.hasGrandFinalReset ??
+      schedSettings.grandFinalResetEnabled ??
+      flags.hasGrandFinalReset,
   };
 
   // Frequency Settings object
@@ -306,7 +314,19 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
       freqNameMap[formatted.frequencyStatus] ||
       'Daily',
     buffer: freqSettings.buffer ?? formatted.buffer ?? 0,
-    playingDays: freqSettings.playingDays || [0, 6],
+    playingDays: (
+      formatted.frequencyArray ??
+      freqSettings.playingDays ?? [0, 1, 2, 3, 4, 5, 6]
+    )
+      .map((day: string | number) => {
+        const raw = String(day).trim().toLowerCase();
+        return /^[0-6]$/.test(raw)
+          ? Number(raw)
+          : ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(
+              raw.slice(0, 3),
+            );
+      })
+      .filter((day: number) => day >= 0 && day <= 6),
   };
 
   // Normalized Venues
@@ -391,16 +411,16 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
 
   if (schedulePayload) {
     const rawMatches =
+      schedulePayload.structure?.matches ||
       schedulePayload.canonicalMatches ||
       schedulePayload.matches ||
-      schedulePayload.structure?.matches ||
       [];
     const rawSlots =
-      schedulePayload.slots || schedulePayload.structure?.slots || [];
+      schedulePayload.structure?.slots || schedulePayload.slots || [];
     const rawSeeds =
-      schedulePayload.seeds || schedulePayload.structure?.seeds || [];
+      schedulePayload.structure?.seeds || schedulePayload.seeds || [];
     const rawGroups =
-      schedulePayload.groups || schedulePayload.structure?.groups || [];
+      schedulePayload.structure?.groups || schedulePayload.groups || [];
 
     const shouldIncludeMatches =
       includeAll || includeTokens.includes('matches');
@@ -468,17 +488,33 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
       totalSeeds: Array.isArray(rawSeeds) ? rawSeeds.length : 0,
     };
 
+    formatted.groupsCount =
+      schedulePayload.structure?.groupsCount ?? rawGroups.length;
+    formatted.topQualifiers =
+      schedulePayload.structure?.topQualifiers ?? formatted.topQualifiers ?? 2;
+    if (
+      formatted.tournamentFormat === 'DOUBLE_ELIMINATION' &&
+      schedulePayload.structure
+    )
+      formatted.finalPlacements = doubleEliminationPlacements(schedulePayload);
+    formatted.qualificationResolution =
+      schedulePayload.structure?.qualificationResolution ?? null;
+    formatted.scheduleCapacity = schedulePayload.capacity;
+    formatted.structureSummary = schedulePayload.structure?.summary;
     formatted.guaranteedMatches =
-      schedulePayload.summary?.guaranteedMatches ||
-      schedulePayload.structure?.summary?.guaranteedMatches ||
+      schedulePayload.summary?.guaranteedMatches ??
+      schedulePayload.structure?.summary?.guaranteedMatchCount ??
+      schedulePayload.structure?.summary?.guaranteedMatches ??
       formatted.numberOfTeams;
     formatted.conditionalMatches =
-      schedulePayload.summary?.conditionalMatches ||
-      schedulePayload.structure?.summary?.conditionalMatches ||
+      schedulePayload.summary?.conditionalMatches ??
+      schedulePayload.structure?.summary?.conditionalMatchCount ??
+      schedulePayload.structure?.summary?.conditionalMatches ??
       0;
     formatted.maximumPossibleMatches =
-      schedulePayload.summary?.maximumPossibleMatches ||
-      schedulePayload.structure?.summary?.maximumPossibleMatches ||
+      schedulePayload.summary?.maximumPossibleMatches ??
+      schedulePayload.structure?.summary?.maximumPossibleMatchCount ??
+      schedulePayload.structure?.summary?.maximumPossibleMatches ??
       formatted.numberOfTeams;
   }
 

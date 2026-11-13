@@ -133,9 +133,11 @@ export class CreateTournamentDto {
   })
   @Transform(({ value, obj }) => {
     return (
-      mapTournamentFormat(value) ||
-      mapTournamentFormat(obj?.format) ||
-      TournamentFormat.SINGLE_ELIMINATION
+      (value ? (mapTournamentFormat(value) ?? value) : undefined) ||
+      (obj?.format
+        ? (mapTournamentFormat(obj.format) ?? obj.format)
+        : undefined) ||
+      TournamentFormat.LEAGUE
     );
   })
   @IsEnum(TournamentFormat)
@@ -156,20 +158,13 @@ export class CreateTournamentDto {
     example: 16,
     default: 16,
   })
-  @Transform(({ value, obj }) => {
-    const raw =
-      value !== undefined && value !== ''
-        ? value
-        : obj?.teams !== undefined && obj?.teams !== ''
-          ? obj.teams
-          : obj?.capacity !== undefined && obj?.capacity !== ''
-            ? obj.capacity
-            : obj?.maxCapacity !== undefined && obj?.maxCapacity !== ''
-              ? obj.maxCapacity
-              : 16;
-    const n = Number(raw);
-    return isNaN(n) || n < 2 ? 16 : n;
-  })
+  @Transform(({ value, obj }) =>
+    value !== undefined && value !== ''
+      ? Number(value)
+      : obj?.teams !== undefined
+        ? Number(obj.teams)
+        : 8,
+  )
   @Type(() => Number)
   @IsInt()
   @Min(2)
@@ -223,7 +218,7 @@ export class CreateTournamentDto {
           ? obj.paymentWindowHours
           : 24;
     const n = Number(raw);
-    return isNaN(n) || n < 1 ? 24 : n;
+    return isNaN(n) || n < 1 ? 48 : n;
   })
   @Type(() => Number)
   @IsInt()
@@ -374,6 +369,19 @@ export class CreateTournamentDto {
   @IsOptional()
   schedulingMode?: SchedulingMode;
 
+  @ApiPropertyOptional({
+    description: 'Enable conditional Grand Final reset',
+    default: false,
+  })
+  @Transform(
+    ({ value, obj }) =>
+      (value ?? obj?.scheduleSettings?.grandFinalResetEnabled) === true ||
+      (value ?? obj?.scheduleSettings?.grandFinalResetEnabled) === 'true',
+  )
+  @IsOptional()
+  @IsBoolean()
+  grandFinalResetEnabled?: boolean;
+
   // Frontend canonical scheduleSettings object
   @ApiPropertyOptional({
     description: 'Frontend scheduleSettings object',
@@ -407,15 +415,7 @@ export class CreateTournamentDto {
   })
   @Transform(({ value, obj }) => {
     const raw = value || obj?.scheduleSettings?.startDate;
-    if (!raw) {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      return tomorrow.toISOString();
-    }
-    const date = new Date(raw);
-    return isNaN(date.getTime())
-      ? new Date().toISOString()
-      : date.toISOString();
+    return raw;
   })
   @IsDateString()
   @IsOptional()
@@ -464,22 +464,13 @@ export class CreateTournamentDto {
     example: 16,
     default: 16,
   })
-  @Transform(({ value, obj }) => {
-    const raw =
-      value !== undefined && value !== ''
-        ? value
-        : obj?.maxCapacity !== undefined && obj?.maxCapacity !== ''
-          ? obj.maxCapacity
-          : obj?.capacity !== undefined && obj?.capacity !== ''
-            ? obj.capacity
-            : obj?.teams !== undefined && obj?.teams !== ''
-              ? obj.teams
-              : obj?.numberOfTeams !== undefined && obj?.numberOfTeams !== ''
-                ? obj.numberOfTeams
-                : 16;
-    const n = Number(raw);
-    return isNaN(n) || n < 1 ? 16 : n;
-  })
+  @Transform(({ value, obj }) =>
+    value !== undefined && value !== ''
+      ? Number(value)
+      : obj?.maxCapacity !== undefined
+        ? Number(obj.maxCapacity)
+        : 64,
+  )
   @Type(() => Number)
   @IsInt()
   @Min(1)
@@ -493,7 +484,7 @@ export class CreateTournamentDto {
   })
   @Transform(
     ({ value, obj }) =>
-      value || obj?.scheduleSettings?.eventStartTime || '10:00',
+      value || obj?.scheduleSettings?.eventStartTime || '09:00',
   )
   @IsString()
   @IsOptional()
@@ -505,7 +496,7 @@ export class CreateTournamentDto {
     default: '19:00',
   })
   @Transform(
-    ({ value, obj }) => value || obj?.scheduleSettings?.eventEndTime || '19:00',
+    ({ value, obj }) => value || obj?.scheduleSettings?.eventEndTime || '17:00',
   )
   @IsString()
   @IsOptional()
@@ -522,7 +513,7 @@ export class CreateTournamentDto {
         ? value
         : obj?.scheduleSettings?.slotDuration;
     const n = Number(raw);
-    return isNaN(n) || n < 1 ? 25 : n;
+    return raw === undefined ? 20 : n;
   })
   @Type(() => Number)
   @IsInt()
@@ -541,7 +532,7 @@ export class CreateTournamentDto {
         ? value
         : obj?.scheduleSettings?.turnoverDuration;
     const n = Number(raw);
-    return isNaN(n) || n < 0 ? 5 : n;
+    return raw === undefined ? 5 : n;
   })
   @Type(() => Number)
   @IsInt()
@@ -628,7 +619,8 @@ export class CreateTournamentDto {
   @Transform(({ value, obj }) => {
     const raw =
       value !== undefined ? value : obj?.frequencySettings?.playingDays;
-    if (!raw) return [];
+    if (raw === undefined || raw === null)
+      return ['0', '1', '2', '3', '4', '5', '6'];
     if (typeof raw === 'string') {
       try {
         const parsed = JSON.parse(raw);
@@ -860,9 +852,7 @@ export class CreateTournamentDto {
       const screens =
         item.screens && Array.isArray(item.screens)
           ? item.screens.map((s: any) =>
-              typeof s === 'string'
-                ? s
-                : s.name || s.screenName || 'Screen',
+              typeof s === 'string' ? s : s.name || s.screenName || 'Screen',
             )
           : [];
       return {
@@ -988,9 +978,7 @@ export class CreateTournamentDto {
             ? Number(item.payout)
             : Number(item.amount) || 0,
         label:
-          item.label ||
-          item.prizeCategory ||
-          `Place ${item.place || idx + 1}`,
+          item.label || item.prizeCategory || `Place ${item.place || idx + 1}`,
         percentage:
           item.percentage !== undefined ? Number(item.percentage) : undefined,
         prizeCategory:
@@ -1041,7 +1029,7 @@ export class CreateTournamentDto {
 
   @ApiPropertyOptional({
     description: 'Enable 3rd place playoff match',
-    default: true,
+    default: false,
   })
   @Transform(({ value, obj }) => {
     if (value !== undefined) return value === 'true' || value === true;
@@ -1051,7 +1039,7 @@ export class CreateTournamentDto {
         obj.scheduleSettings.thirdPlacePlayoffEnabled === 'true'
       );
     }
-    return true;
+    return false;
   })
   @IsBoolean()
   @IsOptional()
@@ -1092,6 +1080,9 @@ export class CreateTournamentDto {
   registrationOpen?: boolean;
 
   @ApiPropertyOptional({ description: 'Top qualifiers count' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
   topQualifiers?: number;
 

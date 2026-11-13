@@ -166,7 +166,7 @@ describe('TournamentScheduleService', () => {
       expect(firstSlot.game).toBeNull();
     });
 
-    it('should assign shared home venue in AUTO_HOME_VENUE mode', async () => {
+    it('should defer home allocation until the explicit allocation action', async () => {
       const schedule = await service.generateSchedule({
         tournamentId: 't-home',
         tournamentFormat: TournamentFormat.LEAGUE,
@@ -189,10 +189,10 @@ describe('TournamentScheduleService', () => {
       );
 
       expect(matchP1P2).toBeDefined();
-      expect(matchP1P2?.venueId).toBe('venue-north');
+      expect(matchP1P2?.venueId).toBeUndefined();
     });
 
-    it('should allocate match to physical slot and NEVER overwrite existing scores', async () => {
+    it('rejects completed fixtures without overwriting their scores', async () => {
       const schedule = await service.generateSchedule({
         tournamentId: 't-alloc',
         tournamentFormat: TournamentFormat.SINGLE_ELIMINATION,
@@ -216,36 +216,19 @@ describe('TournamentScheduleService', () => {
       const targetDate = schedule.capacity.eventDates[0];
       const targetTime = '10:00';
 
-      const { updatedSchedule, match: allocatedMatch } = service.allocateMatch(
-        schedule,
-        match.id,
-        'venue-north',
-        'screen-n1',
-        targetDate,
-        targetTime,
-      );
-
-      // Verify physical slot assigned
-      expect(allocatedMatch.venueId).toBe('venue-north');
-      expect(allocatedMatch.screenId).toBe('screen-n1');
-      expect(allocatedMatch.date).toBe(targetDate);
-      expect(allocatedMatch.time).toBe(targetTime);
-
-      // CRITICAL INVARIANT: Scores must not be overwritten!
-      expect(allocatedMatch.score1).toBe(3);
-      expect(allocatedMatch.score2).toBe(1);
-      expect(allocatedMatch.status).toBe('COMPLETED');
-
-      // Verify calendar slot in updatedSchedule has the match with scores preserved
-      const slot = updatedSchedule.calendar
-        .find((v) => v.venueId === 'venue-north')
-        ?.screens.find((s) => s.screenId === 'screen-n1')
-        ?.days.find((d) => d.date === targetDate)
-        ?.timeslots.find((t) => t.time === targetTime);
-
-      expect(slot?.canonicalMatchId).toBe(match.id);
-      expect(slot?.game?.score1).toBe(3);
-      expect(slot?.game?.score2).toBe(1);
+      expect(() =>
+        service.allocateMatch(
+          schedule,
+          match.id,
+          'venue-north',
+          'screen-n1',
+          targetDate,
+          targetTime,
+        ),
+      ).toThrow('Match is not playable');
+      expect(match.score1).toBe(3);
+      expect(match.score2).toBe(1);
+      expect(match.status).toBe('COMPLETED');
     });
   });
 

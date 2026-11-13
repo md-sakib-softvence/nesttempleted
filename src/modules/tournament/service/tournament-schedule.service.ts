@@ -1,3 +1,8 @@
+import {
+  allocatePending,
+  reconcileQualification,
+  refreshParticipants,
+} from '../utils/competition-runtime.util';
 import { Injectable, Logger } from '@nestjs/common';
 import {
   TournamentFormat,
@@ -247,7 +252,7 @@ export class TournamentScheduleService {
       lunchDuration,
       buffer = 0,
       frequencyStatus = FrequencyStatus.DAILY,
-      frequencyArray = [],
+      frequencyArray = ['0', '1', '2', '3', '4', '5', '6'],
       venues,
       groupsCount,
       topQualifiers,
@@ -273,7 +278,10 @@ export class TournamentScheduleService {
       groupsCount,
       participants,
       thirdPlacePlayoffEnabled,
-      { topQualifiers: resolvedTopQualifiers },
+      {
+        topQualifiers: resolvedTopQualifiers,
+        hasGrandFinalReset: params.hasGrandFinalReset ?? false,
+      },
     );
 
     const schedulableCount =
@@ -293,6 +301,8 @@ export class TournamentScheduleService {
       conditionalMatches: structure.summary.conditionalMatchCount,
       bufferDays: buffer,
     });
+
+    Object.assign(capacity, { matchDuration, turnoverDuration });
 
     // 3. Generate active event dates
     const eventDates = this.generatePlayingDates(
@@ -320,6 +330,17 @@ export class TournamentScheduleService {
       dayTimeslots,
       schedulingPolicy,
     );
+
+    const initialSchedule: TournamentSchedulePayload = {
+      capacity: { ...capacity, eventDates },
+      structure,
+      calendar,
+    };
+    reconcileQualification(
+      initialSchedule,
+      tournamentFormat === TournamentFormat.LEAGUE_AND_KNOCKOUT_DOUBLE,
+    );
+    refreshParticipants(initialSchedule);
 
     // If MANUAL or PLAYER_SELF mode: return empty grid, matches remain unallocated
     if (
@@ -364,19 +385,11 @@ export class TournamentScheduleService {
       delete m.selfSchedulingOpenedAt;
     }
 
-    // 6. AUTO_HOME_VENUE or AUTO_RANDOM: allocate schedulable matches
-    const updatedCalendar = this.assignMatchesToSchedule(
-      calendar,
-      structure.matches,
-      participants,
-      schedulingMode,
-    );
-
-    return {
-      capacity: { ...capacity, eventDates },
-      structure,
-      calendar: updatedCalendar,
-    };
+    // Home allocation waits for confirmed identities and an explicit allocation command.
+    if (schedulingMode === SchedulingMode.AUTO_HOME_VENUE)
+      return initialSchedule;
+    return allocatePending(initialSchedule, schedulingMode, participants)
+      .schedule;
   }
 
   /**

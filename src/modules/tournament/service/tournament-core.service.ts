@@ -1,4 +1,8 @@
 import {
+  reconcileCalendarSettings,
+  structureFlags,
+} from '../utils/competition-runtime.util';
+import {
   Injectable,
   Logger,
   NotFoundException,
@@ -60,6 +64,23 @@ export class TournamentCoreService {
    * Generates capacity metrics, calendar grid, and places matches according to schedulingMode.
    */
   async createTournament(createTournamentDto: CreateTournamentDto) {
+    createTournamentDto =
+      this.normalizeConfigurationAliases(createTournamentDto);
+    if (
+      !createTournamentDto.startDate ||
+      !Number.isFinite(new Date(createTournamentDto.startDate).getTime())
+    )
+      throw new BadRequestException('A valid start date is required');
+    return this.prisma.$transaction(
+      (db) => this.createTournamentInTransaction(createTournamentDto, db),
+      { timeout: 30000 },
+    );
+  }
+
+  private async createTournamentInTransaction(
+    createTournamentDto: CreateTournamentDto,
+    db: any,
+  ) {
     const {
       startDate,
       deadline,
@@ -69,7 +90,7 @@ export class TournamentCoreService {
       manageEventPrizes: inputManageEventPrizes,
       playerIds: inputPlayerIds,
       groupsCount,
-      thirdPlacePlayoffEnabled = true,
+      thirdPlacePlayoffEnabled = false,
       ...rest
     } = createTournamentDto;
 
@@ -80,7 +101,7 @@ export class TournamentCoreService {
         if (typeof item === 'string') {
           resolvedSponsorIds.push(item);
         } else if (typeof item === 'object' && item !== null && item.name) {
-          const createdSponsor = await this.prisma.sponsor.create({
+          const createdSponsor = await db.sponsor.create({
             data: {
               name: item.name,
               logo: item.logo,
@@ -115,7 +136,7 @@ export class TournamentCoreService {
                 }))
               : [];
 
-          const createdVenue = await this.prisma.venue.create({
+          const createdVenue = await db.venue.create({
             data: {
               name: item.name || 'Venue',
               address: item.address || '',
@@ -143,7 +164,7 @@ export class TournamentCoreService {
           item !== null &&
           item.costCategory
         ) {
-          const createdCost = await this.prisma.manageEventCost.create({
+          const createdCost = await db.manageEventCost.create({
             data: {
               costCategory: item.costCategory,
               amount: Number(item.amount) || 0,
@@ -165,7 +186,7 @@ export class TournamentCoreService {
           item !== null &&
           item.prizeCategory
         ) {
-          const createdPrize = await this.prisma.manageEventPrize.create({
+          const createdPrize = await db.manageEventPrize.create({
             data: {
               prizeCategory: item.prizeCategory,
               amount: Number(item.amount) || 0,
@@ -183,10 +204,10 @@ export class TournamentCoreService {
       createTournamentDto.termsAndConditions || createTournamentDto.tsAndTc,
     );
     const frequencyArray = normalizeStringArray(
-      createTournamentDto.frequencyArray,
+      createTournamentDto.frequencyArray ?? ['0', '1', '2', '3', '4', '5', '6'],
     );
 
-    const tournament = await this.prisma.tournament.create({
+    const tournament = await db.tournament.create({
       data: {
         name: createTournamentDto.name,
         gameTitle:
@@ -195,20 +216,15 @@ export class TournamentCoreService {
           'EAFC 25',
         gameType: createTournamentDto.gameType || TournamentGameType.OTHER,
         tournamentFormat:
-          createTournamentDto.tournamentFormat ||
-          TournamentFormat.SINGLE_ELIMINATION,
+          createTournamentDto.tournamentFormat || TournamentFormat.LEAGUE,
         numberOfTeams:
-          createTournamentDto.numberOfTeams ||
-          createTournamentDto.teams ||
-          createTournamentDto.capacity ||
-          createTournamentDto.maxCapacity ||
-          16,
+          createTournamentDto.numberOfTeams || createTournamentDto.teams || 8,
         entryFee: createTournamentDto.entryFee ?? 0,
         currency: createTournamentDto.currency || Currency.NGN,
-        paymentWindow: createTournamentDto.paymentWindow || 24,
+        paymentWindow: createTournamentDto.paymentWindow || 48,
         prizeRule: createTournamentDto.prizeRule || PrizeRule.PERCENTAGE,
         percentage: createTournamentDto.percentage ?? 70,
-        houseRake: createTournamentDto.houseRake ?? 30,
+        houseRake: createTournamentDto.houseRake ?? 10,
         couponCreation: createTournamentDto.couponCreation ?? false,
         registrationCutOffMode:
           createTournamentDto.registrationCutOffMode ||
@@ -221,14 +237,10 @@ export class TournamentCoreService {
         startDate: new Date(startDate || Date.now() + 86400000),
         deadline: new Date(deadline || Date.now() + 7 * 86400000),
         capacity:
-          createTournamentDto.capacity ||
-          createTournamentDto.maxCapacity ||
-          createTournamentDto.numberOfTeams ||
-          createTournamentDto.teams ||
-          16,
-        dailyStart: createTournamentDto.dailyStart || '10:00',
-        dailyEnd: createTournamentDto.dailyEnd || '19:00',
-        matchDuration: createTournamentDto.matchDuration || 25,
+          createTournamentDto.capacity || createTournamentDto.maxCapacity || 64,
+        dailyStart: createTournamentDto.dailyStart || '09:00',
+        dailyEnd: createTournamentDto.dailyEnd || '17:00',
+        matchDuration: createTournamentDto.matchDuration || 20,
         turnoverDuration: createTournamentDto.turnoverDuration ?? 5,
         lunchBreakTime: createTournamentDto.lunchBreakTime || '13:00',
         lunchDuration: createTournamentDto.lunchDuration ?? 60,
@@ -257,12 +269,9 @@ export class TournamentCoreService {
             createTournamentDto.prOrgUrl ||
             createTournamentDto.secondaryOrganizerLogo,
         ),
-        fanPassLogo: extractStorageKey(
-          createTournamentDto.fanPassLogo,
-        ),
+        fanPassLogo: extractStorageKey(createTournamentDto.fanPassLogo),
         fanPassBg: extractStorageKey(
-          createTournamentDto.fanPassBg ||
-            createTournamentDto.fanPassArtUrl,
+          createTournamentDto.fanPassBg || createTournamentDto.fanPassArtUrl,
         ),
         playerOrgUrl: extractStorageKey(
           createTournamentDto.primaryOrganization ||
@@ -343,10 +352,10 @@ export class TournamentCoreService {
 
     if (createTournamentDto.seriesId) {
       try {
-        const count = await this.prisma.seriesTournament.count({
+        const count = await db.seriesTournament.count({
           where: { seriesId: createTournamentDto.seriesId },
         });
-        await this.prisma.seriesTournament.create({
+        await db.seriesTournament.create({
           data: {
             seriesId: createTournamentDto.seriesId,
             tournamentId: tournament.tournamentId,
@@ -369,7 +378,7 @@ export class TournamentCoreService {
       Array.isArray(inputPlayerIds) &&
       inputPlayerIds.length > 0
     ) {
-      const players = await this.prisma.player.findMany({
+      const players = await db.player.findMany({
         where: {
           playerId: { in: inputPlayerIds },
         },
@@ -420,18 +429,19 @@ export class TournamentCoreService {
         venues: venueInputs,
         participants,
         groupsCount,
+        topQualifiers: createTournamentDto.topQualifiers,
+        hasGrandFinalReset: createTournamentDto.grandFinalResetEnabled ?? false,
         thirdPlacePlayoffEnabled,
         schedulingPolicy:
           schedulingMode === SchedulingMode.PLAYER_SELF
             ? {
-                isWindowOpen:
-                  createTournamentDto.schedulingWindowOpen ?? false,
+                isWindowOpen: createTournamentDto.schedulingWindowOpen ?? false,
               }
             : undefined,
       });
 
     // Update tournament with generated schedule in database
-    await this.prisma.tournament.update({
+    await db.tournament.update({
       where: { tournamentId: tournament.tournamentId },
       data: { schedule: schedulePayload as any },
     });
@@ -658,9 +668,91 @@ export class TournamentCoreService {
     return presignTournamentMedia(tournament, { include });
   }
 
+  private normalizeConfigurationAliases(dto: any) {
+    const input: any = { ...dto };
+    const nested = input.scheduleSettings || {};
+    const aliases: Record<string, string[]> = {
+      dailyStart: ['eventStartTime', 'dailyStart'],
+      dailyEnd: ['eventEndTime', 'dailyEnd'],
+      matchDuration: ['slotDuration', 'matchDuration'],
+      turnoverDuration: ['turnoverDuration'],
+      lunchBreakTime: ['lunchBreakStartTime', 'lunchBreakTime'],
+      lunchDuration: ['lunchBreakDuration', 'lunchDuration'],
+      startDate: ['startDate'],
+      thirdPlacePlayoffEnabled: ['thirdPlacePlayoffEnabled'],
+      grandFinalResetEnabled: ['grandFinalResetEnabled'],
+    };
+    for (const [field, keys] of Object.entries(aliases)) {
+      if (input[field] === undefined)
+        for (const key of keys)
+          if (nested[key] !== undefined) {
+            input[field] = nested[key];
+            break;
+          }
+    }
+    const frequency = input.frequencySettings || {};
+    if (
+      input.frequencyStatus === undefined &&
+      (frequency.frequency || frequency.frequencyStatus)
+    )
+      input.frequencyStatus = mapFrequencyStatus(
+        frequency.frequency || frequency.frequencyStatus,
+      );
+    if (
+      input.frequencyArray === undefined &&
+      (frequency.playingDays || frequency.frequencyArray)
+    )
+      input.frequencyArray = (
+        frequency.playingDays || frequency.frequencyArray
+      ).map(String);
+    if (input.buffer === undefined && frequency.buffer !== undefined)
+      input.buffer = frequency.buffer;
+    if (input.capacity === undefined && input.maxCapacity !== undefined)
+      input.capacity = input.maxCapacity;
+    if (
+      input.schedulingWindowOpen === undefined &&
+      input.schedulingPaused !== undefined
+    )
+      input.schedulingWindowOpen = !input.schedulingPaused;
+    if (input.tournamentFormat === undefined && input.format !== undefined)
+      input.tournamentFormat = mapTournamentFormat(input.format);
+    if (input.numberOfTeams === undefined && input.teams !== undefined)
+      input.numberOfTeams = Number(input.teams);
+    for (const key of [
+      'matchDuration',
+      'turnoverDuration',
+      'lunchDuration',
+      'buffer',
+      'topQualifiers',
+      'groupsCount',
+      'capacity',
+    ])
+      if (input[key] !== undefined) input[key] = Number(input[key]);
+    for (const key of ['thirdPlacePlayoffEnabled', 'grandFinalResetEnabled'])
+      if (input[key] !== undefined) {
+        if (![true, false, 'true', 'false'].includes(input[key]))
+          throw new BadRequestException(`Invalid boolean setting: ${key}`);
+        input[key] = input[key] === true || input[key] === 'true';
+      }
+    return input;
+  }
+
   async updateTournament(id: string, updateTournamentDto: UpdateTournamentDto) {
-    const existing = await this.prisma.tournament.findUnique({
+    const input = this.normalizeConfigurationAliases(updateTournamentDto);
+    return this.prisma.$transaction(
+      (db) => this.updateTournamentInTransaction(id, input, db),
+      { timeout: 30000 },
+    );
+  }
+
+  private async updateTournamentInTransaction(
+    id: string,
+    updateTournamentDto: UpdateTournamentDto,
+    db: any,
+  ) {
+    const existing = await db.tournament.findUnique({
       where: { tournamentId: id },
+      include: { venues: { include: { screens: true } } },
     });
 
     if (!existing || existing.isDeleted) {
@@ -677,6 +769,38 @@ export class TournamentCoreService {
       });
     }
 
+    const structure = existing.schedule?.structure;
+    if (structure) {
+      const input: any = updateTournamentDto;
+      const flags = structureFlags(structure);
+      const changes: Array<[any, any]> = [
+        [input.numberOfTeams ?? input.teams, existing.numberOfTeams],
+        [
+          input.tournamentFormat ??
+            (input.format ? mapTournamentFormat(input.format) : undefined),
+          existing.tournamentFormat,
+        ],
+        [
+          structure.groups?.length ? input.groupsCount : undefined,
+          structure.groupsCount ?? structure.groups?.length,
+        ],
+        [
+          structure.groups?.length ? input.topQualifiers : undefined,
+          structure.topQualifiers ?? 2,
+        ],
+        [input.thirdPlacePlayoffEnabled, flags.thirdPlacePlayoffEnabled],
+        [input.grandFinalResetEnabled, flags.hasGrandFinalReset],
+      ];
+      if (
+        changes.some(
+          ([proposed, current]) =>
+            proposed !== undefined && proposed !== current,
+        )
+      )
+        throw new BadRequestException(
+          'Sporting structure cannot be changed after generation',
+        );
+    }
     const {
       startDate,
       deadline,
@@ -688,6 +812,7 @@ export class TournamentCoreService {
     } = updateTournamentDto;
 
     const updateData: Record<string, any> = { ...rest };
+    delete updateData.schedule; // Clients never supply authoritative matches or allocations.
 
     // Clean up virtual/frontend aliases from updateData before sending to Prisma
     delete updateData.expectedVersion;
@@ -780,12 +905,13 @@ export class TournamentCoreService {
     }
 
     if (updateTournamentDto.fanPassLogo !== undefined) {
-      updateData.fanPassLogo = extractStorageKey(updateTournamentDto.fanPassLogo);
+      updateData.fanPassLogo = extractStorageKey(
+        updateTournamentDto.fanPassLogo,
+      );
     }
 
     const fanBgVal =
-      updateTournamentDto.fanPassBg ??
-      updateTournamentDto.fanPassArtUrl;
+      updateTournamentDto.fanPassBg ?? updateTournamentDto.fanPassArtUrl;
     if (fanBgVal !== undefined) {
       updateData.fanPassBg = extractStorageKey(fanBgVal);
     }
@@ -799,9 +925,7 @@ export class TournamentCoreService {
     if (updateTournamentDto.percentage !== undefined) {
       updateData.percentage = Number(updateTournamentDto.percentage);
     } else if (updateTournamentDto.prizePoolConfig?.value !== undefined) {
-      updateData.percentage = Number(
-        updateTournamentDto.prizePoolConfig.value,
-      );
+      updateData.percentage = Number(updateTournamentDto.prizePoolConfig.value);
     }
     if (updateTournamentDto.houseRake !== undefined) {
       updateData.houseRake = Number(updateTournamentDto.houseRake);
@@ -902,13 +1026,13 @@ export class TournamentCoreService {
             item.costCategory || item.category || item.name || 'Cost';
           const amount = Number(item.amount) || 0;
           if (costId) {
-            await this.prisma.manageEventCost.update({
+            await db.manageEventCost.update({
               where: { manageEventCostId: costId },
               data: { costCategory, amount, tournamentId: id },
             });
             resolvedCostIds.push(costId);
           } else {
-            const createdCost = await this.prisma.manageEventCost.create({
+            const createdCost = await db.manageEventCost.create({
               data: {
                 tournamentId: id,
                 costCategory,
@@ -951,13 +1075,13 @@ export class TournamentCoreService {
           const amount =
             Number(item.amount !== undefined ? item.amount : item.payout) || 0;
           if (prizeId) {
-            await this.prisma.manageEventPrize.update({
+            await db.manageEventPrize.update({
               where: { manageEventPrizeId: prizeId },
               data: { prizeCategory, amount, tournamentId: id },
             });
             resolvedPrizeIds.push(prizeId);
           } else {
-            const createdPrize = await this.prisma.manageEventPrize.create({
+            const createdPrize = await db.manageEventPrize.create({
               data: {
                 tournamentId: id,
                 prizeCategory,
@@ -996,13 +1120,13 @@ export class TournamentCoreService {
             tournamentId: id,
           };
           if (sponsorId) {
-            await this.prisma.sponsor.update({
+            await db.sponsor.update({
               where: { sponsorId },
               data: sponsorData,
             });
             resolvedSponsorIds.push(sponsorId);
           } else {
-            const createdSponsor = await this.prisma.sponsor.create({
+            const createdSponsor = await db.sponsor.create({
               data: sponsorData,
             });
             resolvedSponsorIds.push(createdSponsor.sponsorId);
@@ -1035,7 +1159,7 @@ export class TournamentCoreService {
 
           if (venueId) {
             // Update existing venue
-            await this.prisma.venue.update({
+            await db.venue.update({
               where: { venueId },
               data: {
                 name: item.name || 'Venue',
@@ -1047,7 +1171,7 @@ export class TournamentCoreService {
 
             // Sync screens for this venue
             if (rawScreens.length > 0) {
-              const existingScreens = await this.prisma.screen.findMany({
+              const existingScreens = await db.screen.findMany({
                 where: { venueId },
               });
               const existingScreenNames = new Set(
@@ -1059,7 +1183,7 @@ export class TournamentCoreService {
                     ? s
                     : s?.name || s?.screenName || 'Screen';
                 if (!existingScreenNames.has(screenName)) {
-                  await this.prisma.screen.create({
+                  await db.screen.create({
                     data: { venueId, screenName },
                   });
                 }
@@ -1069,9 +1193,11 @@ export class TournamentCoreService {
             // Create new venue and screens
             const screens = rawScreens.map((s: any) => ({
               screenName:
-                typeof s === 'string' ? s : s?.name || s?.screenName || 'Screen',
+                typeof s === 'string'
+                  ? s
+                  : s?.name || s?.screenName || 'Screen',
             }));
-            const createdVenue = await this.prisma.venue.create({
+            const createdVenue = await db.venue.create({
               data: {
                 tournamentId: id,
                 name: item.name || 'Venue',
@@ -1162,8 +1288,67 @@ export class TournamentCoreService {
       filteredUpdateData.venues = updateData.venues;
     }
 
-    const updated = await this.prisma.tournament.update({
-      where: { tournamentId: id },
+    if (structure) {
+      const venues = await db.venue.findMany({
+        where: {
+          venueId: {
+            in: resolvedUpdateVenueIds.length
+              ? resolvedUpdateVenueIds
+              : existing.venues.map((v: any) => v.venueId),
+          },
+        },
+        include: { screens: true },
+      });
+      const nextSchedule = JSON.parse(JSON.stringify(existing.schedule));
+      const physicalKeys = [
+        'startDate',
+        'dailyStart',
+        'dailyEnd',
+        'matchDuration',
+        'turnoverDuration',
+        'lunchBreakTime',
+        'lunchDuration',
+        'buffer',
+        'frequencyStatus',
+        'frequencyArray',
+      ];
+      const changed =
+        updateVenues !== undefined ||
+        physicalKeys.some(
+          (key) =>
+            filteredUpdateData[key] !== undefined &&
+            JSON.stringify(filteredUpdateData[key]) !==
+              JSON.stringify(existing[key]),
+        );
+      if (changed)
+        reconcileCalendarSettings(nextSchedule, {
+          ...existing,
+          ...filteredUpdateData,
+          venues,
+        });
+      const windows = (updateTournamentDto as any).matchdayWindows;
+      if (windows?.length) {
+        const found = new Set<string>();
+        for (const venue of nextSchedule.calendar)
+          for (const screen of venue.screens)
+            for (const day of screen.days) {
+              const policy = windows.find((w: any) => w.date === day.date);
+              if (policy) {
+                day.schedulingPolicy = {
+                  isWindowOpen: policy.isWindowOpen,
+                  windowOpenTime: policy.windowOpenTime || '',
+                  windowCloseTime: policy.windowCloseTime || '',
+                };
+                found.add(day.date);
+              }
+            }
+        if (windows.some((w: any) => !found.has(w.date)))
+          throw new BadRequestException('Unknown matchday booking window date');
+      }
+      filteredUpdateData.schedule = nextSchedule;
+    }
+    const updated = await db.tournament.update({
+      where: { tournamentId: id, version: existing.version },
       data: {
         ...filteredUpdateData,
         version: { increment: 1 },
@@ -1189,14 +1374,14 @@ export class TournamentCoreService {
 
     if (updateTournamentDto.seriesId) {
       try {
-        const existingLink = await this.prisma.seriesTournament.findFirst({
+        const existingLink = await db.seriesTournament.findFirst({
           where: { tournamentId: id },
         });
         if (!existingLink) {
-          const count = await this.prisma.seriesTournament.count({
+          const count = await db.seriesTournament.count({
             where: { seriesId: updateTournamentDto.seriesId },
           });
-          await this.prisma.seriesTournament.create({
+          await db.seriesTournament.create({
             data: {
               seriesId: updateTournamentDto.seriesId,
               tournamentId: id,
@@ -1204,7 +1389,7 @@ export class TournamentCoreService {
             },
           });
         } else if (existingLink.seriesId !== updateTournamentDto.seriesId) {
-          await this.prisma.seriesTournament.update({
+          await db.seriesTournament.update({
             where: {
               seriesId_tournamentId: {
                 seriesId: existingLink.seriesId,

@@ -1,3 +1,4 @@
+import { QualificationDrawDto } from '../../dto/tournament/qualification-draw.dto';
 import {
   Controller,
   Post,
@@ -161,9 +162,7 @@ export class TournamentController {
       createDto.prOrgUrl = secondaryOrgVal;
     }
 
-    const fanLogoVal =
-      uploadedFiles.fanPassLogo ||
-      createDto.fanPassLogo;
+    const fanLogoVal = uploadedFiles.fanPassLogo || createDto.fanPassLogo;
     if (fanLogoVal) {
       createDto.fanPassLogo = fanLogoVal;
     }
@@ -266,18 +265,31 @@ export class TournamentController {
 
   @Get('prediction-fixtures')
   @Public()
-  @ApiOperation({ summary: 'Get real, unresolved prediction fixtures from live tournaments' })
+  @ApiOperation({
+    summary: 'Get real, unresolved prediction fixtures from live tournaments',
+  })
   async getAllPredictionFixtures() {
     const data = await this.tournamentService.getAllLivePredictionFixtures();
-    return sendResponse({ message: 'Live prediction fixtures retrieved successfully', data });
+    return sendResponse({
+      message: 'Live prediction fixtures retrieved successfully',
+      data,
+    });
   }
 
   @Get('my-predictions')
   @Roles(Role.FAN, 'fan')
-  @ApiOperation({ summary: 'Get the authenticated fan prediction history and current coin balance' })
+  @ApiOperation({
+    summary:
+      'Get the authenticated fan prediction history and current coin balance',
+  })
   async getMyPredictions(@Req() req: any) {
-    const data = await this.tournamentService.getFanPredictionHistory(req?.user?.userId);
-    return sendResponse({ message: 'Prediction history retrieved successfully', data });
+    const data = await this.tournamentService.getFanPredictionHistory(
+      req?.user?.userId,
+    );
+    return sendResponse({
+      message: 'Prediction history retrieved successfully',
+      data,
+    });
   }
 
   @Get(':id')
@@ -399,9 +411,7 @@ export class TournamentController {
       updateDto.prOrgUrl = secondaryOrgVal;
     }
 
-    const fanLogoVal =
-      uploadedFiles.fanPassLogo ||
-      updateDto.fanPassLogo;
+    const fanLogoVal = uploadedFiles.fanPassLogo || updateDto.fanPassLogo;
     if (fanLogoVal) {
       updateDto.fanPassLogo = fanLogoVal;
     }
@@ -550,8 +560,20 @@ export class TournamentController {
   }
 
   @Post(':id/matches/:matchId/check-in/verify')
-  @Roles(Role.EMPLOYEE, Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'employee', 'manager', 'admin', 'super_admin')
-  @ApiOperation({ summary: 'Verify a participant QR pass for an assigned tournament match without checking them in' })
+  @Roles(
+    Role.EMPLOYEE,
+    Role.MANAGER,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'employee',
+    'manager',
+    'admin',
+    'super_admin',
+  )
+  @ApiOperation({
+    summary:
+      'Verify a participant QR pass for an assigned tournament match without checking them in',
+  })
   async verifyMatchCheckIn(
     @Param('id') id: string,
     @Param('matchId') matchId: string,
@@ -569,8 +591,20 @@ export class TournamentController {
   }
 
   @Post(':id/matches/:matchId/check-in')
-  @Roles(Role.EMPLOYEE, Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'employee', 'manager', 'admin', 'super_admin')
-  @ApiOperation({ summary: 'Confirm participant check-in; automatically starts the match after both players check in' })
+  @Roles(
+    Role.EMPLOYEE,
+    Role.MANAGER,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'employee',
+    'manager',
+    'admin',
+    'super_admin',
+  )
+  @ApiOperation({
+    summary:
+      'Confirm participant check-in; automatically starts the match after both players check in',
+  })
   async checkInMatch(
     @Param('id') id: string,
     @Param('matchId') matchId: string,
@@ -585,14 +619,28 @@ export class TournamentController {
       req.user,
     );
     return sendResponse({
-      message: data.matchStarted ? 'Both players checked in; match started' : 'Player checked in; waiting for the other participant',
+      message: data.matchStarted
+        ? 'Both players checked in; match started'
+        : 'Player checked in; waiting for the other participant',
       data,
     });
   }
 
   @Post(':id/matches/:matchId/score')
-  @Roles(Role.EMPLOYEE, Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'employee', 'manager', 'admin', 'super_admin')
-  @ApiOperation({ summary: 'Submit the final score for a started match assigned to the current employee' })
+  @Roles(
+    Role.EMPLOYEE,
+    Role.MANAGER,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'employee',
+    'manager',
+    'admin',
+    'super_admin',
+  )
+  @ApiOperation({
+    summary:
+      'Submit the final score for a started match assigned to the current employee',
+  })
   async submitMatchScore(
     @Param('id') id: string,
     @Param('matchId') matchId: string,
@@ -605,19 +653,41 @@ export class TournamentController {
       body,
       req.user,
     );
-    return sendResponse({ message: 'Final score submitted and tournament result updated', data });
+    return sendResponse({
+      message: 'Final score submitted and tournament result updated',
+      data,
+    });
   }
 
   @Get(':id/staff-assignments')
-  @Roles(Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'manager', 'admin', 'super_admin')
-  @ApiOperation({ summary: 'Get persisted employee assignments for a tournament' })
+  @Roles(
+    Role.MANAGER,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'manager',
+    'admin',
+    'super_admin',
+  )
+  @ApiOperation({
+    summary: 'Get persisted employee assignments for a tournament',
+  })
   async getStaffAssignments(@Param('id') id: string) {
     const data = await this.tournamentService.getTournamentStaffAssignments(id);
-    return sendResponse({ message: 'Tournament staff assignments retrieved', data });
+    return sendResponse({
+      message: 'Tournament staff assignments retrieved',
+      data,
+    });
   }
 
   @Put(':id/matches/:matchId/staff-assignment')
-  @Roles(Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'manager', 'admin', 'super_admin')
+  @Roles(
+    Role.MANAGER,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'manager',
+    'admin',
+    'super_admin',
+  )
   @ApiOperation({ summary: 'Assign an active employee to a tournament match' })
   async assignMatchStaff(
     @Param('id') id: string,
@@ -633,22 +703,46 @@ export class TournamentController {
   }
 
   @Delete(':id/matches/:matchId/staff-assignment')
-  @Roles(Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'manager', 'admin', 'super_admin')
-  @ApiOperation({ summary: 'Remove employee assignment from a tournament match' })
+  @Roles(
+    Role.MANAGER,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'manager',
+    'admin',
+    'super_admin',
+  )
+  @ApiOperation({
+    summary: 'Remove employee assignment from a tournament match',
+  })
   async unassignMatchStaff(
     @Param('id') id: string,
     @Param('matchId') matchId: string,
   ) {
-    const data = await this.tournamentService.unassignTournamentMatchStaff(id, matchId);
+    const data = await this.tournamentService.unassignTournamentMatchStaff(
+      id,
+      matchId,
+    );
     return sendResponse({ message: 'Employee unassigned from match', data });
   }
 
   @Post(':id/staff-assignments/auto-assign')
-  @Roles(Role.MANAGER, Role.ADMIN, Role.SUPER_ADMIN, 'manager', 'admin', 'super_admin')
-  @ApiOperation({ summary: 'Round-robin assign active employees to unassigned matches' })
+  @Roles(
+    Role.MANAGER,
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    'manager',
+    'admin',
+    'super_admin',
+  )
+  @ApiOperation({
+    summary: 'Round-robin assign active employees to unassigned matches',
+  })
   async autoAssignStaff(@Param('id') id: string) {
     const data = await this.tournamentService.autoAssignTournamentStaff(id);
-    return sendResponse({ message: 'Active employees assigned to open matches', data });
+    return sendResponse({
+      message: 'Active employees assigned to open matches',
+      data,
+    });
   }
 
   @Post(':id/matches/:matchId/self-book')
@@ -981,7 +1075,8 @@ export class TournamentController {
     const data =
       await this.tournamentService.syncConfirmedRosterToTournamentSchedule(id);
     return sendResponse({
-      message: 'Confirmed players synced to the tournament schedule successfully',
+      message:
+        'Confirmed players synced to the tournament schedule successfully',
       data,
     });
   }
@@ -1076,6 +1171,27 @@ export class TournamentController {
     return sendResponse({
       message: 'Expired unpaid registrations processed successfully',
       data,
+    });
+  }
+
+  @Post(':id/qualification-draw')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @ApiOperation({
+    summary:
+      'Resolve one current qualification tie with an explicit persisted draw',
+  })
+  async qualificationDraw(
+    @Param('id') id: string,
+    @Body() dto: QualificationDrawDto,
+    @Req() req: any,
+  ) {
+    return sendResponse({
+      message: 'Qualification draw saved',
+      data: await this.tournamentService.resolveQualificationDraw(
+        id,
+        dto,
+        req.user.userId,
+      ),
     });
   }
 

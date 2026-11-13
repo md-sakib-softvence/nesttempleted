@@ -249,8 +249,13 @@ export class AdminMatchController {
   async scoreCorrection(
     @Param('matchId') matchId: string,
     @Body() body: ScoreCorrectionDto,
+    @Req() req?: any,
   ) {
-    const data = await this.tournamentService.correctMatchScore(matchId, body);
+    const data = await this.tournamentService.correctMatchScore(
+      matchId,
+      body,
+      req?.user?.userId,
+    );
     return sendResponse({
       message: 'Match score corrected successfully with audit log created',
       data,
@@ -267,7 +272,11 @@ export class AdminMatchController {
     @Body() body: CreateMatchDisputeDto,
     @Req() req: any,
   ) {
-    const data = await this.tournamentService.disputeMatch(matchId, body, req.user);
+    const data = await this.tournamentService.disputeMatch(
+      matchId,
+      body,
+      req.user,
+    );
     return sendResponse({
       message: 'Match marked under review and dispute logged successfully',
       data,

@@ -1,3 +1,4 @@
+import { TournamentCoreService } from './tournament-core.service';
 import {
   Injectable,
   NotFoundException,
@@ -237,34 +238,10 @@ export class TournamentTabsService {
   }
 
   async patchDetailsTab(tournamentId: string, dto: UpdateDetailsTabDto) {
-    await this.findTournamentOrThrow(tournamentId);
-
-    const data: Prisma.TournamentUpdateInput = {};
-    if (dto.name !== undefined) data.name = dto.name;
-    if (dto.gameTitle !== undefined) data.gameTitle = dto.gameTitle;
-    if (dto.gameType !== undefined) data.gameType = dto.gameType;
-    if (dto.tournamentFormat !== undefined)
-      data.tournamentFormat = dto.tournamentFormat;
-    if (dto.capacity !== undefined) data.capacity = dto.capacity;
-    if (dto.numberOfTeams !== undefined) data.numberOfTeams = dto.numberOfTeams;
-    if (dto.registrationCutOffMode !== undefined)
-      data.registrationCutOffMode = dto.registrationCutOffMode;
-    if (dto.entryFee !== undefined) data.entryFee = dto.entryFee;
-    if (dto.currency !== undefined) data.currency = dto.currency;
-    if (dto.prizeRule !== undefined) data.prizeRule = dto.prizeRule;
-    if (dto.percentage !== undefined) data.percentage = dto.percentage;
-    if (dto.houseRake !== undefined) data.houseRake = dto.houseRake;
-    if (dto.paymentWindow !== undefined) data.paymentWindow = dto.paymentWindow;
-    if (dto.startDate !== undefined) data.startDate = new Date(dto.startDate);
-    if (dto.deadline !== undefined) data.deadline = new Date(dto.deadline);
-
-    data.version = { increment: 1 };
-
-    await this.prisma.tournament.update({
-      where: { tournamentId },
-      data,
-    });
-
+    await new TournamentCoreService(
+      this.prisma,
+      this.scheduleService,
+    ).updateTournament(tournamentId, dto);
     return this.getDetailsTab(tournamentId);
   }
 
@@ -693,92 +670,13 @@ export class TournamentTabsService {
   }
 
   async patchScheduleTab(tournamentId: string, dto: UpdateScheduleTabDto) {
-    const tournament = await this.findTournamentOrThrow(tournamentId);
-
-    const data: Prisma.TournamentUpdateInput = {};
-    if (dto.schedulingMode !== undefined)
-      data.schedulingMode = dto.schedulingMode;
-    if (dto.schedulingPaused !== undefined)
-      data.schedulingPaused = dto.schedulingPaused;
-    if (dto.dailyStart !== undefined) data.dailyStart = dto.dailyStart;
-    if (dto.dailyEnd !== undefined) data.dailyEnd = dto.dailyEnd;
-    if (dto.matchDuration !== undefined) data.matchDuration = dto.matchDuration;
-    if (dto.turnoverDuration !== undefined)
-      data.turnoverDuration = dto.turnoverDuration;
-    if (dto.buffer !== undefined) data.buffer = dto.buffer;
-    if (dto.lunchBreakTime !== undefined)
-      data.lunchBreakTime = dto.lunchBreakTime;
-    if (dto.lunchDuration !== undefined) data.lunchDuration = dto.lunchDuration;
-    if (dto.frequencyStatus !== undefined)
-      data.frequencyStatus = dto.frequencyStatus;
-    if (dto.frequencyArray !== undefined)
-      data.frequencyArray = dto.frequencyArray;
-
-    if (dto.matchdayWindows?.length) {
-      const currentSchedule = (tournament.schedule as any) || {};
-      const calendar = currentSchedule.calendar;
-      if (!Array.isArray(calendar)) {
-        throw new BadRequestException(
-          'Generate the tournament calendar before configuring matchday windows.',
-        );
-      }
-
-      const requestedDates = new Set(dto.matchdayWindows.map((item) => item.date));
-      const existingDates = new Set<string>();
-      for (const venue of calendar) {
-        for (const screen of venue.screens || []) {
-          for (const day of screen.days || []) {
-            if (requestedDates.has(day.date)) existingDates.add(day.date);
-          }
-        }
-      }
-      const unknownDate = dto.matchdayWindows.find(
-        (item) => !existingDates.has(item.date),
-      );
-      if (unknownDate) {
-        throw new BadRequestException(
-          `Matchday ${unknownDate.date} is not part of this tournament calendar.`,
-        );
-      }
-
-      const policyByDate = new Map(
-        dto.matchdayWindows.map((item) => [
-          item.date,
-          {
-            isWindowOpen: item.isWindowOpen,
-            windowOpenTime: item.windowOpenTime || '',
-            windowCloseTime: item.windowCloseTime || '',
-          },
-        ]),
-      );
-      data.schedule = {
-        ...currentSchedule,
-        calendar: calendar.map((venue: any) => ({
-          ...venue,
-          screens: (venue.screens || []).map((screen: any) => ({
-            ...screen,
-            days: (screen.days || []).map((day: any) => {
-              const policy = policyByDate.get(day.date);
-              return policy ? { ...day, schedulingPolicy: policy } : day;
-            }),
-          })),
-        })),
-      } as Prisma.InputJsonValue;
-    }
-
-    if (dto.action === 'pause') {
-      data.schedulingPaused = true;
-    } else if (dto.action === 'resume') {
-      data.schedulingPaused = false;
-    }
-
-    data.version = { increment: 1 };
-
-    await this.prisma.tournament.update({
-      where: { tournamentId },
-      data,
-    });
-
+    const input: any = { ...dto };
+    if (dto.action === 'pause') input.schedulingWindowOpen = false;
+    if (dto.action === 'resume') input.schedulingWindowOpen = true;
+    await new TournamentCoreService(
+      this.prisma,
+      this.scheduleService,
+    ).updateTournament(tournamentId, input);
     return this.getScheduleTab(tournamentId);
   }
 
@@ -1054,8 +952,10 @@ export class TournamentTabsService {
       secondaryOrganization: presigned.secondaryOrganization || null,
       fanPassLogo: presigned.fanPassLogo || null,
       fanPassBg: presigned.fanPassBg || null,
-      organizerLogo: presigned.primaryOrganization || presigned.playerOrgUrl || null,
-      secondaryOrganizerLogo: presigned.secondaryOrganization || presigned.prOrgUrl || null,
+      organizerLogo:
+        presigned.primaryOrganization || presigned.playerOrgUrl || null,
+      secondaryOrganizerLogo:
+        presigned.secondaryOrganization || presigned.prOrgUrl || null,
       canvasImage: presigned.fanPassBg || null,
       sponsors,
       playerCardTemplate: tournament.playerCardTemplate || null,
@@ -1081,14 +981,12 @@ export class TournamentTabsService {
       data.secondaryOrganization = extractStorageKey(secondaryOrgVal);
       data.prOrgUrl = data.secondaryOrganization;
     }
-    const logoVal =
-      dto.tournamentLogo ?? dto.tournamentLogoUrl ?? dto.logo;
+    const logoVal = dto.tournamentLogo ?? dto.tournamentLogoUrl ?? dto.logo;
     if (logoVal !== undefined) {
       data.tournamentLogo = extractStorageKey(logoVal);
       data.tournamentLogoUrl = data.tournamentLogo;
     }
-    const bannerVal =
-      dto.tournamentBanner ?? dto.bannerUrl ?? dto.banner;
+    const bannerVal = dto.tournamentBanner ?? dto.bannerUrl ?? dto.banner;
     if (bannerVal !== undefined) {
       data.tournamentBanner = extractStorageKey(bannerVal);
     }
@@ -1193,8 +1091,10 @@ export class TournamentTabsService {
       secondaryOrganization: presigned.secondaryOrganization || null,
       fanPassLogo: presigned.fanPassLogo || null,
       fanPassBg: presigned.fanPassBg || null,
-      organizerLogo: presigned.primaryOrganization || presigned.playerOrgUrl || null,
-      secondaryOrganizerLogo: presigned.secondaryOrganization || presigned.prOrgUrl || null,
+      organizerLogo:
+        presigned.primaryOrganization || presigned.playerOrgUrl || null,
+      secondaryOrganizerLogo:
+        presigned.secondaryOrganization || presigned.prOrgUrl || null,
       fanPassArtUrl: presigned.fanPassBg || null,
       canvasImage: presigned.fanPassBg || null,
       sponsors,
@@ -1451,7 +1351,7 @@ export class TournamentTabsService {
     const thirdPlacePlayoffEnabled =
       scheduleObj?.structure?.thirdPlacePlayoffEnabled !== undefined
         ? scheduleObj.structure.thirdPlacePlayoffEnabled
-        : true;
+        : presigned.scheduleSettings.thirdPlacePlayoffEnabled;
     const rulesList = Array.isArray(presigned.rules) ? presigned.rules : [];
     const tsAndTcList = Array.isArray(presigned.tsAndTc)
       ? presigned.tsAndTc
@@ -1465,7 +1365,7 @@ export class TournamentTabsService {
             ? 'League'
             : tournament.tournamentFormat;
 
-    const playingDays = [1, 2, 3, 4, 5, 6, 0];
+    const playingDays = presigned.frequencySettings.playingDays;
     const defaultFrequencyArray = [
       'Mon',
       'Tue',
@@ -1497,6 +1397,10 @@ export class TournamentTabsService {
       paymentWindow: tournament.paymentWindow,
       paymentWindowHours: tournament.paymentWindow,
       groupsCount,
+      topQualifiers: scheduleObj.structure?.topQualifiers ?? 2,
+      grandFinalResetEnabled:
+        scheduleObj.structure?.hasGrandFinalReset ??
+        presigned.scheduleSettings.grandFinalResetEnabled,
       thirdPlacePlayoffEnabled,
       requireJerseySize: tournament.requireJerseySize,
       couponCreation: tournament.couponCreation,
@@ -1511,11 +1415,14 @@ export class TournamentTabsService {
       fanPassBg: presigned.fanPassBg || null,
 
       logo: presigned.tournamentLogo || presigned.tournamentLogoUrl || null,
-      tournamentLogoUrl: presigned.tournamentLogo || presigned.tournamentLogoUrl || null,
+      tournamentLogoUrl:
+        presigned.tournamentLogo || presigned.tournamentLogoUrl || null,
       bannerUrl: presigned.tournamentBanner || presigned.canvasImage || null,
       canvasImage: presigned.tournamentBanner || presigned.canvasImage || null,
-      organizerLogo: presigned.primaryOrganization || presigned.playerOrgUrl || null,
-      secondaryOrganizerLogo: presigned.secondaryOrganization || presigned.prOrgUrl || null,
+      organizerLogo:
+        presigned.primaryOrganization || presigned.playerOrgUrl || null,
+      secondaryOrganizerLogo:
+        presigned.secondaryOrganization || presigned.prOrgUrl || null,
       fanPassArtUrl: presigned.fanPassBg || null,
 
       rulesUrl: rulesList[0] || null,
@@ -1532,8 +1439,7 @@ export class TournamentTabsService {
       houseRake: tournament.houseRake ?? 0,
       houseRakePercent: tournament.houseRake ?? 0,
       prizePoolConfig: {
-        type:
-          tournament.prizeRule === 'FIXED_AMOUNT' ? 'fixed' : 'percentage',
+        type: tournament.prizeRule === 'FIXED_AMOUNT' ? 'fixed' : 'percentage',
         value: tournament.percentage ?? 70,
       },
       eventCosts,
@@ -1551,19 +1457,23 @@ export class TournamentTabsService {
       dailyStart: tournament.dailyStart || '09:00',
       dailyEnd: tournament.dailyEnd || '17:00',
       matchDuration: tournament.matchDuration || 20,
-      turnoverDuration: tournament.turnoverDuration || 5,
+      turnoverDuration: tournament.turnoverDuration ?? 5,
       lunchBreakTime: tournament.lunchBreakTime || '13:00',
-      lunchDuration: tournament.lunchDuration || 60,
+      lunchDuration: tournament.lunchDuration ?? 60,
       scheduleSettings: {
+        thirdPlacePlayoffEnabled,
+        grandFinalResetEnabled:
+          scheduleObj.structure?.hasGrandFinalReset ??
+          presigned.scheduleSettings.grandFinalResetEnabled,
         startDate: tournament.startDate
           ? tournament.startDate.toISOString()
           : null,
         eventStartTime: tournament.dailyStart || '09:00',
         eventEndTime: tournament.dailyEnd || '17:00',
         slotDuration: tournament.matchDuration || 20,
-        turnoverDuration: tournament.turnoverDuration || 5,
+        turnoverDuration: tournament.turnoverDuration ?? 5,
         lunchBreakStartTime: tournament.lunchBreakTime || '13:00',
-        lunchBreakDuration: tournament.lunchDuration || 60,
+        lunchBreakDuration: tournament.lunchDuration ?? 60,
       },
 
       frequencyStatus: tournament.frequencyStatus || 'DAILY',
@@ -1584,330 +1494,10 @@ export class TournamentTabsService {
   }
 
   async patchSettingsTab(tournamentId: string, dto: UpdateSettingsTabDto) {
-    await this.findTournamentOrThrow(tournamentId);
-
-    const data: Prisma.TournamentUpdateInput = {};
-    if (dto.name !== undefined) data.name = dto.name;
-    if (dto.gameTitle !== undefined) data.gameTitle = dto.gameTitle;
-    if (dto.gameType !== undefined) data.gameType = dto.gameType;
-    if (dto.format !== undefined) data.tournamentFormat = dto.format;
-    if (dto.tournamentFormat !== undefined)
-      data.tournamentFormat = dto.tournamentFormat;
-    if (dto.registrationMode !== undefined)
-      data.registrationCutOffMode = dto.registrationMode;
-    if (dto.registrationCutOffMode !== undefined)
-      data.registrationCutOffMode = dto.registrationCutOffMode;
-    if (dto.maxCapacity !== undefined || dto.capacity !== undefined) {
-      data.capacity = dto.maxCapacity ?? dto.capacity;
-      data.numberOfTeams = dto.maxCapacity ?? dto.capacity;
-    }
-    if (dto.numberOfTeams !== undefined) data.numberOfTeams = dto.numberOfTeams;
-    if (dto.entryFee !== undefined) data.entryFee = dto.entryFee;
-    if (dto.currency !== undefined) data.currency = dto.currency;
-    if (dto.paymentWindow !== undefined) data.paymentWindow = dto.paymentWindow;
-    if (dto.prizeRule !== undefined) data.prizeRule = dto.prizeRule;
-    if (dto.percentage !== undefined) data.percentage = dto.percentage;
-    if (dto.prizePoolConfig) {
-      if (dto.prizePoolConfig.type)
-        data.prizeRule = mapPrizeRule(dto.prizePoolConfig.type);
-      if (dto.prizePoolConfig.value !== undefined)
-        data.percentage = Number(dto.prizePoolConfig.value);
-    }
-    if (dto.houseRake !== undefined) data.houseRake = dto.houseRake;
-    if (dto.houseRakePercent !== undefined)
-      data.houseRake = dto.houseRakePercent;
-    if (dto.couponCreation !== undefined)
-      data.couponCreation = dto.couponCreation;
-    if (dto.registrationOpen !== undefined)
-      data.registrationOpen = dto.registrationOpen;
-    if (dto.requireJerseySize !== undefined)
-      data.requireJerseySize = dto.requireJerseySize;
-
-    if (dto.deadlineDate !== undefined)
-      data.deadline = new Date(dto.deadlineDate);
-    if (dto.deadline !== undefined) data.deadline = new Date(dto.deadline);
-    if (dto.startDate !== undefined) data.startDate = new Date(dto.startDate);
-    if (dto.schedulingMode !== undefined)
-      data.schedulingMode = dto.schedulingMode;
-    if (dto.isDraft === true) data.status = TournamentStatus.DRAFT;
-    else if (dto.status !== undefined) data.status = dto.status;
-    if (dto.schedulingWindowOpen !== undefined)
-      data.schedulingPaused = !dto.schedulingWindowOpen;
-
-    if (dto.dailyStart !== undefined) data.dailyStart = dto.dailyStart;
-    if (dto.dailyEnd !== undefined) data.dailyEnd = dto.dailyEnd;
-    if (dto.matchDuration !== undefined) data.matchDuration = dto.matchDuration;
-    if (dto.turnoverDuration !== undefined)
-      data.turnoverDuration = dto.turnoverDuration;
-    if (dto.buffer !== undefined) data.buffer = dto.buffer;
-    if (dto.lunchBreakTime !== undefined)
-      data.lunchBreakTime = dto.lunchBreakTime;
-    if (dto.lunchDuration !== undefined) data.lunchDuration = dto.lunchDuration;
-    if (dto.frequencyStatus !== undefined)
-      data.frequencyStatus = dto.frequencyStatus;
-    if (dto.frequencyArray !== undefined)
-      data.frequencyArray = dto.frequencyArray;
-
-    const bannerVal =
-      dto.tournamentBanner ?? dto.canvasImage ?? dto.bannerUrl ?? dto.banner;
-    if (bannerVal !== undefined) {
-      data.tournamentBanner = extractStorageKey(bannerVal);
-      data.canvasImage = data.tournamentBanner;
-    }
-
-    const logoVal =
-      dto.tournamentLogo ?? dto.tournamentLogoUrl ?? dto.logo;
-    if (logoVal !== undefined) {
-      data.tournamentLogo = extractStorageKey(logoVal);
-      data.tournamentLogoUrl = data.tournamentLogo;
-    }
-
-    const primaryOrgVal =
-      dto.primaryOrganization ?? dto.playerOrgUrl ?? dto.organizerLogo;
-    if (primaryOrgVal !== undefined) {
-      data.primaryOrganization = extractStorageKey(primaryOrgVal);
-      data.playerOrgUrl = data.primaryOrganization;
-    }
-
-    const prOrgVal =
-      dto.secondaryOrganization ?? dto.prOrgUrl ?? dto.secondaryOrganizerLogo;
-    if (prOrgVal !== undefined) {
-      data.secondaryOrganization = extractStorageKey(prOrgVal);
-      data.prOrgUrl = data.secondaryOrganization;
-    }
-
-    if (dto.fanPassLogo !== undefined) {
-      data.fanPassLogo = extractStorageKey(dto.fanPassLogo);
-    }
-
-    const fanBgVal = dto.fanPassBg ?? dto.fanPassArtUrl;
-    if (fanBgVal !== undefined) {
-      data.fanPassBg = extractStorageKey(fanBgVal);
-    }
-
-    if (dto.rulesUrl !== undefined)
-      data.rules = [extractStorageKey(dto.rulesUrl)];
-    if (dto.rules !== undefined)
-      data.rules = normalizeStringArray(dto.rules).map((r) =>
-        extractStorageKey(r),
-      );
-    if (dto.termsAndConditionsUrl !== undefined)
-      data.tsAndTc = [extractStorageKey(dto.termsAndConditionsUrl)];
-    if (dto.termsAndConditions !== undefined)
-      data.tsAndTc = normalizeStringArray(dto.termsAndConditions).map((t) =>
-        extractStorageKey(t),
-      );
-    if (dto.tsAndTc !== undefined)
-      data.tsAndTc = normalizeStringArray(dto.tsAndTc).map((t) =>
-        extractStorageKey(t),
-      );
-
-    if (dto.scheduleSettings) {
-      if (dto.scheduleSettings.dailyStart !== undefined)
-        data.dailyStart = dto.scheduleSettings.dailyStart;
-      if (dto.scheduleSettings.eventStartTime !== undefined)
-        data.dailyStart = dto.scheduleSettings.eventStartTime;
-      if (dto.scheduleSettings.dailyEnd !== undefined)
-        data.dailyEnd = dto.scheduleSettings.dailyEnd;
-      if (dto.scheduleSettings.eventEndTime !== undefined)
-        data.dailyEnd = dto.scheduleSettings.eventEndTime;
-      if (dto.scheduleSettings.matchDuration !== undefined)
-        data.matchDuration = dto.scheduleSettings.matchDuration;
-      if (dto.scheduleSettings.slotDuration !== undefined)
-        data.matchDuration = dto.scheduleSettings.slotDuration;
-      if (dto.scheduleSettings.turnoverDuration !== undefined)
-        data.turnoverDuration = dto.scheduleSettings.turnoverDuration;
-      if (dto.scheduleSettings.buffer !== undefined)
-        data.buffer = dto.scheduleSettings.buffer;
-      if (dto.scheduleSettings.lunchBreakTime !== undefined)
-        data.lunchBreakTime = dto.scheduleSettings.lunchBreakTime;
-      if (dto.scheduleSettings.lunchBreakStartTime !== undefined)
-        data.lunchBreakTime = dto.scheduleSettings.lunchBreakStartTime;
-      if (dto.scheduleSettings.lunchDuration !== undefined)
-        data.lunchDuration = dto.scheduleSettings.lunchDuration;
-      if (dto.scheduleSettings.lunchBreakDuration !== undefined)
-        data.lunchDuration = dto.scheduleSettings.lunchBreakDuration;
-      if (dto.scheduleSettings.startDate !== undefined)
-        data.startDate = new Date(dto.scheduleSettings.startDate);
-    }
-
-    if (dto.frequencySettings) {
-      if (dto.frequencySettings.frequencyStatus !== undefined)
-        data.frequencyStatus = dto.frequencySettings.frequencyStatus;
-      if (dto.frequencySettings.frequency !== undefined)
-        data.frequencyStatus = dto.frequencySettings.frequency;
-      if (dto.frequencySettings.frequencyArray !== undefined)
-        data.frequencyArray = dto.frequencySettings.frequencyArray;
-      if (dto.frequencySettings.buffer !== undefined)
-        data.buffer = dto.frequencySettings.buffer;
-    }
-
-    data.version = { increment: 1 };
-
-    await this.prisma.tournament.update({
-      where: { tournamentId },
-      data,
-    });
-
-    // Venues sync if provided
-    if (Array.isArray(dto.venues)) {
-      for (const v of dto.venues) {
-        if (typeof v === 'object' && v !== null && v.name) {
-          const venueId = v.id || v.venueId;
-          const rawScreens =
-            v.screens && Array.isArray(v.screens) ? v.screens : [];
-          if (venueId) {
-            await this.prisma.venue.update({
-              where: { venueId },
-              data: {
-                name: v.name,
-                address: v.address || v.name,
-                tournamentId,
-              },
-            });
-            if (rawScreens.length > 0) {
-              const existingScreens = await this.prisma.screen.findMany({
-                where: { venueId },
-              });
-              const existingScreenNames = new Set(
-                existingScreens.map((s) => s.screenName),
-              );
-              for (const s of rawScreens) {
-                const screenName =
-                  typeof s === 'string'
-                    ? s
-                    : s?.name || s?.screenName || 'Screen';
-                if (!existingScreenNames.has(screenName)) {
-                  await this.prisma.screen.create({
-                    data: { venueId, screenName },
-                  });
-                }
-              }
-            }
-          } else {
-            const screens = rawScreens.map((s: any) => ({
-              screenName:
-                typeof s === 'string' ? s : s?.name || s?.screenName || 'Screen',
-            }));
-            await this.prisma.venue.create({
-              data: {
-                tournamentId,
-                name: v.name,
-                address: v.address || v.name,
-                ...(screens.length > 0 && {
-                  screens: {
-                    create: screens,
-                  },
-                }),
-              },
-            });
-          }
-        }
-      }
-    }
-
-    // Costs sync if provided
-    const costsList = dto.eventCosts || dto.manageEventCosts;
-    if (Array.isArray(costsList)) {
-      for (const c of costsList) {
-        if (
-          typeof c === 'object' &&
-          c !== null &&
-          (c.category || c.costCategory || c.name) &&
-          c.amount !== undefined
-        ) {
-          const category = c.costCategory || c.category || c.name;
-          const costId = c.id || c.manageEventCostId;
-          if (costId) {
-            await this.prisma.manageEventCost.update({
-              where: { manageEventCostId: costId },
-              data: {
-                costCategory: category,
-                amount: Number(c.amount),
-                tournamentId,
-              },
-            });
-          } else {
-            await this.prisma.manageEventCost.create({
-              data: {
-                tournamentId,
-                costCategory: category,
-                amount: Number(c.amount),
-              },
-            });
-          }
-        }
-      }
-    }
-
-    // Prizes sync if provided
-    const prizesList = dto.prizePayouts || dto.manageEventPrizes;
-    if (Array.isArray(prizesList)) {
-      for (const p of prizesList) {
-        if (
-          typeof p === 'object' &&
-          p !== null &&
-          (p.prizeCategory ||
-            p.category ||
-            p.label ||
-            p.place !== undefined) &&
-          (p.amount !== undefined || p.payout !== undefined)
-        ) {
-          const category =
-            p.prizeCategory ||
-            p.label ||
-            p.category ||
-            `Place ${p.place || 1}`;
-          const amount =
-            Number(p.amount !== undefined ? p.amount : p.payout) || 0;
-          const prizeId = p.id || p.manageEventPrizeId;
-          if (prizeId) {
-            await this.prisma.manageEventPrize.update({
-              where: { manageEventPrizeId: prizeId },
-              data: { prizeCategory: category, amount, tournamentId },
-            });
-          } else {
-            await this.prisma.manageEventPrize.create({
-              data: {
-                tournamentId,
-                prizeCategory: category,
-                amount,
-              },
-            });
-          }
-        }
-      }
-    }
-
-    // Sponsors sync if provided
-    if (Array.isArray(dto.sponsors)) {
-      for (const sp of dto.sponsors) {
-        if (typeof sp === 'object' && sp !== null && sp.name) {
-          const sponsorId = sp.id || sp.sponsorId;
-          const sponsorData = {
-            name: sp.name,
-            logo: extractStorageKey(sp.logo || sp.logoUrl),
-            website: sp.website,
-            priority: sp.priority || sp.tier,
-            contact: sp.contact,
-            value: sp.value !== undefined ? Number(sp.value) : undefined,
-            status: sp.status || SponsorStatus.BOTH,
-            tournamentId,
-          };
-          if (sponsorId) {
-            await this.prisma.sponsor.update({
-              where: { sponsorId },
-              data: sponsorData,
-            });
-          } else {
-            await this.prisma.sponsor.create({
-              data: sponsorData,
-            });
-          }
-        }
-      }
-    }
-
+    await new TournamentCoreService(
+      this.prisma,
+      this.scheduleService,
+    ).updateTournament(tournamentId, dto);
     return this.getSettingsTab(tournamentId);
   }
 

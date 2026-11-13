@@ -73,7 +73,7 @@ services:
       - app_network
     command: redis-server --appendonly yes
 
-  # ── DB Setup (dev only: push schema + seed) ─────────────────
+  # ── DB Setup (dev only: schema + configured admin bootstrap) ─────────────────
   db-setup:
     build:
       context: .
@@ -94,7 +94,7 @@ services:
         echo '🚀 Running DB setup...';
         npx prisma generate;
         npx prisma db push --accept-data-loss;
-        npx ts-node prisma/seeds/index.ts 2>/dev/null || echo '⚠️  No seed file found, skipping.';
+        npx ts-node prisma/seeds/index.ts;
         echo '✅ DB setup complete!';
       "
 

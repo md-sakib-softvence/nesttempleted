@@ -799,7 +799,7 @@ export class TournamentRegistrationService {
     try {
       const tournament = await this.prisma.tournament.findUnique({
         where: { tournamentId },
-        select: { schedule: true, schedulingMode: true },
+        select: { schedule: true, schedulingMode: true, version: true },
       });
 
       if (!tournament || !tournament.schedule) {
@@ -879,8 +879,8 @@ export class TournamentRegistrationService {
       }
 
       await this.prisma.tournament.update({
-        where: { tournamentId },
-        data: { schedule },
+        where: { tournamentId, version: tournament.version },
+        data: { schedule, version: { increment: 1 } },
       });
     } catch (err: any) {
       this.logger.warn(
@@ -893,7 +893,13 @@ export class TournamentRegistrationService {
   async syncConfirmedRosterToTournamentSchedule(tournamentId: string) {
     const tournament = await this.prisma.tournament.findUnique({
       where: { tournamentId },
-      select: { tournamentId: true, isDeleted: true, schedule: true, schedulingMode: true },
+      select: {
+        tournamentId: true,
+        isDeleted: true,
+        schedule: true,
+        schedulingMode: true,
+        version: true,
+      },
     });
 
     if (!tournament || tournament.isDeleted) {
@@ -945,12 +951,18 @@ export class TournamentRegistrationService {
     }
 
     const available = new Set(slotNumbers);
-    const assignments: Array<{ registrationId: string; playerId: string; slotNumber: number; playerName: string }> = [];
+    const assignments: Array<{
+      registrationId: string;
+      playerId: string;
+      slotNumber: number;
+      playerName: string;
+    }> = [];
     for (const registration of registrations) {
       const currentSlot = registration.assignedSlot;
-      const slotNumber = currentSlot && available.has(currentSlot)
-        ? currentSlot
-        : slotNumbers.find((candidate) => available.has(candidate));
+      const slotNumber =
+        currentSlot && available.has(currentSlot)
+          ? currentSlot
+          : slotNumbers.find((candidate) => available.has(candidate));
       if (!slotNumber) {
         throw new BadRequestException(
           `There are not enough tournament slots for ${registrations.length} confirmed players.`,
@@ -970,7 +982,9 @@ export class TournamentRegistrationService {
       });
     }
 
-    const assignmentBySlot = new Map(assignments.map((assignment) => [assignment.slotNumber, assignment]));
+    const assignmentBySlot = new Map(
+      assignments.map((assignment) => [assignment.slotNumber, assignment]),
+    );
     for (const slot of slots) {
       const assignment = assignmentBySlot.get(Number(slot.slotNumber));
       if (!assignment) continue;
@@ -985,9 +999,12 @@ export class TournamentRegistrationService {
     }
 
     const resolveParticipant = (reference: any) => {
-      if (!reference || !['TOURNAMENT_SLOT', 'SEED'].includes(reference.type)) return undefined;
+      if (!reference || !['TOURNAMENT_SLOT', 'SEED'].includes(reference.type))
+        return undefined;
       const slotNumber = Number(reference.value);
-      return Number.isInteger(slotNumber) ? assignmentBySlot.get(slotNumber) : undefined;
+      return Number.isInteger(slotNumber)
+        ? assignmentBySlot.get(slotNumber)
+        : undefined;
     };
     for (const match of matches) {
       const first = resolveParticipant(match.participant1Ref);
@@ -1001,10 +1018,15 @@ export class TournamentRegistrationService {
         match.player2Name = second.playerName;
       }
       if (
-        match.player1Id && match.player2Id &&
-        !match.isAutoAdvance && !match.conditional && match.isSchedulable !== false &&
-        match.status !== 'COMPLETED' && match.status !== 'CANCELLED' &&
-        tournament.schedulingMode === 'PLAYER_SELF' && !match.selfSchedulingOpenedAt
+        match.player1Id &&
+        match.player2Id &&
+        !match.isAutoAdvance &&
+        !match.conditional &&
+        match.isSchedulable !== false &&
+        match.status !== 'COMPLETED' &&
+        match.status !== 'CANCELLED' &&
+        tournament.schedulingMode === 'PLAYER_SELF' &&
+        !match.selfSchedulingOpenedAt
       ) {
         // Start the player scheduling clock when a fixture first has both players.
         match.selfSchedulingOpenedAt = new Date().toISOString();
@@ -1013,7 +1035,9 @@ export class TournamentRegistrationService {
 
     await this.prisma.$transaction(async (tx) => {
       for (const assignment of assignments) {
-        const registration = registrations.find((item) => item.registrationId === assignment.registrationId);
+        const registration = registrations.find(
+          (item) => item.registrationId === assignment.registrationId,
+        );
         if (registration?.assignedSlot !== assignment.slotNumber) {
           await tx.tournamentRegistration.update({
             where: { registrationId: assignment.registrationId },
@@ -1022,8 +1046,8 @@ export class TournamentRegistrationService {
         }
       }
       await tx.tournament.update({
-        where: { tournamentId },
-        data: { schedule },
+        where: { tournamentId, version: tournament.version },
+        data: { schedule, version: { increment: 1 } },
       });
     });
 
@@ -1031,8 +1055,14 @@ export class TournamentRegistrationService {
       tournamentId,
       confirmedPaidPlayers: registrations.length,
       assignedSlots: assignments.length,
-      updatedMatches: matches.filter((match) => match.player1Id && match.player2Id).length,
-      assignments: assignments.map(({ playerId, playerName, slotNumber }) => ({ playerId, playerName, slotNumber })),
+      updatedMatches: matches.filter(
+        (match) => match.player1Id && match.player2Id,
+      ).length,
+      assignments: assignments.map(({ playerId, playerName, slotNumber }) => ({
+        playerId,
+        playerName,
+        slotNumber,
+      })),
     };
   }
 
@@ -1046,7 +1076,7 @@ export class TournamentRegistrationService {
     try {
       const tournament = await this.prisma.tournament.findUnique({
         where: { tournamentId },
-        select: { schedule: true },
+        select: { schedule: true, version: true },
       });
 
       if (!tournament || !tournament.schedule) {
@@ -1107,8 +1137,8 @@ export class TournamentRegistrationService {
       }
 
       await this.prisma.tournament.update({
-        where: { tournamentId },
-        data: { schedule },
+        where: { tournamentId, version: tournament.version },
+        data: { schedule, version: { increment: 1 } },
       });
     } catch (err: any) {
       this.logger.warn(

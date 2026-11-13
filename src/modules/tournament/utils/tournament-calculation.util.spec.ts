@@ -126,6 +126,10 @@ describe('Tournament Calculations (tape eSports Calculation.docx specifications)
         't-de8',
         TournamentFormat.DOUBLE_ELIMINATION,
         8,
+        undefined,
+        undefined,
+        false,
+        { hasGrandFinalReset: true },
       );
       expect(struct8.summary.guaranteedMatchCount).toBe(14);
       expect(struct8.summary.conditionalMatchCount).toBe(1);
@@ -427,43 +431,46 @@ describe('Tournament Calculations (tape eSports Calculation.docx specifications)
       );
       expect(prelimMatches.length).toBe(4);
 
+      expect(prelimMatches[0].participant1Ref.type).toBe('QUALIFIER_SEED');
       // Check pairings: 13v20, 14v19, 15v18, 16v17
-      // Seeds 1-10 are Group Winners (Group A #1 to Group J #1)
+      // Seeds are merit-ranked after group completion; no group identity is fixed here.
       // Seeds 11-20 are Runners-up (Group A #2 to Group J #2)
       // Seed 13 = Group C #2, Seed 20 = Group J #2
-      expect(prelimMatches[0].participant1Ref.value).toBe('Group C #2');
-      expect(prelimMatches[0].participant2Ref.value).toBe('Group J #2');
+      expect(prelimMatches[0].participant1Ref.value).toBe('13');
+      expect(prelimMatches[0].participant2Ref.value).toBe('20');
 
       // Seed 14 = Group D #2, Seed 19 = Group I #2
-      expect(prelimMatches[1].participant1Ref.value).toBe('Group D #2');
-      expect(prelimMatches[1].participant2Ref.value).toBe('Group I #2');
+      expect(prelimMatches[1].participant1Ref.value).toBe('14');
+      expect(prelimMatches[1].participant2Ref.value).toBe('19');
 
       // Seed 15 = Group E #2, Seed 18 = Group H #2
-      expect(prelimMatches[2].participant1Ref.value).toBe('Group E #2');
-      expect(prelimMatches[2].participant2Ref.value).toBe('Group H #2');
+      expect(prelimMatches[2].participant1Ref.value).toBe('15');
+      expect(prelimMatches[2].participant2Ref.value).toBe('18');
 
       // Seed 16 = Group F #2, Seed 17 = Group G #2
-      expect(prelimMatches[3].participant1Ref.value).toBe('Group F #2');
-      expect(prelimMatches[3].participant2Ref.value).toBe('Group G #2');
+      expect(prelimMatches[3].participant1Ref.value).toBe('16');
+      expect(prelimMatches[3].participant2Ref.value).toBe('17');
 
       // Verify Round of 16 matches (8 matches)
-      const r16Matches = struct.matches.filter((m) => m.round === 'Round of 16');
+      const r16Matches = struct.matches.filter(
+        (m) => m.round === 'Round of 16',
+      );
       expect(r16Matches.length).toBe(8);
 
       // Match 1: Seed 1 (Group A #1) vs Winner of Prelim 4 (Match 4)
-      expect(r16Matches[0].participant1Ref.value).toBe('Group A #1');
+      expect(r16Matches[0].participant1Ref.value).toBe('1');
       expect(r16Matches[0].participant2Ref.value).toBe(prelimMatches[3].id);
 
       // Match 3: Seed 4 (Group D #1) vs Winner of Prelim 1 (Match 1)
-      expect(r16Matches[2].participant1Ref.value).toBe('Group D #1');
+      expect(r16Matches[2].participant1Ref.value).toBe('4');
       expect(r16Matches[2].participant2Ref.value).toBe(prelimMatches[0].id);
 
       // Match 5: Seed 2 (Group B #1) vs Winner of Prelim 3 (Match 3)
-      expect(r16Matches[4].participant1Ref.value).toBe('Group B #1');
+      expect(r16Matches[4].participant1Ref.value).toBe('2');
       expect(r16Matches[4].participant2Ref.value).toBe(prelimMatches[2].id);
 
       // Match 7: Seed 3 (Group C #1) vs Winner of Prelim 2 (Match 2)
-      expect(r16Matches[6].participant1Ref.value).toBe('Group C #1');
+      expect(r16Matches[6].participant1Ref.value).toBe('3');
       expect(r16Matches[6].participant2Ref.value).toBe(prelimMatches[1].id);
     });
 
@@ -612,7 +619,9 @@ describe('Tournament Calculations (tape eSports Calculation.docx specifications)
       expect(placements.fourth).toBeDefined();
 
       // 3rd place must be the loser of Losers Final
-      const losersFinal = struct.matches.find((m) => m.round === 'Losers Final');
+      const losersFinal = struct.matches.find(
+        (m) => m.round === 'Losers Final',
+      );
       expect(losersFinal).toBeDefined();
       expect(placements.third?.value).toBe(losersFinal?.id);
       expect(placements.third?.type).toBe('MATCH_LOSER');

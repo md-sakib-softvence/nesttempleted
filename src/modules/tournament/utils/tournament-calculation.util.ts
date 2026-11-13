@@ -57,6 +57,7 @@ export interface TournamentGroupEntity {
 }
 
 export interface TournamentMatchEntity {
+  version?: number;
   id: string;
   tournamentId: string;
   round: string;
@@ -70,11 +71,27 @@ export interface TournamentMatchEntity {
   player2Name?: string;
   score1: number | null;
   score2: number | null;
-  status: 'SCHEDULED' | 'PLAYERS_READY' | 'IN_PROGRESS' | 'UNDER_REVIEW' | 'NO_SHOW' | 'COMPLETED' | 'CANCELLED';
+  status:
+    | 'SCHEDULED'
+    | 'PLAYERS_READY'
+    | 'IN_PROGRESS'
+    | 'UNDER_REVIEW'
+    | 'NO_SHOW'
+    | 'COMPLETED'
+    | 'CANCELLED';
   resumeRequired?: boolean;
   activeDisputeId?: string | null;
-  incidentResolution?: { disputeId: string; notes: string; resolvedAt: string; resolvedBy: string };
-  checkIns?: Array<{ playerId: string; checkedInAt: string; checkedInByRole?: string }>;
+  incidentResolution?: {
+    disputeId: string;
+    notes: string;
+    resolvedAt: string;
+    resolvedBy: string;
+  };
+  checkIns?: Array<{
+    playerId: string;
+    checkedInAt: string;
+    checkedInByRole?: string;
+  }>;
   resumedAt?: string;
   isAutoAdvance?: boolean;
   isSchedulable?: boolean;
@@ -116,6 +133,8 @@ export interface TournamentMatchEntity {
 }
 
 export interface TournamentStructureSummary {
+  guaranteedMatches?: number;
+  maximumPossibleMatches?: number;
   structuralNodes: number;
   groupStageMatches: number;
   knockoutMatches: number;
@@ -258,6 +277,7 @@ export interface GenerateScheduleParams {
   venues: ScheduleVenueInput[];
   participants?: Participant[];
   groupsCount?: number;
+  hasGrandFinalReset?: boolean;
   topQualifiers?: number;
   qualifiersPerGroup?: number;
   thirdPlacePlayoffEnabled?: boolean;
@@ -317,7 +337,7 @@ export function calculateSingleEliminationMatches(
  */
 export function calculateDoubleEliminationMatches(
   numberOfTeams: number,
-  hasGrandFinalReset = true,
+  hasGrandFinalReset = false,
 ): {
   guaranteedMatchCount: number;
   conditionalMatchCount: number;
@@ -448,7 +468,7 @@ export function calculateTournamentExpectedMatches(
   options?: ExpectedMatchesOptions,
 ): TournamentMatchCounts {
   const thirdPlacePlayoffEnabled = options?.thirdPlacePlayoffEnabled ?? false;
-  const hasGrandFinalReset = options?.hasGrandFinalReset ?? true;
+  const hasGrandFinalReset = options?.hasGrandFinalReset ?? false;
 
   switch (format) {
     case TournamentFormat.LEAGUE: {
@@ -592,6 +612,18 @@ export function formatDateToYMD(date: Date): string {
 export function calculateCapacity(
   input: CapacityCalculationInput,
 ): CapacityCalculationResult {
+  if (
+    !Number.isFinite(input.slotDuration) ||
+    input.slotDuration <= 0 ||
+    !Number.isFinite(input.turnoverDuration) ||
+    input.turnoverDuration < 0 ||
+    !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.dailyStart) ||
+    !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.dailyEnd)
+  ) {
+    throw new BadRequestException(
+      'Invalid match duration, turnover or daily time window',
+    );
+  }
   const matchTimeMinutes = input.slotDuration + input.turnoverDuration;
   if (matchTimeMinutes <= 0) {
     return {
@@ -614,11 +646,23 @@ export function calculateCapacity(
 
   let lunchMinutes = 0;
   if (input.lunchBreakTime && input.lunchDuration && input.lunchDuration > 0) {
-    lunchMinutes = input.lunchDuration;
+    const lunchStart = timeStringToMinutes(input.lunchBreakTime);
+    lunchMinutes = Math.max(
+      0,
+      Math.min(endMinutes, lunchStart + input.lunchDuration) -
+        Math.max(startMinutes, lunchStart),
+    );
   }
 
   const operatingMinutes = Math.max(0, grossMinutes - lunchMinutes);
-  const slotsPerScreenPerDay = Math.floor(operatingMinutes / matchTimeMinutes);
+  const slotsPerScreenPerDay = calculateDayTimeslots(
+    input.dailyStart,
+    input.dailyEnd,
+    input.slotDuration,
+    input.turnoverDuration,
+    input.lunchBreakTime,
+    input.lunchDuration,
+  ).length;
 
   const totalScreens = (input.venues || []).reduce(
     (acc, v) => acc + (v.screens ? v.screens.length : 0),
@@ -626,6 +670,10 @@ export function calculateCapacity(
   );
 
   const totalDailySlots = slotsPerScreenPerDay * totalScreens;
+  if (totalDailySlots <= 0)
+    throw new BadRequestException(
+      'No usable physical capacity: configure screens and a valid daily window',
+    );
 
   const baselineDays =
     totalDailySlots > 0
@@ -637,8 +685,9 @@ export function calculateCapacity(
     totalDailySlots > 0 && conditionalMatches > 0
       ? Math.max(
           0,
-          Math.ceil((input.totalMatches + conditionalMatches) / totalDailySlots) -
-            baselineDays,
+          Math.ceil(
+            (input.totalMatches + conditionalMatches) / totalDailySlots,
+          ) - baselineDays,
         )
       : 0;
 
@@ -758,32 +807,30 @@ export function generatePlayingDates(
 ): string[] {
   if (totalDaysNeeded <= 0) return [];
 
-  const start = new Date(startDate);
-  const dates: string[] = [];
-  const currentDate = new Date(start);
-
-  const allowedDayIndices = (frequencyArray || [])
-    .map((name) => DAY_NAME_TO_INDEX[name.trim().toLowerCase()])
-    .filter((idx) => idx !== undefined);
-
+  // Date-only arithmetic is independent of the host timezone and DST.
+  const dateOnly =
+    typeof startDate === 'string'
+      ? startDate.slice(0, 10)
+      : startDate.toISOString().slice(0, 10);
+  const currentDate = new Date(`${dateOnly}T00:00:00.000Z`);
   if (
-    frequencyStatus === FrequencyStatus.WEEKLY &&
-    allowedDayIndices.length > 0
-  ) {
-    let loopGuard = 0;
-    while (dates.length < totalDaysNeeded && loopGuard < 1000) {
-      loopGuard++;
-      const dayOfWeek = currentDate.getDay();
-      if (allowedDayIndices.includes(dayOfWeek)) {
-        dates.push(formatDateToYMD(currentDate));
-      }
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-  } else {
-    for (let i = 0; i < totalDaysNeeded; i++) {
-      dates.push(formatDateToYMD(currentDate));
-      currentDate.setDate(currentDate.getDate() + 1 + buffer);
-    }
+    !Number.isFinite(currentDate.getTime()) ||
+    currentDate.toISOString().slice(0, 10) !== dateOnly
+  )
+    throw new BadRequestException('A valid start date is required');
+  const dates: string[] = [];
+  const allowed = (frequencyArray || []).map((value) => {
+    const raw = String(value).trim().toLowerCase();
+    return /^[0-6]$/.test(raw) ? Number(raw) : DAY_NAME_TO_INDEX[raw];
+  });
+  if (!allowed.length || allowed.some((day) => day === undefined)) {
+    throw new BadRequestException('Select at least one valid playing weekday');
+  }
+  // buffer is already included in totalDaysNeeded; it never spaces dates apart.
+  while (dates.length < totalDaysNeeded) {
+    if (allowed.includes(currentDate.getUTCDay()))
+      dates.push(currentDate.toISOString().slice(0, 10));
+    currentDate.setUTCDate(currentDate.getUTCDate() + 1);
   }
 
   return dates;
@@ -906,18 +953,41 @@ export function resolveDoubleEliminationPlacementRefs(
   third?: MatchParticipantRef;
   fourth?: MatchParticipantRef;
 } {
-  const gf = matches.find((m) => m.round === 'Grand Final');
-  const gfReset = matches.find((m) => m.round === 'Grand Final Reset');
-  const losersFinal = matches.find((m) => m.round === 'Losers Final');
+  const finals = matches.filter(
+    (m) => m.bracketSection === 'FINAL' && !m.conditional,
+  );
+  const gf = finals.length === 1 ? finals[0] : undefined;
+  const resets = matches.filter(
+    (m) =>
+      gf &&
+      m.conditional &&
+      m.conditionMatchId === gf.id &&
+      m.isSchedulable === true,
+  );
+  if (resets.length > 1) return {};
+  const gfReset = resets.length === 1 ? resets[0] : undefined;
+  const loserSources = gf
+    ? [gf.participant1Ref, gf.participant2Ref].filter(
+        (r) => r.type === 'MATCH_WINNER',
+      )
+    : [];
+  const candidates = matches.filter(
+    (m) =>
+      m.bracketSection === 'LOSERS' &&
+      loserSources.some((r) => r.value === m.id),
+  );
+  const losersFinal = candidates.length === 1 ? candidates[0] : undefined;
   let losersPreFinal: TournamentMatchEntity | undefined;
   if (losersFinal) {
-    losersPreFinal = matches.find(
+    const sources = matches.filter(
       (m) =>
         m.bracketSection === 'LOSERS' &&
         m.id !== losersFinal.id &&
-        (losersFinal.participant1Ref.value === m.id ||
-          losersFinal.participant2Ref.value === m.id),
+        [losersFinal.participant1Ref, losersFinal.participant2Ref].some(
+          (ref) => ref.type === 'MATCH_WINNER' && ref.value === m.id,
+        ),
     );
+    losersPreFinal = sources.length === 1 ? sources[0] : undefined;
   }
 
   return {
@@ -1161,6 +1231,8 @@ export function summarizeTournamentMatches(
     conditionalMatches: conditional.length,
     autoAdvanceCount: matches.filter((m) => m.isAutoAdvance).length,
     totalCompetitionMatches: guaranteed.length,
+    guaranteedMatches: guaranteed.length,
+    maximumPossibleMatches: guaranteed.length + conditional.length,
     guaranteedMatchCount: guaranteed.length,
     conditionalMatchCount: conditional.length,
     maximumPossibleMatchCount: guaranteed.length + conditional.length,
@@ -1185,6 +1257,17 @@ export function generateCanonicalStructure(
   matches: TournamentMatchEntity[];
   summary: TournamentStructureSummary;
 } {
+  if (!Object.values(TournamentFormat).includes(format))
+    throw new BadRequestException('Unsupported tournament format');
+  if (!Number.isInteger(teams) || teams < 2 || teams > 128)
+    throw new BadRequestException(
+      'Competitive entrants must be an integer between 2 and 128',
+    );
+  if (
+    groupsCount !== undefined &&
+    (!Number.isInteger(groupsCount) || groupsCount < 1)
+  )
+    throw new BadRequestException('Invalid group count');
   const slots: TournamentPlayerSlot[] = [];
   for (let i = 1; i <= teams; i++) {
     const p = participants && participants[i - 1];
@@ -1242,6 +1325,7 @@ export function generateCanonicalStructure(
       participant1Ref: p1,
       participant2Ref: p2,
       status: 'SCHEDULED',
+      version: 1,
       score1: null,
       score2: null,
       isAutoAdvance: false,
@@ -1343,14 +1427,29 @@ export function generateCanonicalStructure(
         thirdPlaceMatch.matchNumber = 99;
       }
     } else if (isHybrid) {
-      const topQualifiers = Math.max(1, options?.topQualifiers ?? 2);
+      const topQualifiers = options?.topQualifiers ?? 2;
+      if (
+        !Number.isInteger(topQualifiers) ||
+        topQualifiers < 1 ||
+        topQualifiers > Math.min(...groups.map((g) => g.slotNumbers.length))
+      ) {
+        throw new BadRequestException(
+          'Top Q must be a positive integer no larger than the smallest group',
+        );
+      }
+      if (topQualifiers * groups.length < 2)
+        throw new BadRequestException(
+          'At least two hybrid qualifiers are required',
+        );
       const isDouble = format === TournamentFormat.LEAGUE_AND_KNOCKOUT_DOUBLE;
 
       // Group qualifiers ordered by tier (position 1, position 2, ..., position Q)
       const qualifiers: MatchParticipantRef[] = [];
       for (let pos = 1; pos <= topQualifiers; pos++) {
         for (const g of groups) {
-          qualifiers.push(sourceRef('GROUP_POSITION', `${g.name} #${pos}`));
+          qualifiers.push(
+            sourceRef('QUALIFIER_SEED', String(qualifiers.length + 1)),
+          );
         }
       }
 
@@ -1604,19 +1703,21 @@ export function generateCanonicalStructure(
         lbChampion,
       );
 
-      const reset = addMatch(
-        `match-${tournamentId}-gf-reset`,
-        'Grand Final Reset',
-        'FINAL',
-        sourceRef('MATCH_WINNER', gf.id),
-        sourceRef('MATCH_LOSER', gf.id),
-      );
-      Object.assign(reset, {
-        conditional: true,
-        conditionType: 'GRAND_FINAL_RESET',
-        conditionMatchId: gf.id,
-        isSchedulable: false,
-      });
+      if (options?.hasGrandFinalReset ?? false) {
+        const reset = addMatch(
+          `match-${tournamentId}-gf-reset`,
+          'Grand Final Reset',
+          'FINAL',
+          sourceRef('MATCH_WINNER', gf.id),
+          sourceRef('MATCH_LOSER', gf.id),
+        );
+        Object.assign(reset, {
+          conditional: true,
+          conditionType: 'GRAND_FINAL_RESET',
+          conditionMatchId: gf.id,
+          isSchedulable: false,
+        });
+      }
     }
   }
 
@@ -1649,6 +1750,13 @@ export function generateCanonicalStructure(
     groups,
     matches: normalizedMatches,
     summary,
+    ...({
+      rulesVersion: 'COMPETITION_V1_2_1',
+      groupsCount: groups.length,
+      topQualifiers: isHybrid ? (options?.topQualifiers ?? 2) : undefined,
+      thirdPlacePlayoffEnabled,
+      hasGrandFinalReset: options?.hasGrandFinalReset ?? false,
+    } as any),
   };
 }
 
@@ -1910,6 +2018,57 @@ export function allocateMatch(
     );
   }
 
+  if (
+    match.isAutoAdvance ||
+    match.isSchedulable === false ||
+    (match.conditional && match.isSchedulable !== true) ||
+    !['SCHEDULED', 'PLAYERS_READY'].includes(match.status) ||
+    (match.player1Id && match.player1Id === match.player2Id)
+  ) {
+    throw new BadRequestException('Match is not playable');
+  }
+  if (
+    match.date ||
+    match.time ||
+    match.venueId ||
+    schedule.calendar.some((v) =>
+      v.screens.some((s) =>
+        s.days.some((d) =>
+          d.timeslots.some(
+            (slot) =>
+              (slot.canonicalMatchId ||
+                slot.game?.canonicalMatchId ||
+                slot.game?.id) === match.id,
+          ),
+        ),
+      ),
+    )
+  )
+    throw new BadRequestException('MATCH_ALREADY_ALLOCATED');
+  const duration =
+    (schedule.capacity as any).matchDuration ??
+    schedule.capacity.matchTimeMinutes;
+  const start = timeStringToMinutes(time);
+  for (const other of schedule.structure.matches) {
+    if (
+      other.id === match.id ||
+      other.date !== date ||
+      !other.time ||
+      !other.venueId
+    )
+      continue;
+    const samePlayer = [match.player1Id, match.player2Id]
+      .filter(Boolean)
+      .some((id) => id === other.player1Id || id === other.player2Id);
+    const otherStart = timeStringToMinutes(other.time);
+    if (
+      samePlayer &&
+      start < otherStart + duration &&
+      otherStart < start + duration
+    ) {
+      throw new BadRequestException('PLAYER_TIME_OVERLAP');
+    }
+  }
   const venue = (schedule.calendar || []).find((v) => v.venueId === venueId);
   if (!venue) {
     throw new BadRequestException(
@@ -1954,8 +2113,11 @@ export function allocateMatch(
         const d = s.days.find((dayItem) => dayItem.date === date);
         if (d) {
           const slot = d.timeslots.find((slotItem) => slotItem.time === time);
-          const slotMatchId = slot &&
-            (slot.canonicalMatchId || slot.game?.canonicalMatchId || slot.game?.id);
+          const slotMatchId =
+            slot &&
+            (slot.canonicalMatchId ||
+              slot.game?.canonicalMatchId ||
+              slot.game?.id);
           if (slot?.game && slotMatchId !== matchId) {
             const game = slot.game;
             if (

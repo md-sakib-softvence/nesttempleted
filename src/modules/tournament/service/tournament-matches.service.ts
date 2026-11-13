@@ -1,3 +1,14 @@
+import { randomUUID } from 'node:crypto';
+import {
+  capacitySummary,
+  ensureCapacity,
+  reconcileQualification,
+  refreshParticipants,
+  resolveReference,
+  applyQualificationDraw,
+  reconcileCalendarSettings,
+  allocatePending,
+} from '../utils/competition-runtime.util';
 import {
   Injectable,
   NotFoundException,
@@ -50,7 +61,11 @@ export class TournamentMatchesService {
   /**
    * Generates calendar grid and matches allocation for a tournament
    */
-  async generateCalendarForTournament(id: string, dto?: GenerateCalendarDto) {
+  async generateCalendarForTournament(
+    id: string,
+    dto?: GenerateCalendarDto,
+    modeOverride?: SchedulingMode,
+  ) {
     const tournament = await this.prisma.tournament.findUnique({
       where: { tournamentId: id },
       include: {
@@ -103,114 +118,54 @@ export class TournamentMatchesService {
     }));
 
     const existingSchedule: any = tournament.schedule || {};
-    let structure = existingSchedule.structure;
+    const structure = existingSchedule.structure;
 
-    if (!structure || !structure.matches) {
-      structure = this.tournamentScheduleService.generateCanonicalStructure(
-        tournament.tournamentId,
-        tournament.tournamentFormat,
-        tournament.numberOfTeams,
+    if (!structure?.matches)
+      throw new BadRequestException(
+        'Create a canonical competition before generating its calendar',
       );
-    }
-
-    const schedulableCount =
-      structure.summary?.schedulableMatches ||
-      structure.summary?.totalCompetitionMatches ||
-      structure.matches.length;
-
-    const capacity = this.tournamentScheduleService.calculateCapacity({
-      dailyStart,
-      dailyEnd,
-      slotDuration: matchDuration,
-      turnoverDuration,
-      lunchBreakTime,
-      lunchDuration,
-      venues: venueInputs,
-      totalMatches: schedulableCount,
-    });
-
-    const eventDates = this.tournamentScheduleService.generatePlayingDates(
-      tournament.startDate,
-      capacity.totalPlayingDaysNeeded,
-      frequencyStatus,
-      frequencyArray,
-      buffer,
-    );
-
-    const dayTimeslots = this.tournamentScheduleService.calculateDayTimeslots(
+    const schedulePayload = JSON.parse(
+      JSON.stringify(existingSchedule),
+    ) as TournamentSchedulePayload;
+    const config = {
+      ...tournament,
+      ...(modeOverride ? { schedulingMode: modeOverride } : {}),
       dailyStart,
       dailyEnd,
       matchDuration,
       turnoverDuration,
       lunchBreakTime,
       lunchDuration,
-    );
-
-    const calendar = this.tournamentScheduleService.buildEmptyScheduleGrid(
-      venueInputs,
-      eventDates,
-      dayTimeslots,
-      dto?.schedulingPolicy,
-    );
-
-    const existingMatches = structure.matches || [];
-    for (const match of existingMatches) {
-      if (match.venueId && match.screenId && match.date && match.time) {
-        const venue = calendar.find((v) => v.venueId === match.venueId);
-        const screen = venue?.screens.find(
-          (s) => s.screenId === match.screenId,
-        );
-        const day = screen?.days.find((d) => d.date === match.date);
-        const slot = day?.timeslots.find((t) => t.time === match.time);
-
-        if (slot && slot.canonicalMatchId === null) {
-          slot.canonicalMatchId = match.id;
-          slot.game = {
-            id: match.id,
-            canonicalMatchId: match.id,
-            player1Id: match.player1Id || 'TBD',
-            player1Name: match.player1Name || 'TBD',
-            player2Id: match.player2Id || 'TBD',
-            player2Name: match.player2Name || 'TBD',
-            score1: match.score1,
-            score2: match.score2,
-            status: match.status,
-            round: match.round,
-            matchNumber: match.matchNumber,
-            bracketSection: match.bracketSection,
-            venueId: match.venueId,
-            venueName: venue?.venueName,
-            screenId: match.screenId,
-            screenName: screen?.screenName,
-            date: match.date,
-            time: match.time,
-          };
-        }
-      }
-    }
-
-    const schedulePayload: TournamentSchedulePayload = {
-      capacity: { ...capacity, eventDates },
-      structure,
-      calendar,
+      buffer,
+      frequencyStatus,
+      frequencyArray,
     };
-
-    const updated = await this.prisma.tournament.update({
-      where: { tournamentId: id },
+    reconcileCalendarSettings(schedulePayload, config);
+    const saved = await this.prisma.tournament.updateMany({
+      where: { tournamentId: id, version: tournament.version },
       data: {
+        dailyStart,
+        dailyEnd,
+        matchDuration,
+        turnoverDuration,
+        lunchBreakTime,
+        lunchDuration,
+        buffer,
+        frequencyStatus,
+        frequencyArray,
+        ...(modeOverride ? { schedulingMode: modeOverride } : {}),
         schedule: schedulePayload as any,
-      },
-      include: {
-        manageEventCosts: true,
-        manageEventPrizes: true,
-        venues: {
-          include: {
-            screens: true,
-          },
-        },
-        sponsors: true,
+        version: { increment: 1 },
       },
     });
+    if (saved.count !== 1)
+      throw new ConflictException('Schedule changed while generating calendar');
+    const updated = {
+      ...tournament,
+      ...config,
+      schedule: schedulePayload,
+      version: tournament.version + 1,
+    };
 
     return presignTournamentMedia(updated);
   }
@@ -274,6 +229,23 @@ export class TournamentMatchesService {
       );
     }
 
+    if (
+      dto.expectedScheduleVersion !== undefined &&
+      dto.expectedScheduleVersion !== tournament.version
+    )
+      throw new ConflictException('VERSION_CONFLICT');
+    const target = currentSchedule.structure.matches.find(
+      (m) => m.id === matchId,
+    );
+    if (
+      dto.expectedVersion !== undefined &&
+      dto.expectedVersion !== (target?.version || 1)
+    )
+      throw new ConflictException('MATCH_VERSION_CONFLICT');
+    Object.assign(currentSchedule.capacity, {
+      matchDuration: tournament.matchDuration,
+    });
+    refreshParticipants(currentSchedule);
     const { updatedSchedule, match, allocation } =
       this.tournamentScheduleService.allocateMatch(
         currentSchedule,
@@ -284,10 +256,17 @@ export class TournamentMatchesService {
         dto.time,
       );
 
-    await this.prisma.tournament.update({
-      where: { tournamentId: tournament.tournamentId },
-      data: { schedule: updatedSchedule as any },
+    const saved = await this.prisma.tournament.updateMany({
+      where: {
+        tournamentId: tournament.tournamentId,
+        version: tournament.version,
+      },
+      data: { schedule: updatedSchedule as any, version: { increment: 1 } },
     });
+    if (saved.count !== 1)
+      throw new ConflictException(
+        'The slot or match changed during allocation',
+      );
 
     return {
       allocation,
@@ -312,13 +291,28 @@ export class TournamentMatchesService {
       );
     }
 
+    const current = currentSchedule.structure.matches.find(
+      (m) => m.id === matchId,
+    );
+    if (
+      current &&
+      ['IN_PROGRESS', 'COMPLETED', 'UNDER_REVIEW'].includes(current.status)
+    )
+      throw new ConflictException(
+        'Live or completed allocations cannot be removed',
+      );
     const { updatedSchedule, match } =
       this.tournamentScheduleService.unallocateMatch(currentSchedule, matchId);
 
-    await this.prisma.tournament.update({
-      where: { tournamentId: tournament.tournamentId },
-      data: { schedule: updatedSchedule as any },
+    const saved = await this.prisma.tournament.updateMany({
+      where: {
+        tournamentId: tournament.tournamentId,
+        version: tournament.version,
+      },
+      data: { schedule: updatedSchedule as any, version: { increment: 1 } },
     });
+    if (saved.count !== 1)
+      throw new ConflictException('Schedule changed during allocation removal');
 
     return {
       match,
@@ -341,6 +335,11 @@ export class TournamentMatchesService {
       matchId,
     );
 
+    if (
+      dto.expectedScheduleVersion !== undefined &&
+      dto.expectedScheduleVersion !== tournament.version
+    )
+      throw new ConflictException('VERSION_CONFLICT');
     const isPlayer =
       currentUser.role === Role.PLAYER ||
       currentUser.role === 'PLAYER' ||
@@ -394,13 +393,21 @@ export class TournamentMatchesService {
       targetMatch.status === 'UNDER_REVIEW' ||
       targetMatch.isSchedulable === false ||
       targetMatch.isAutoAdvance ||
-      targetMatch.conditional
+      (targetMatch.conditional && targetMatch.isSchedulable !== true)
     ) {
       throw new BadRequestException(
         `Cannot reschedule a match that is ${targetMatch.status.toLowerCase()}.`,
       );
     }
 
+    if (
+      dto.expectedVersion !== undefined &&
+      dto.expectedVersion !== (targetMatch.version || 1)
+    )
+      throw new ConflictException('MATCH_VERSION_CONFLICT');
+    Object.assign(currentSchedule.capacity, {
+      matchDuration: tournament.matchDuration,
+    });
     // Atomic allocation check: prevent double-booking if opponent or worker already booked
     if (targetMatch.date && targetMatch.time && targetMatch.venueId) {
       throw new ConflictException(
@@ -557,6 +564,10 @@ export class TournamentMatchesService {
     const tournament = await this.prisma.tournament.findUnique({
       where: { tournamentId },
       include: {
+        registrations: {
+          where: { status: 'CONFIRMED' },
+          select: { playerId: true, homeVenueId: true },
+        },
         venues: {
           include: {
             screens: true,
@@ -582,37 +593,43 @@ export class TournamentMatchesService {
 
     const participants: Participant[] = (currentSchedule.structure.slots || [])
       .filter((s) => s.participantId)
-      .map((s, idx) => ({
+      .map((s) => ({
         playerId: s.participantId!,
         name: s.participantName || `Player ${s.slotNumber}`,
         homeVenueId:
-          tournament.venues.length > 0
-            ? tournament.venues[idx % tournament.venues.length].venueId
-            : undefined,
+          tournament.registrations?.find(
+            (registration) => registration.playerId === s.participantId,
+          )?.homeVenueId ?? undefined,
       }));
 
-    const updatedCalendar =
-      this.tournamentScheduleService.assignMatchesToSchedule(
-        currentSchedule.calendar,
-        currentSchedule.structure.matches,
-        participants,
-        mode,
-      );
-
-    const updatedPayload: TournamentSchedulePayload = {
-      ...currentSchedule,
-      calendar: updatedCalendar,
-    };
-
-    await this.prisma.tournament.update({
-      where: { tournamentId },
-      data: { schedule: updatedPayload as any, schedulingMode: mode },
+    if (!['AUTO_RANDOM', 'AUTO_HOME_VENUE'].includes(mode))
+      throw new BadRequestException('Select an automatic allocation mode');
+    if (
+      dto?.expectedVersion !== undefined &&
+      dto.expectedVersion !== tournament.version
+    )
+      throw new ConflictException('VERSION_CONFLICT');
+    refreshParticipants(currentSchedule);
+    const outcome = allocatePending(currentSchedule, mode, participants);
+    const saved = await this.prisma.tournament.updateMany({
+      where: { tournamentId, version: tournament.version },
+      data: {
+        schedule: outcome.schedule as any,
+        schedulingMode: mode,
+        version: { increment: 1 },
+      },
     });
-
+    if (saved.count !== 1)
+      throw new ConflictException(
+        'Schedule changed during automatic allocation',
+      );
     return {
       mode,
-      matches: currentSchedule.structure.matches,
-      calendar: updatedCalendar,
+      matches: outcome.schedule.structure.matches,
+      calendar: outcome.schedule.calendar,
+      allocated: outcome.allocated,
+      pending: outcome.pending,
+      version: tournament.version + 1,
     };
   }
 
@@ -641,7 +658,8 @@ export class TournamentMatchesService {
     }
 
     const schedule = tournament.schedule as any;
-    let matches: any[] = schedule?.structure?.matches || schedule?.matches || [];
+    let matches: any[] =
+      schedule?.structure?.matches || schedule?.matches || [];
     const summary = schedule?.structure?.summary || {};
 
     if (filter) {
@@ -659,7 +677,11 @@ export class TournamentMatchesService {
         const wantAllocated =
           filter.isAllocated === true || filter.isAllocated === 'true';
         matches = matches.filter((m) => {
-          const hasAlloc = Boolean(m.physicalAllocation || m.allocatedSlot);
+          const hasAlloc = Boolean(
+            m.physicalAllocation ||
+            m.allocatedSlot ||
+            (m.venueId && m.screenId && m.date && m.time),
+          );
           return wantAllocated ? hasAlloc : !hasAlloc;
         });
       }
@@ -685,7 +707,10 @@ export class TournamentMatchesService {
     return {
       tournamentId: id,
       summary,
-      matches: paginatedMatches,
+      qualificationResolution:
+        schedule?.structure?.qualificationResolution ?? null,
+      version: tournament.version,
+      matches: paginatedMatches.map((m) => ({ ...m, version: m.version || 1 })),
       pagination: meta,
       meta,
     };
@@ -704,10 +729,15 @@ export class TournamentMatchesService {
     });
     if (!tournament) throw new NotFoundException('Tournament not found');
 
-    const matches: any[] = (tournament.schedule as any)?.structure?.matches ||
-      (tournament.schedule as any)?.matches || [];
-    const match = matches.find((item) => item.id === matchId || item.canonicalMatchId === matchId);
-    if (!match) throw new NotFoundException('Match not found in this tournament');
+    const matches: any[] =
+      (tournament.schedule as any)?.structure?.matches ||
+      (tournament.schedule as any)?.matches ||
+      [];
+    const match = matches.find(
+      (item) => item.id === matchId || item.canonicalMatchId === matchId,
+    );
+    if (!match)
+      throw new NotFoundException('Match not found in this tournament');
     await this.assertMatchOperator(tournamentId, matchId, actor);
 
     const registration = await this.resolveRegisteredPlayerFromQr(
@@ -717,13 +747,23 @@ export class TournamentMatchesService {
     );
     const playerId = registration.playerId;
     if (playerId !== match.player1Id && playerId !== match.player2Id) {
-      throw new BadRequestException('This player is not a participant in the selected match');
+      throw new BadRequestException(
+        'This player is not a participant in the selected match',
+      );
     }
     if (expectedPlayerId && playerId !== expectedPlayerId) {
-      throw new BadRequestException('Scanned pass does not match the selected player');
+      throw new BadRequestException(
+        'Scanned pass does not match the selected player',
+      );
     }
-    if (['COMPLETED', 'CANCELLED', 'UNDER_REVIEW', 'NO_SHOW'].includes(match.status)) {
-      throw new ConflictException(`This match cannot accept check-ins while ${String(match.status).replaceAll('_', ' ').toLowerCase()}`);
+    if (
+      ['COMPLETED', 'CANCELLED', 'UNDER_REVIEW', 'NO_SHOW'].includes(
+        match.status,
+      )
+    ) {
+      throw new ConflictException(
+        `This match cannot accept check-ins while ${String(match.status).replaceAll('_', ' ').toLowerCase()}`,
+      );
     }
 
     const checkIns: any[] = Array.isArray(match.checkIns) ? match.checkIns : [];
@@ -733,8 +773,13 @@ export class TournamentMatchesService {
       matchId: match.id,
       player: {
         playerId,
-        name: `${registration.player.firstName} ${registration.player.lastName}`.trim() || registration.player.gamerTag || registration.player.username || 'Player',
-        gamerTag: registration.player.gamerTag || registration.player.username || null,
+        name:
+          `${registration.player.firstName} ${registration.player.lastName}`.trim() ||
+          registration.player.gamerTag ||
+          registration.player.username ||
+          'Player',
+        gamerTag:
+          registration.player.gamerTag || registration.player.username || null,
       },
       matchStatus: match.status || 'SCHEDULED',
       alreadyCheckedIn: Boolean(existingCheckIn),
@@ -753,14 +798,23 @@ export class TournamentMatchesService {
     return this.prisma.$transaction(async (tx) => {
       const tournament = await tx.tournament.findFirst({
         where: { tournamentId, isDeleted: false },
-        select: { tournamentId: true, schedule: true, version: true, entryFee: true },
+        select: {
+          tournamentId: true,
+          schedule: true,
+          version: true,
+          entryFee: true,
+        },
       });
       if (!tournament) throw new NotFoundException('Tournament not found');
 
       const schedule: any = tournament.schedule || {};
-      const matches: any[] = schedule.structure?.matches || schedule.matches || [];
-      const matchIndex = matches.findIndex((item) => item.id === matchId || item.canonicalMatchId === matchId);
-      if (matchIndex < 0) throw new NotFoundException('Match not found in this tournament');
+      const matches: any[] =
+        schedule.structure?.matches || schedule.matches || [];
+      const matchIndex = matches.findIndex(
+        (item) => item.id === matchId || item.canonicalMatchId === matchId,
+      );
+      if (matchIndex < 0)
+        throw new NotFoundException('Match not found in this tournament');
       await this.assertMatchOperator(tournamentId, matchId, actor, tx);
 
       const registration = await this.resolveRegisteredPlayerFromQr(
@@ -772,17 +826,31 @@ export class TournamentMatchesService {
       const match = matches[matchIndex];
       const playerId = registration.playerId;
       if (playerId !== match.player1Id && playerId !== match.player2Id) {
-        throw new BadRequestException('This player is not a participant in the selected match');
+        throw new BadRequestException(
+          'This player is not a participant in the selected match',
+        );
       }
       if (expectedPlayerId && playerId !== expectedPlayerId) {
-        throw new BadRequestException('Scanned pass does not match the selected player');
+        throw new BadRequestException(
+          'Scanned pass does not match the selected player',
+        );
       }
-      if (['COMPLETED', 'CANCELLED', 'UNDER_REVIEW', 'NO_SHOW'].includes(match.status)) {
-        throw new ConflictException(`This match cannot accept check-ins while ${String(match.status).replaceAll('_', ' ').toLowerCase()}`);
+      if (
+        ['COMPLETED', 'CANCELLED', 'UNDER_REVIEW', 'NO_SHOW'].includes(
+          match.status,
+        )
+      ) {
+        throw new ConflictException(
+          `This match cannot accept check-ins while ${String(match.status).replaceAll('_', ' ').toLowerCase()}`,
+        );
       }
 
-      const checkIns: any[] = Array.isArray(match.checkIns) ? match.checkIns : [];
-      const alreadyCheckedIn = checkIns.some((item) => item.playerId === playerId);
+      const checkIns: any[] = Array.isArray(match.checkIns)
+        ? match.checkIns
+        : [];
+      const alreadyCheckedIn = checkIns.some(
+        (item) => item.playerId === playerId,
+      );
       const checkedInAt = alreadyCheckedIn
         ? checkIns.find((item) => item.playerId === playerId).checkedInAt
         : new Date().toISOString();
@@ -790,15 +858,20 @@ export class TournamentMatchesService {
         checkIns.push({ playerId, checkedInAt, checkedInByRole: actor.role });
       }
 
-      const player1CheckedIn = checkIns.some((item) => item.playerId === match.player1Id);
-      const player2CheckedIn = checkIns.some((item) => item.playerId === match.player2Id);
+      const player1CheckedIn = checkIns.some(
+        (item) => item.playerId === match.player1Id,
+      );
+      const player2CheckedIn = checkIns.some(
+        (item) => item.playerId === match.player2Id,
+      );
       match.checkIns = checkIns;
       if (player1CheckedIn && player2CheckedIn) {
         match.status = match.resumeRequired ? 'PLAYERS_READY' : 'IN_PROGRESS';
       }
       matches[matchIndex] = match;
       if (schedule.structure) schedule.structure.matches = matches;
-      if (Array.isArray(schedule.matches) || !schedule.structure) schedule.matches = matches;
+      if (Array.isArray(schedule.matches) || !schedule.structure)
+        schedule.matches = matches;
       this.syncMatchIntoCalendar(schedule, match);
 
       const persisted = await tx.tournament.updateMany({
@@ -806,17 +879,27 @@ export class TournamentMatchesService {
         data: { schedule, version: { increment: 1 } },
       });
       if (persisted.count !== 1) {
-        throw new ConflictException('The tournament schedule changed while checking in. Refresh and scan the pass again.');
+        throw new ConflictException(
+          'The tournament schedule changed while checking in. Refresh and scan the pass again.',
+        );
       }
 
-      const checkedInCount = Number(player1CheckedIn) + Number(player2CheckedIn);
+      const checkedInCount =
+        Number(player1CheckedIn) + Number(player2CheckedIn);
       return {
         tournamentId,
         matchId: match.id,
         player: {
           playerId,
-          name: `${registration.player.firstName} ${registration.player.lastName}`.trim() || registration.player.gamerTag || registration.player.username || 'Player',
-          gamerTag: registration.player.gamerTag || registration.player.username || null,
+          name:
+            `${registration.player.firstName} ${registration.player.lastName}`.trim() ||
+            registration.player.gamerTag ||
+            registration.player.username ||
+            'Player',
+          gamerTag:
+            registration.player.gamerTag ||
+            registration.player.username ||
+            null,
         },
         alreadyCheckedIn,
         checkedInAt,
@@ -841,24 +924,38 @@ export class TournamentMatchesService {
     });
     if (!tournament) throw new NotFoundException('Tournament not found');
 
-    const matches: any[] = (tournament.schedule as any)?.structure?.matches ||
-      (tournament.schedule as any)?.matches || [];
-    const match = matches.find((item) => item.id === matchId || item.canonicalMatchId === matchId);
-    if (!match) throw new NotFoundException('Match not found in this tournament');
+    const matches: any[] =
+      (tournament.schedule as any)?.structure?.matches ||
+      (tournament.schedule as any)?.matches ||
+      [];
+    const match = matches.find(
+      (item) => item.id === matchId || item.canonicalMatchId === matchId,
+    );
+    if (!match)
+      throw new NotFoundException('Match not found in this tournament');
     await this.assertMatchOperator(tournamentId, matchId, actor);
     if (match.status !== 'IN_PROGRESS') {
-      throw new ConflictException('A match can only receive a final score after it has started');
+      throw new ConflictException(
+        'A match can only receive a final score after it has started',
+      );
     }
     const checkIns: any[] = Array.isArray(match.checkIns) ? match.checkIns : [];
     const bothCheckedIn = [match.player1Id, match.player2Id].every((playerId) =>
       checkIns.some((item) => item.playerId === playerId),
     );
-    if (!bothCheckedIn) throw new ConflictException('Both participants must be checked in before submitting a score');
+    if (!bothCheckedIn)
+      throw new ConflictException(
+        'Both participants must be checked in before submitting a score',
+      );
     if (
-      ['SINGLE_ELIMINATION', 'DOUBLE_ELIMINATION'].includes(tournament.tournamentFormat) &&
+      ['SINGLE_ELIMINATION', 'DOUBLE_ELIMINATION'].includes(
+        tournament.tournamentFormat,
+      ) &&
       dto.score1 === dto.score2
     ) {
-      throw new BadRequestException('A knockout match must have a decisive result');
+      throw new BadRequestException(
+        'A knockout match must have a decisive result',
+      );
     }
 
     return this.updateMatchScore(tournamentId, matchId, {
@@ -880,7 +977,9 @@ export class TournamentMatchesService {
       select: { employeeId: true },
     });
     if (!assignment || assignment.employeeId !== actor.userId) {
-      throw new ForbiddenException('You can only operate matches assigned to your employee account');
+      throw new ForbiddenException(
+        'You can only operate matches assigned to your employee account',
+      );
     }
   }
 
@@ -896,42 +995,84 @@ export class TournamentMatchesService {
     let registration: any = null;
     if (canonical) {
       if (canonical[1] !== tournamentId) {
-        throw new BadRequestException('This QR pass belongs to a different tournament');
+        throw new BadRequestException(
+          'This QR pass belongs to a different tournament',
+        );
       }
       registration = await db.tournamentRegistration.findFirst({
         where: { tournamentId, playerId: canonical[2] },
-        include: { player: { select: { playerId: true, firstName: true, lastName: true, gamerTag: true, username: true } } },
+        include: {
+          player: {
+            select: {
+              playerId: true,
+              firstName: true,
+              lastName: true,
+              gamerTag: true,
+              username: true,
+            },
+          },
+        },
       });
       if (registration?.qrCodeString && registration.qrCodeString !== token) {
-        throw new BadRequestException('The player QR pass is invalid or expired');
+        throw new BadRequestException(
+          'The player QR pass is invalid or expired',
+        );
       }
     } else {
       registration = await db.tournamentRegistration.findFirst({
         where: { tournamentId, qrCodeString: token },
-        include: { player: { select: { playerId: true, firstName: true, lastName: true, gamerTag: true, username: true } } },
+        include: {
+          player: {
+            select: {
+              playerId: true,
+              firstName: true,
+              lastName: true,
+              gamerTag: true,
+              username: true,
+            },
+          },
+        },
       });
     }
     if (!registration || !registration.player) {
-      throw new BadRequestException('No registered player was found for this QR pass');
+      throw new BadRequestException(
+        'No registered player was found for this QR pass',
+      );
     }
-    const registrationConfirmed = registration.status === 'CONFIRMED' ||
+    const registrationConfirmed =
+      registration.status === 'CONFIRMED' ||
       (freeEntry && registration.status === 'REGISTERED');
-    const paymentConfirmed = ['PAID', 'CONFIRMED'].includes(String(registration.paymentStatus).toUpperCase()) ||
-      (freeEntry && String(registration.paymentStatus).toUpperCase() === 'PENDING');
+    const paymentConfirmed =
+      ['PAID', 'CONFIRMED'].includes(
+        String(registration.paymentStatus).toUpperCase(),
+      ) ||
+      (freeEntry &&
+        String(registration.paymentStatus).toUpperCase() === 'PENDING');
     if (!registrationConfirmed || !paymentConfirmed) {
-      throw new ForbiddenException('Only confirmed, paid tournament participants can check in');
+      throw new ForbiddenException(
+        'Only confirmed, paid tournament participants can check in',
+      );
     }
     return registration;
   }
 
   private syncMatchIntoCalendar(schedule: any, match: any) {
-    const venueList = schedule.calendar?.venues || schedule.venueSchedules || [];
+    const venueList =
+      (Array.isArray(schedule.calendar)
+        ? schedule.calendar
+        : schedule.calendar?.venues) ||
+      schedule.venueSchedules ||
+      [];
     if (!Array.isArray(venueList)) return;
     for (const venue of venueList) {
       for (const screen of venue.screens || []) {
         for (const day of screen.days || []) {
           for (const slot of day.timeslots || []) {
-            if (slot.game && (slot.game.id === match.id || slot.game.canonicalMatchId === match.id)) {
+            if (
+              slot.game &&
+              (slot.game.id === match.id ||
+                slot.game.canonicalMatchId === match.id)
+            ) {
               slot.game.status = match.status;
               slot.game.checkIns = match.checkIns;
             }
@@ -977,68 +1118,12 @@ export class TournamentMatchesService {
     }
 
     const schedule = tournament.schedule as any;
-    const capacity = schedule?.capacity || {};
-    const matches: any[] = schedule?.structure?.matches || [];
-    const calendar: any[] = schedule?.calendar || [];
-
-    const allocatedCount = matches.filter(
-      (m: any) => m.physicalAllocation || m.allocatedSlot,
-    ).length;
-
-    let totalPhysicalSlots = 0;
-    let occupiedPhysicalSlots = 0;
-    for (const v of calendar) {
-      for (const s of v.screens || []) {
-        for (const d of s.days || []) {
-          for (const ts of d.timeslots || []) {
-            totalPhysicalSlots++;
-            if (ts.game || ts.canonicalMatchId) {
-              occupiedPhysicalSlots++;
-            }
-          }
-        }
-      }
-    }
-
-    const guaranteed =
-      schedule?.structure?.summary?.guaranteedMatches ||
-      capacity.totalMatches ||
-      tournament.numberOfTeams ||
-      0;
-    const conditional = schedule?.structure?.summary?.conditionalMatches || 0;
-    const maximum =
-      schedule?.structure?.summary?.maximumPossibleMatches ||
-      guaranteed + conditional;
-
-    return {
-      status: 'SUFFICIENT',
-      guaranteedMatches: guaranteed,
-      conditionalMatches: conditional,
-      maximumPossibleMatches: maximum,
-      allocatedMatches: allocatedCount,
-      pendingGuaranteedMatches: Math.max(0, guaranteed - allocatedCount),
-      inactiveConditionalReserveMatches: 0,
-      totalPhysicalSlots: totalPhysicalSlots || capacity.totalDailySlots || 0,
-      occupiedPhysicalSlots,
-      availablePhysicalSlots: Math.max(
-        0,
-        (totalPhysicalSlots || capacity.totalDailySlots || 0) -
-          occupiedPhysicalSlots,
-      ),
-      guaranteedDeficit: 0,
-      conditionalReserveDeficit: 0,
-      surplusAfterMaximum: Math.max(
-        0,
-        (totalPhysicalSlots || capacity.totalDailySlots || 0) - maximum,
-      ),
-      baselinePlayingDays: capacity.totalPlayingDaysNeeded || 1,
-      conditionalReservePlayingDays: 0,
-      bufferPlayingDays: tournament.buffer || 1,
-      totalGeneratedPlayingDays:
-        (capacity.totalPlayingDaysNeeded || 1) + (tournament.buffer || 1),
-      playerConflictCount: 0,
-      ...capacity,
-    };
+    if (!schedule?.structure?.matches || !schedule?.capacity)
+      return {
+        status: 'INVALID_CONFIGURATION',
+        reason: 'Generate a valid competition calendar first',
+      };
+    return { ...schedule.capacity, ...capacitySummary(schedule) };
   }
 
   /**
@@ -1046,126 +1131,36 @@ export class TournamentMatchesService {
    */
   async generateScheduleForTournament(
     id: string,
-    schedulingModeOverride?: SchedulingMode,
+    schedulingMode?: SchedulingMode,
     playerIds?: string[],
   ) {
     const tournament = await this.prisma.tournament.findUnique({
       where: { tournamentId: id },
-      include: {
-        venues: {
-          include: {
-            screens: true,
-          },
-        },
-      },
     });
-
-    if (!tournament || tournament.isDeleted) {
-      throw new NotFoundException('Tournament not found or has been deleted');
+    if (!tournament) throw new NotFoundException('Tournament not found');
+    if (!(tournament.schedule as any)?.structure)
+      throw new BadRequestException(
+        'Canonical competition is missing; create a tournament first',
+      );
+    if (
+      schedulingMode &&
+      !Object.values(SchedulingMode).includes(schedulingMode)
+    )
+      throw new BadRequestException('Unsupported scheduling mode');
+    if (playerIds?.length) {
+      const assigned = (tournament.schedule as any).structure.slots
+        .filter((slot: any) => slot.participantId)
+        .map((slot: any) => slot.participantId);
+      if (
+        playerIds.length !== assigned.length ||
+        new Set(playerIds).size !== playerIds.length ||
+        playerIds.some((id) => !assigned.includes(id))
+      )
+        throw new BadRequestException(
+          'Assign confirmed registrations to stable slots before generating the calendar',
+        );
     }
-
-    const schedulingMode =
-      schedulingModeOverride ||
-      tournament.schedulingMode ||
-      SchedulingMode.AUTO_HOME_VENUE;
-
-    const tournamentVenues = tournament.venues || [];
-
-    let participants: Participant[] = [];
-    if (playerIds && Array.isArray(playerIds) && playerIds.length > 0) {
-      const players = await this.prisma.player.findMany({
-        where: { playerId: { in: playerIds } },
-      });
-      participants = players.map((p, idx) => ({
-        playerId: p.playerId,
-        name:
-          `${p.firstName} ${p.lastName}`.trim() ||
-          p.gamerTag ||
-          p.username ||
-          `Player ${idx + 1}`,
-        homeVenueId:
-          tournamentVenues.length > 0
-            ? tournamentVenues[idx % tournamentVenues.length].venueId
-            : undefined,
-      }));
-    } else {
-      const confirmedRegistrations =
-        await this.prisma.tournamentRegistration.findMany({
-          where: {
-            tournamentId: tournament.tournamentId,
-            status: 'CONFIRMED',
-            assignedSlot: { not: null },
-          },
-          include: { player: true },
-          orderBy: { assignedSlot: 'asc' },
-        });
-
-      if (confirmedRegistrations.length > 0) {
-        participants = confirmedRegistrations.map((r, idx) => ({
-          playerId: r.playerId,
-          name:
-            `${r.player?.firstName || ''} ${r.player?.lastName || ''}`.trim() ||
-            r.player?.gamerTag ||
-            `Player ${r.assignedSlot || idx + 1}`,
-          homeVenueId:
-            r.homeVenueId ||
-            (tournamentVenues.length > 0
-              ? tournamentVenues[idx % tournamentVenues.length].venueId
-              : undefined),
-        }));
-      } else {
-        participants = [];
-      }
-    }
-
-    const venueInputs: ScheduleVenueInput[] = tournamentVenues.map((v) => ({
-      venueId: v.venueId,
-      name: v.name,
-      screens: v.screens.map((s) => ({
-        screenId: s.screenId,
-        screenName: s.screenName,
-      })),
-    }));
-
-    const schedule = await this.tournamentScheduleService.generateSchedule({
-      tournamentId: tournament.tournamentId,
-      tournamentName: tournament.name,
-      tournamentFormat: tournament.tournamentFormat,
-      schedulingMode,
-      numberOfTeams: tournament.numberOfTeams,
-      startDate: tournament.startDate,
-      dailyStart: tournament.dailyStart,
-      dailyEnd: tournament.dailyEnd,
-      matchDuration: tournament.matchDuration,
-      turnoverDuration: tournament.turnoverDuration,
-      lunchBreakTime: tournament.lunchBreakTime,
-      lunchDuration: tournament.lunchDuration,
-      buffer: tournament.buffer,
-      frequencyStatus: tournament.frequencyStatus,
-      frequencyArray: tournament.frequencyArray,
-      venues: venueInputs,
-      participants,
-    });
-
-    const updated = await this.prisma.tournament.update({
-      where: { tournamentId: id },
-      data: {
-        schedulingMode,
-        schedule: schedule as any,
-      },
-      include: {
-        manageEventCosts: true,
-        manageEventPrizes: true,
-        venues: {
-          include: {
-            screens: true,
-          },
-        },
-        sponsors: true,
-      },
-    });
-
-    return presignTournamentMedia(updated);
+    return this.generateCalendarForTournament(id, undefined, schedulingMode);
   }
 
   /**
@@ -1175,6 +1170,13 @@ export class TournamentMatchesService {
     tournamentId: string,
     matchId: string,
     dto: UpdateMatchScoreDto,
+    correction?: {
+      tournamentVersion: number;
+      matchVersion: number;
+      reason: string;
+      auditEventId: string;
+      actorId?: string;
+    },
   ) {
     const tournament = tournamentId
       ? await this.prisma.tournament.findUnique({
@@ -1186,7 +1188,7 @@ export class TournamentMatchesService {
       throw new NotFoundException(`Tournament #${tournamentId} not found`);
     }
 
-    const schedule = (tournament.schedule as any) || {};
+    const schedule = JSON.parse(JSON.stringify(tournament.schedule || {}));
     const matches: any[] =
       schedule.structure?.matches || schedule.matches || [];
 
@@ -1202,139 +1204,114 @@ export class TournamentMatchesService {
 
     const match = matches[matchIndex];
     if (match.status === 'UNDER_REVIEW' || match.resumeRequired) {
-      throw new ConflictException('Resolve the incident and restart the match before submitting its score');
+      throw new ConflictException(
+        'Resolve the incident and restart the match before submitting its score',
+      );
     }
+    if (![dto.score1, dto.score2].every((n) => Number.isInteger(n) && n >= 0))
+      throw new BadRequestException('Scores must be nonnegative integers');
+    refreshParticipants(schedule);
+    if (
+      correction &&
+      (tournament.version !== correction.tournamentVersion ||
+        (match.version || 1) !== correction.matchVersion)
+    )
+      throw new ConflictException('SCORE_REVISION_CONFLICT');
+    if (!correction && match.status === 'COMPLETED')
+      throw new ConflictException(
+        'Use acknowledged score correction for completed results',
+      );
+    if (
+      match.isAutoAdvance ||
+      match.isSchedulable === false ||
+      !match.player1Id ||
+      !match.player2Id ||
+      match.player1Id === match.player2Id
+    )
+      throw new BadRequestException(
+        'Two distinct resolved competitors are required',
+      );
+    if (
+      match.bracketSection !== 'GROUP' &&
+      !match.tieId &&
+      dto.score1 === dto.score2
+    )
+      throw new BadRequestException('A knockout match requires a winner');
+    const confirmed = await this.prisma.tournamentRegistration.findMany({
+      where: {
+        tournamentId: tournament.tournamentId,
+        playerId: { in: [match.player1Id, match.player2Id] },
+        status: 'CONFIRMED',
+      },
+    });
+    if (new Set(confirmed.map((r) => r.playerId)).size !== 2)
+      throw new BadRequestException(
+        'Both competitors must have confirmed registrations',
+      );
+    const previousScore1 = match.score1,
+      previousScore2 = match.score2;
     match.score1 = dto.score1;
     match.score2 = dto.score2;
     match.status = dto.status || 'COMPLETED';
 
-    if (match.score1 !== null && match.score2 !== null) {
-      const winner =
-        match.score1 > match.score2
-          ? match.participant1Ref
-          : match.score2 > match.score1
-            ? match.participant2Ref
-            : null;
-
-      const loser =
-        match.score1 > match.score2
-          ? match.participant2Ref
-          : match.score2 > match.score1
-            ? match.participant1Ref
-            : null;
-
-      const winnerPlayerId =
-        match.score1 > match.score2 ? match.player1Id : match.player2Id;
-      const winnerPlayerName =
-        match.score1 > match.score2 ? match.player1Name : match.player2Name;
-      const loserPlayerId =
-        match.score1 > match.score2 ? match.player2Id : match.player1Id;
-      const loserPlayerName =
-        match.score1 > match.score2 ? match.player2Name : match.player1Name;
-
-      if (winner && match.nextMatchWinnerTargetId) {
-        const nextWinnerMatch = matches.find(
-          (m: any) => m.id === match.nextMatchWinnerTargetId,
-        );
-        if (nextWinnerMatch) {
-          if (
-            !nextWinnerMatch.participant1Ref ||
-            nextWinnerMatch.participant1Ref.value === match.id ||
-            nextWinnerMatch.participant1Ref.sourceMatchId === match.id
-          ) {
-            nextWinnerMatch.participant1Ref = winner;
-            nextWinnerMatch.player1Id = winnerPlayerId;
-            nextWinnerMatch.player1Name = winnerPlayerName;
-          } else if (
-            !nextWinnerMatch.participant2Ref ||
-            nextWinnerMatch.participant2Ref.value === match.id ||
-            nextWinnerMatch.participant2Ref.sourceMatchId === match.id
-          ) {
-            nextWinnerMatch.participant2Ref = winner;
-            nextWinnerMatch.player2Id = winnerPlayerId;
-            nextWinnerMatch.player2Name = winnerPlayerName;
-          }
-
-          if (
-            tournament.schedulingMode === SchedulingMode.PLAYER_SELF &&
-            nextWinnerMatch.player1Id &&
-            nextWinnerMatch.player2Id &&
-            !nextWinnerMatch.player1Id.startsWith('TBD') &&
-            !nextWinnerMatch.player2Id.startsWith('TBD') &&
-            !nextWinnerMatch.player1Id.startsWith('BYE') &&
-            !nextWinnerMatch.player2Id.startsWith('BYE') &&
-            !nextWinnerMatch.isAutoAdvance &&
-            nextWinnerMatch.isSchedulable !== false &&
-            nextWinnerMatch.status !== 'COMPLETED' &&
-            !nextWinnerMatch.selfSchedulingOpenedAt
-          ) {
-            nextWinnerMatch.selfSchedulingOpenedAt = new Date().toISOString();
-          }
-        }
-      }
-
-      if (loser && match.nextMatchLoserTargetId) {
-        const nextLoserMatch = matches.find(
-          (m: any) => m.id === match.nextMatchLoserTargetId,
-        );
-        if (nextLoserMatch) {
-          if (
-            !nextLoserMatch.participant1Ref ||
-            nextLoserMatch.participant1Ref.value === match.id ||
-            nextLoserMatch.participant1Ref.sourceMatchId === match.id
-          ) {
-            nextLoserMatch.participant1Ref = loser;
-            nextLoserMatch.player1Id = loserPlayerId;
-            nextLoserMatch.player1Name = loserPlayerName;
-          } else if (
-            !nextLoserMatch.participant2Ref ||
-            nextLoserMatch.participant2Ref.value === match.id ||
-            nextLoserMatch.participant2Ref.sourceMatchId === match.id
-          ) {
-            nextLoserMatch.participant2Ref = loser;
-            nextLoserMatch.player2Id = loserPlayerId;
-            nextLoserMatch.player2Name = loserPlayerName;
-          }
-
-          if (
-            tournament.schedulingMode === SchedulingMode.PLAYER_SELF &&
-            nextLoserMatch.player1Id &&
-            nextLoserMatch.player2Id &&
-            !nextLoserMatch.player1Id.startsWith('TBD') &&
-            !nextLoserMatch.player2Id.startsWith('TBD') &&
-            !nextLoserMatch.player1Id.startsWith('BYE') &&
-            !nextLoserMatch.player2Id.startsWith('BYE') &&
-            !nextLoserMatch.isAutoAdvance &&
-            nextLoserMatch.isSchedulable !== false &&
-            nextLoserMatch.status !== 'COMPLETED' &&
-            !nextLoserMatch.selfSchedulingOpenedAt
-          ) {
-            nextLoserMatch.selfSchedulingOpenedAt = new Date().toISOString();
-          }
-        }
-      }
-
-      for (const m of matches) {
-        if (
-          m.conditionType === 'GRAND_FINAL_RESET' &&
-          m.conditionMatchId === match.id
-        ) {
-          const activated =
-            match.status === 'COMPLETED' && match.score2 > match.score1;
-          m.isSchedulable = activated;
-          if (
-            activated &&
-            tournament.schedulingMode === SchedulingMode.PLAYER_SELF &&
-            !m.selfSchedulingOpenedAt
-          ) {
-            m.selfSchedulingOpenedAt = new Date().toISOString();
-          }
-        }
+    match.version = (match.version || 1) + 1;
+    if (correction) {
+      schedule.resultCorrections = [
+        ...(schedule.resultCorrections || []),
+        {
+          id: correction.auditEventId,
+          actorId: correction.actorId,
+          matchId,
+          reason: correction.reason,
+          previousScore1,
+          previousScore2,
+          previousVersion: correction.matchVersion,
+          score1: dto.score1,
+          score2: dto.score2,
+          correctedAt: new Date().toISOString(),
+        },
+      ];
+    }
+    reconcileQualification(
+      schedule,
+      tournament.tournamentFormat === 'LEAGUE_AND_KNOCKOUT_DOUBLE',
+    );
+    for (const node of matches) {
+      if (
+        node.conditionType === 'GRAND_FINAL_RESET' &&
+        node.conditionMatchId === match.id
+      ) {
+        node.isSchedulable =
+          match.status === 'COMPLETED' && match.score2 > match.score1;
       }
     }
+    refreshParticipants(schedule);
+    for (const node of matches) {
+      if (
+        tournament.schedulingMode === SchedulingMode.PLAYER_SELF &&
+        node.player1Id &&
+        node.player2Id &&
+        node.isSchedulable !== false &&
+        !node.isAutoAdvance &&
+        !['COMPLETED', 'CANCELLED'].includes(node.status)
+      )
+        node.selfSchedulingOpenedAt ||= new Date().toISOString();
+    }
+    // Prepare any required reserve extension before the atomic result write.
+    const config = await this.prisma.tournament.findUnique({
+      where: { tournamentId: tournament.tournamentId },
+      include: { venues: { include: { screens: true } } },
+    });
+    const extension = ensureCapacity(schedule, config);
+    if (!extension.success)
+      throw new BadRequestException('Cannot reserve capacity for the result');
 
     const venueList =
-      schedule.calendar?.venues || schedule.venueSchedules || [];
+      (Array.isArray(schedule.calendar)
+        ? schedule.calendar
+        : schedule.calendar?.venues) ||
+      schedule.venueSchedules ||
+      [];
     if (Array.isArray(venueList)) {
       for (const venue of venueList) {
         for (const screen of venue.screens || []) {
@@ -1364,32 +1341,49 @@ export class TournamentMatchesService {
     }
 
     const saved = await this.prisma.tournament.updateMany({
-      where: { tournamentId: tournament.tournamentId, version: tournament.version },
+      where: {
+        tournamentId: tournament.tournamentId,
+        version: tournament.version,
+      },
       data: { schedule, version: { increment: 1 } },
     });
-    if (saved.count !== 1) throw new ConflictException('The match changed while submitting its score. Refresh and try again.');
+    if (saved.count !== 1)
+      throw new ConflictException(
+        'The match changed while submitting its score. Refresh and try again.',
+      );
 
-    if (match.status === 'COMPLETED' && match.score1 !== null && match.score2 !== null) {
+    if (
+      match.status === 'COMPLETED' &&
+      match.score1 !== null &&
+      match.score2 !== null
+    ) {
       await this.settleFanPredictions(tournament.tournamentId, match);
     } else if (match.status === 'CANCELLED') {
       await this.voidFanPredictions(tournament.tournamentId, match.id);
     }
 
     try {
-      await this.incidents?.publishMatchUpdate(tournament.tournamentId, match.id, match.status);
+      await this.incidents?.publishMatchUpdate(
+        tournament.tournamentId,
+        match.id,
+        match.status,
+      );
     } catch (error: any) {
-      this.logger.warn(`Score saved; live match update could not be delivered: ${error?.message || error}`);
+      this.logger.warn(
+        `Score saved; live match update could not be delivered: ${error?.message || error}`,
+      );
     }
 
     return match;
   }
 
   private async settleFanPredictions(tournamentId: string, match: any) {
-    const resolvedWinnerId = match.score1 === match.score2
-      ? 'DRAW'
-      : match.score1 > match.score2
-        ? match.player1Id
-        : match.player2Id;
+    const resolvedWinnerId =
+      match.score1 === match.score2
+        ? 'DRAW'
+        : match.score1 > match.score2
+          ? match.player1Id
+          : match.player2Id;
     const pending = await this.prisma.fanPrediction.findMany({
       where: { tournamentId, matchId: match.id, status: 'PENDING' },
     });
@@ -1470,7 +1464,7 @@ export class TournamentMatchesService {
       throw new NotFoundException(`Tournament #${tournamentId} not found`);
     }
 
-    const schedule = (tournament.schedule as any) || {};
+    const schedule = JSON.parse(JSON.stringify(tournament.schedule || {}));
     const matches: any[] =
       schedule.structure?.matches || schedule.matches || [];
     const match = matches.find(
@@ -1533,147 +1527,155 @@ export class TournamentMatchesService {
   /**
    * Score correction with downstream match safety guard
    */
-  async correctMatchScore(matchId: string, dto: ScoreCorrectionDto) {
-    const tournaments = await this.prisma.tournament.findMany({
-      where: { schedule: { not: Prisma.JsonNull } },
-    });
-
-    let foundTourn: any = null;
-    let foundMatch: any = null;
-
-    for (const t of tournaments) {
-      const schedule = (t.schedule as any) || {};
-      const matches: any[] = schedule.matches || [];
-      const match = matches.find((m: any) => m.id === matchId);
-      if (match) {
-        foundTourn = t;
-        foundMatch = match;
-        break;
-      }
-    }
-
-    if (!foundTourn || !foundMatch) {
-      throw new NotFoundException(`Match with ID '${matchId}' not found`);
-    }
-
+  async correctMatchScore(
+    matchId: string,
+    dto: ScoreCorrectionDto,
+    actorId?: string,
+  ) {
+    if (!dto.acknowledgement || dto.expectedVersion === undefined)
+      throw new BadRequestException(
+        'Score correction requires acknowledgement and expectedVersion',
+      );
+    const tournament = await this.resolveTournamentForMatch(undefined, matchId);
+    if (!tournament) throw new NotFoundException('Match not found');
+    const schedule: any = tournament.schedule;
+    const match = (schedule.structure?.matches || schedule.matches || []).find(
+      (m: any) => m.id === matchId,
+    );
+    if (!match) throw new NotFoundException('Match not found');
+    if ((match.version || 1) !== dto.expectedVersion)
+      throw new ConflictException('SCORE_REVISION_CONFLICT');
     if (
-      dto.expectedVersion !== undefined &&
-      foundMatch.version !== undefined &&
-      dto.expectedVersion !== foundMatch.version
-    ) {
-      throw new ConflictException({
-        code: 'SCORE_REVISION_CONFLICT',
-        message: `Score revision conflict: Expected version ${dto.expectedVersion}, but current match version is ${foundMatch.version}`,
-      });
-    }
-
-    const schedule = foundTourn.schedule || {};
-    const matches: any[] = schedule.matches || [];
-
-    if (foundMatch.nextMatchWinnerTargetId) {
-      const nextMatch = matches.find(
-        (m: any) => m.id === foundMatch.nextMatchWinnerTargetId,
+      match.bracketSection === 'GROUP' &&
+      schedule.structure?.qualificationResolution?.status === 'RESOLVED'
+    )
+      throw new ConflictException(
+        'Qualification is frozen; a downstream correction policy is required',
       );
-      if (
-        nextMatch &&
-        (nextMatch.status === 'COMPLETED' || nextMatch.status === 'IN_PROGRESS')
-      ) {
-        if (!dto.acknowledgement) {
-          throw new ConflictException({
-            code: 'DOWNSTREAM_MATCH_COMPLETED',
-            message: `Cannot correct score: Downstream match '${nextMatch.id}' has already started or completed. Admin acknowledgement required to force revision.`,
-          });
-        }
-      }
-    }
-
-    const winnerId =
-      dto.score1 > dto.score2
-        ? foundMatch.participant1Ref?.value
-        : foundMatch.participant2Ref?.value;
-
-    foundMatch.score1 = dto.score1;
-    foundMatch.score2 = dto.score2;
-    foundMatch.status = 'COMPLETED';
-    foundMatch.winnerId = winnerId;
-    foundMatch.version = (foundMatch.version || 1) + 1;
-
-    if (foundMatch.nextMatchWinnerTargetId && winnerId) {
-      const nextMatch = matches.find(
-        (m: any) => m.id === foundMatch.nextMatchWinnerTargetId,
-      );
-      if (nextMatch) {
+    const feeds = (ref: any, id: string) =>
+      ref &&
+      ['MATCH_WINNER', 'MATCH_LOSER'].includes(ref.type) &&
+      ref.value === id;
+    const descendants = new Set([match.id]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const m of schedule.structure?.matches || []) {
+        if (descendants.has(m.id)) continue;
         if (
-          nextMatch.participant1Ref &&
-          nextMatch.participant1Ref.value?.startsWith('winner:')
+          [...descendants].some(
+            (id) =>
+              feeds(m.participant1Ref, id) ||
+              feeds(m.participant2Ref, id) ||
+              (schedule.structure.matches.find(
+                (source: any) => source.id === id,
+              )?.tieId &&
+                [m.participant1Ref, m.participant2Ref].some(
+                  (r) =>
+                    ['TIE_WINNER', 'TIE_LOSER'].includes(r.type) &&
+                    r.value ===
+                      schedule.structure.matches.find(
+                        (source: any) => source.id === id,
+                      ).tieId,
+                )),
+          )
         ) {
-          nextMatch.participant1Ref = {
-            type: 'PARTICIPANT',
-            value: winnerId,
-            displayName:
-              winnerId === foundMatch.participant1Ref?.value
-                ? foundMatch.participant1Ref?.displayName
-                : foundMatch.participant2Ref?.displayName,
-          };
-        } else if (
-          nextMatch.participant2Ref &&
-          nextMatch.participant2Ref.value?.startsWith('winner:')
-        ) {
-          nextMatch.participant2Ref = {
-            type: 'PARTICIPANT',
-            value: winnerId,
-            displayName:
-              winnerId === foundMatch.participant1Ref?.value
-                ? foundMatch.participant1Ref?.displayName
-                : foundMatch.participant2Ref?.displayName,
-          };
+          descendants.add(m.id);
+          changed = true;
+          if (m.status !== 'SCHEDULED' && m.status !== 'PLAYERS_READY')
+            throw new ConflictException(
+              'A downstream match has already started; correction policy is required',
+            );
         }
-        nextMatch.version = (nextMatch.version || 1) + 1;
       }
     }
-
-    await this.prisma.tournament.update({
-      where: { tournamentId: foundTourn.tournamentId },
-      data: {
-        schedule,
-        version: { increment: 1 },
+    const auditEventId = randomUUID();
+    const corrected = await this.updateMatchScore(
+      tournament.tournamentId,
+      matchId,
+      { score1: dto.score1, score2: dto.score2, status: 'COMPLETED' },
+      {
+        tournamentVersion: tournament.version,
+        matchVersion: dto.expectedVersion,
+        reason: dto.reason,
+        auditEventId,
+        actorId,
       },
-    });
-
-    await this.settleFanPredictions(foundTourn.tournamentId, foundMatch);
-
-    return {
-      match: {
-        id: foundMatch.id,
-        score1: foundMatch.score1,
-        score2: foundMatch.score2,
-        status: foundMatch.status,
-        version: foundMatch.version,
-      },
-      auditEventId: `audit-log-${Date.now().toString().slice(-6)}`,
-      reason: dto.reason,
-    };
+    );
+    return { match: corrected, auditEventId, reason: dto.reason };
   }
 
   /**
    * File a dispute for a match
    */
-  async disputeMatch(matchId: string, dto: CreateMatchDisputeDto, actor: { userId: string; role: string }) {
-    if (!this.incidents) throw new BadRequestException('Match incident service is unavailable');
+  async disputeMatch(
+    matchId: string,
+    dto: CreateMatchDisputeDto,
+    actor: { userId: string; role: string },
+  ) {
+    if (!this.incidents)
+      throw new BadRequestException('Match incident service is unavailable');
     return this.incidents.create(undefined, matchId, dto, actor);
   }
 
   /**
    * Resolves a match dispute with outcome status
    */
-  async resolveMatchDispute(disputeId: string, dto: UpdateMatchDisputeDto, actor: { userId: string; role: string }) {
-    if (!this.incidents) throw new BadRequestException('Match incident service is unavailable');
+  async resolveMatchDispute(
+    disputeId: string,
+    dto: UpdateMatchDisputeDto,
+    actor: { userId: string; role: string },
+  ) {
+    if (!this.incidents)
+      throw new BadRequestException('Match incident service is unavailable');
     return this.incidents.resolve(disputeId, dto, actor);
   }
 
   /**
    * Reconcile schedule capacity metrics
    */
+  async resolveQualificationDraw(
+    tournamentId: string,
+    dto: {
+      tieGroupId: string;
+      participantIds: string[];
+      expectedVersion: number;
+    },
+    actorId: string,
+  ) {
+    const tournament = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+    });
+    if (!tournament || tournament.isDeleted)
+      throw new NotFoundException('Tournament not found');
+    if (dto.expectedVersion !== tournament.version)
+      throw new ConflictException('VERSION_CONFLICT');
+    const schedule = JSON.parse(
+      JSON.stringify(tournament.schedule),
+    ) as TournamentSchedulePayload;
+    applyQualificationDraw(
+      schedule,
+      dto.tieGroupId,
+      dto.participantIds,
+      tournament.tournamentFormat === 'LEAGUE_AND_KNOCKOUT_DOUBLE',
+      actorId,
+    );
+    const saved = await this.prisma.tournament.updateMany({
+      where: { tournamentId, version: tournament.version },
+      data: { schedule: schedule as any, version: { increment: 1 } },
+    });
+    if (saved.count !== 1)
+      throw new ConflictException(
+        'A competing draw or result changed this qualification',
+      );
+    return {
+      qualificationResolution: (schedule.structure as any)
+        .qualificationResolution,
+      matches: schedule.structure.matches,
+      version: tournament.version + 1,
+    };
+  }
+
   async reconcileScheduleCapacity(
     tournamentId: string,
     expectedVersion?: number,
@@ -1695,20 +1697,29 @@ export class TournamentMatchesService {
       });
     }
 
-    let autoAssignmentOutcome: any = null;
-    if (tournament.schedulingMode === SchedulingMode.PLAYER_SELF) {
-      autoAssignmentOutcome =
-        await this.processDueAutoAssignments(tournamentId);
+    const config = await this.prisma.tournament.findUnique({
+      where: { tournamentId },
+      include: { venues: { include: { screens: true } } },
+    });
+    const schedule = JSON.parse(
+      JSON.stringify(tournament.schedule),
+    ) as TournamentSchedulePayload;
+    if (!schedule?.structure)
+      throw new BadRequestException(
+        'Generate a valid canonical structure first',
+      );
+    const outcome = ensureCapacity(schedule, config);
+    if (outcome.slotsAdded) {
+      const saved = await this.prisma.tournament.updateMany({
+        where: { tournamentId, version: tournament.version },
+        data: { schedule: schedule as any, version: { increment: 1 } },
+      });
+      if (saved.count !== 1)
+        throw new ConflictException(
+          'Schedule changed while reconciling capacity',
+        );
     }
-
-    return {
-      success: true,
-      slotsAdded: 10,
-      playingDaysAdded: 1,
-      guaranteedDeficitBefore: 0,
-      guaranteedDeficitAfter: 0,
-      autoAssignmentOutcome,
-    };
+    return { ...outcome, capacitySummary: capacitySummary(schedule) };
   }
 
   /**
@@ -1966,7 +1977,7 @@ export class TournamentMatchesService {
         !m.player2Id.startsWith('BYE');
       const isPlayable =
         !m.isAutoAdvance &&
-        !m.conditional &&
+        (!m.conditional || m.isSchedulable === true) &&
         m.isSchedulable !== false &&
         m.status !== 'UNDER_REVIEW' &&
         m.status !== 'COMPLETED' &&
@@ -2094,7 +2105,7 @@ export class TournamentMatchesService {
       !participantsResolved ||
       targetMatch.isSchedulable === false ||
       targetMatch.isAutoAdvance ||
-      targetMatch.conditional ||
+      (targetMatch.conditional && targetMatch.isSchedulable !== true) ||
       targetMatch.status === 'UNDER_REVIEW' ||
       targetMatch.status === 'COMPLETED' ||
       targetMatch.status === 'CANCELLED' ||
@@ -2543,7 +2554,10 @@ export class TournamentMatchesService {
       let hasUpdates = false;
       const tournamentResults: any[] = [];
       const activityEvents: Array<{ title: string; description: string }> = [];
-      const playerNotifications: Array<{ userId: string; description: string }> = [];
+      const playerNotifications: Array<{
+        userId: string;
+        description: string;
+      }> = [];
 
       for (const match of matches) {
         const isAllocated = !!(match.date && match.time && match.venueId);
@@ -2552,10 +2566,10 @@ export class TournamentMatchesService {
         if (
           isAllocated ||
           isCompleted ||
-            match.status === 'UNDER_REVIEW' ||
-            match.resumeRequired ||
+          match.status === 'UNDER_REVIEW' ||
+          match.resumeRequired ||
           match.isAutoAdvance ||
-          match.conditional ||
+          (match.conditional && match.isSchedulable !== true) ||
           match.isSchedulable === false
         ) {
           continue;
