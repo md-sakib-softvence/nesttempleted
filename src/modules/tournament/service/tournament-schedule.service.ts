@@ -158,7 +158,11 @@ export class TournamentScheduleService {
     teams: number,
     groupsCount?: number,
     participants?: Participant[],
-    thirdPlacePlayoffEnabled = true,
+    thirdPlacePlayoffEnabled = false,
+    options?: {
+      topQualifiers?: number;
+      hasGrandFinalReset?: boolean;
+    },
   ): {
     slots: TournamentPlayerSlot[];
     seeds: TournamentSeed[];
@@ -173,6 +177,7 @@ export class TournamentScheduleService {
       groupsCount,
       participants,
       thirdPlacePlayoffEnabled,
+      options,
     );
   }
 
@@ -245,7 +250,9 @@ export class TournamentScheduleService {
       frequencyArray = [],
       venues,
       groupsCount,
-      thirdPlacePlayoffEnabled = true,
+      topQualifiers,
+      qualifiersPerGroup,
+      thirdPlacePlayoffEnabled = false,
       schedulingPolicy,
     } = params;
 
@@ -256,6 +263,8 @@ export class TournamentScheduleService {
       venues,
     );
 
+    const resolvedTopQualifiers = topQualifiers ?? qualifiersPerGroup ?? 2;
+
     // 1. Generate canonical structure
     const structure = this.generateCanonicalStructure(
       tournamentId,
@@ -264,6 +273,7 @@ export class TournamentScheduleService {
       groupsCount,
       participants,
       thirdPlacePlayoffEnabled,
+      { topQualifiers: resolvedTopQualifiers },
     );
 
     const schedulableCount =
@@ -280,6 +290,8 @@ export class TournamentScheduleService {
       lunchDuration,
       venues,
       totalMatches: schedulableCount,
+      conditionalMatches: structure.summary.conditionalMatchCount,
+      bufferDays: buffer,
     });
 
     // 3. Generate active event dates

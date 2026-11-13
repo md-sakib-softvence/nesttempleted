@@ -17,7 +17,9 @@ export type MatchParticipantRefType =
   | 'MATCH_LOSER'
   | 'BYE'
   | 'TIE_WINNER'
-  | 'TIE_LOSER';
+  | 'TIE_LOSER'
+  | 'QUALIFIER_SEED'
+  | 'PARTICIPANT';
 
 export interface MatchParticipantRef {
   type: MatchParticipantRefType;
@@ -208,6 +210,8 @@ export interface CapacityCalculationInput {
   lunchDuration?: number | null;
   venues: ScheduleVenueInput[];
   totalMatches: number;
+  conditionalMatches?: number;
+  bufferDays?: number;
 }
 
 export interface CapacityCalculationResult {
@@ -218,6 +222,9 @@ export interface CapacityCalculationResult {
   totalDailySlots: number;
   totalMatches: number;
   totalPlayingDaysNeeded: number;
+  baselineDays: number;
+  reserveDays: number;
+  bufferDays: number;
 }
 
 export interface TournamentSchedulePayload {
@@ -251,6 +258,8 @@ export interface GenerateScheduleParams {
   venues: ScheduleVenueInput[];
   participants?: Participant[];
   groupsCount?: number;
+  topQualifiers?: number;
+  qualifiersPerGroup?: number;
   thirdPlacePlayoffEnabled?: boolean;
   schedulingPolicy?: {
     isWindowOpen?: boolean;
@@ -292,7 +301,7 @@ export function calculateLeagueMatches(
  */
 export function calculateSingleEliminationMatches(
   numberOfTeams: number,
-  thirdPlacePlayoffEnabled = true,
+  thirdPlacePlayoffEnabled = false,
 ): number {
   if (numberOfTeams < 2) return 0;
   const base = numberOfTeams - 1;
@@ -385,7 +394,7 @@ export function calculateHybridMatches(
   const groupsCount = options?.groupsCount || defaultGroups;
   const qualifiersPerGroup = options?.qualifiersPerGroup ?? 2;
   const isDouble = options?.isDouble ?? false;
-  const thirdPlaceEnabled = options?.thirdPlacePlayoffEnabled ?? true;
+  const thirdPlaceEnabled = options?.thirdPlacePlayoffEnabled ?? false;
 
   const groupSizes = calculateGroupDistribution(numberOfTeams, groupsCount);
   let groupStageMatches = 0;
@@ -438,7 +447,7 @@ export function calculateTournamentExpectedMatches(
   numberOfTeams: number,
   options?: ExpectedMatchesOptions,
 ): TournamentMatchCounts {
-  const thirdPlacePlayoffEnabled = options?.thirdPlacePlayoffEnabled ?? true;
+  const thirdPlacePlayoffEnabled = options?.thirdPlacePlayoffEnabled ?? false;
   const hasGrandFinalReset = options?.hasGrandFinalReset ?? true;
 
   switch (format) {
@@ -593,6 +602,9 @@ export function calculateCapacity(
       totalDailySlots: 0,
       totalMatches: input.totalMatches,
       totalPlayingDaysNeeded: 0,
+      baselineDays: 0,
+      reserveDays: 0,
+      bufferDays: 0,
     };
   }
 
@@ -615,10 +627,26 @@ export function calculateCapacity(
 
   const totalDailySlots = slotsPerScreenPerDay * totalScreens;
 
-  const totalPlayingDaysNeeded =
+  const baselineDays =
     totalDailySlots > 0
       ? Math.ceil(input.totalMatches / totalDailySlots)
       : Math.max(1, input.totalMatches > 0 ? 1 : 0);
+
+  const conditionalMatches = input.conditionalMatches ?? 0;
+  const reserveDays =
+    totalDailySlots > 0 && conditionalMatches > 0
+      ? Math.max(
+          0,
+          Math.ceil((input.totalMatches + conditionalMatches) / totalDailySlots) -
+            baselineDays,
+        )
+      : 0;
+
+  const bufferDays = input.bufferDays
+    ? Math.max(0, Math.floor(input.bufferDays))
+    : 0;
+
+  const totalPlayingDaysNeeded = baselineDays + reserveDays + bufferDays;
 
   return {
     matchTimeMinutes,
@@ -628,6 +656,9 @@ export function calculateCapacity(
     totalDailySlots,
     totalMatches: input.totalMatches,
     totalPlayingDaysNeeded,
+    baselineDays,
+    reserveDays,
+    bufferDays,
   };
 }
 
@@ -852,6 +883,61 @@ export function roundName(entrants: number): string {
   if (entrants === 4) return 'Semifinals';
   if (entrants === 8) return 'Quarterfinal';
   return `Round of ${entrants}`;
+}
+
+export function largestPowerOfTwoNotExceeding(n: number): number {
+  if (n < 1) return 1;
+  let p = 1;
+  while (p * 2 <= n) {
+    p *= 2;
+  }
+  return p;
+}
+
+export function isPowerOfTwo(n: number): boolean {
+  return n >= 1 && (n & (n - 1)) === 0;
+}
+
+export function resolveDoubleEliminationPlacementRefs(
+  matches: TournamentMatchEntity[],
+): {
+  first?: MatchParticipantRef;
+  second?: MatchParticipantRef;
+  third?: MatchParticipantRef;
+  fourth?: MatchParticipantRef;
+} {
+  const gf = matches.find((m) => m.round === 'Grand Final');
+  const gfReset = matches.find((m) => m.round === 'Grand Final Reset');
+  const losersFinal = matches.find((m) => m.round === 'Losers Final');
+  let losersPreFinal: TournamentMatchEntity | undefined;
+  if (losersFinal) {
+    losersPreFinal = matches.find(
+      (m) =>
+        m.bracketSection === 'LOSERS' &&
+        m.id !== losersFinal.id &&
+        (losersFinal.participant1Ref.value === m.id ||
+          losersFinal.participant2Ref.value === m.id),
+    );
+  }
+
+  return {
+    first: gfReset
+      ? { type: 'MATCH_WINNER', value: gfReset.id }
+      : gf
+        ? { type: 'MATCH_WINNER', value: gf.id }
+        : undefined,
+    second: gfReset
+      ? { type: 'MATCH_LOSER', value: gfReset.id }
+      : gf
+        ? { type: 'MATCH_LOSER', value: gf.id }
+        : undefined,
+    third: losersFinal
+      ? { type: 'MATCH_LOSER', value: losersFinal.id }
+      : undefined,
+    fourth: losersPreFinal
+      ? { type: 'MATCH_LOSER', value: losersPreFinal.id }
+      : undefined,
+  };
 }
 
 export function generateGroups(
@@ -1087,7 +1173,11 @@ export function generateCanonicalStructure(
   teams: number,
   groupsCount?: number,
   participants?: Participant[],
-  thirdPlacePlayoffEnabled = true,
+  thirdPlacePlayoffEnabled = false,
+  options?: {
+    topQualifiers?: number;
+    hasGrandFinalReset?: boolean;
+  },
 ): {
   slots: TournamentPlayerSlot[];
   seeds: TournamentSeed[];
@@ -1201,15 +1291,10 @@ export function generateCanonicalStructure(
       }
     }
 
-    if (format === TournamentFormat.SINGLE_ELIMINATION || isHybrid) {
-      const qualifiers = groups.flatMap((g) =>
-        [1, 2].map((pos) => sourceRef('GROUP_POSITION', `${g.name} #${pos}`)),
-      );
-      const entrants = isHybrid ? qualifiers.length : teams;
+    if (format === TournamentFormat.SINGLE_ELIMINATION) {
+      const entrants = teams;
       const seedOrder = getStandardSeedOrder(nextPowerOfTwo(entrants));
-      let currentRefs = seedOrder.map((s) =>
-        isHybrid ? (qualifiers[s - 1] ?? byeRef()) : seeded(s),
-      );
+      let currentRefs = seedOrder.map((s) => seeded(s));
 
       let level = 1;
       let semifinals: Array<{
@@ -1234,43 +1319,10 @@ export function generateCanonicalStructure(
             currentRefs[i + 1],
           );
           m.matchNumber = i / 2 + 1;
-
-          if (
-            format === TournamentFormat.LEAGUE_AND_KNOCKOUT_DOUBLE &&
-            currentRefs.length > 2
-          ) {
-            const tieId = `tie-${tournamentId}-ko-r${level}-${i / 2 + 1}`;
-            const leg2Id = `${id}-leg2`;
-            const leg2 = addMatch(
-              leg2Id,
-              roundTitle,
-              'WINNERS',
-              currentRefs[i + 1],
-              currentRefs[i],
-            );
-            Object.assign(m, {
-              tieId,
-              legNumber: 1,
-              legCount: 2,
-              aggregateAdvancement: true,
-            });
-            Object.assign(leg2, {
-              tieId,
-              legNumber: 2,
-              legCount: 2,
-              aggregateAdvancement: true,
-              matchNumber: m.matchNumber,
-            });
-            nextRefs.push({
-              winner: sourceRef('TIE_WINNER', tieId),
-              loser: sourceRef('TIE_LOSER', tieId),
-            });
-          } else {
-            nextRefs.push({
-              winner: sourceRef('MATCH_WINNER', m.id),
-              loser: sourceRef('MATCH_LOSER', m.id),
-            });
-          }
+          nextRefs.push({
+            winner: sourceRef('MATCH_WINNER', m.id),
+            loser: sourceRef('MATCH_LOSER', m.id),
+          });
         }
 
         if (roundTitle === 'Semifinals') {
@@ -1289,6 +1341,178 @@ export function generateCanonicalStructure(
           semifinals[1].loser,
         );
         thirdPlaceMatch.matchNumber = 99;
+      }
+    } else if (isHybrid) {
+      const topQualifiers = Math.max(1, options?.topQualifiers ?? 2);
+      const isDouble = format === TournamentFormat.LEAGUE_AND_KNOCKOUT_DOUBLE;
+
+      // Group qualifiers ordered by tier (position 1, position 2, ..., position Q)
+      const qualifiers: MatchParticipantRef[] = [];
+      for (let pos = 1; pos <= topQualifiers; pos++) {
+        for (const g of groups) {
+          qualifiers.push(sourceRef('GROUP_POSITION', `${g.name} #${pos}`));
+        }
+      }
+
+      const totalQualifiers = qualifiers.length;
+      if (totalQualifiers >= 2) {
+        let effectiveEntrants: MatchParticipantRef[] = [];
+        let rSize = totalQualifiers;
+
+        const isPower = isPowerOfTwo(totalQualifiers);
+
+        if (!isPower) {
+          // Rule v1.2.1: Preliminary Round Reduction
+          // R = largest power of 2 <= totalQualifiers
+          rSize = largestPowerOfTwoNotExceeding(totalQualifiers);
+          const preliminaryTies = totalQualifiers - rSize;
+          const directAdvancements = 2 * rSize - totalQualifiers;
+
+          // Direct entrants: seeds 1 through D (index 0 to D - 1)
+          const prelimWinners: MatchParticipantRef[] = [];
+
+          // Preliminary ties: P ties
+          // For k = 0 ... P - 1:
+          // seed (D + 1 + k) vs seed (totalQualifiers - k)
+          for (let k = 0; k < preliminaryTies; k++) {
+            const seedAIndex = directAdvancements + k;
+            const seedBIndex = totalQualifiers - 1 - k;
+            const p1 = qualifiers[seedAIndex];
+            const p2 = qualifiers[seedBIndex];
+            const prelimId = `match-${tournamentId}-ko-prelim-${k + 1}`;
+
+            const m = addMatch(
+              prelimId,
+              'Preliminary Round',
+              'WINNERS',
+              p1,
+              p2,
+            );
+            m.matchNumber = k + 1;
+
+            if (isDouble) {
+              const tieId = `tie-${tournamentId}-ko-prelim-${k + 1}`;
+              const leg2Id = `${prelimId}-leg2`;
+              const leg2 = addMatch(
+                leg2Id,
+                'Preliminary Round',
+                'WINNERS',
+                p2,
+                p1,
+              );
+              Object.assign(m, {
+                tieId,
+                legNumber: 1,
+                legCount: 2,
+                aggregateAdvancement: true,
+              });
+              Object.assign(leg2, {
+                tieId,
+                legNumber: 2,
+                legCount: 2,
+                aggregateAdvancement: true,
+                matchNumber: m.matchNumber,
+              });
+              prelimWinners.push(sourceRef('TIE_WINNER', tieId));
+            } else {
+              prelimWinners.push(sourceRef('MATCH_WINNER', m.id));
+            }
+          }
+
+          // Effective field of size R:
+          // Seeds 1 through D are direct qualifiers
+          // Seeds D + 1 through R are prelim winners
+          effectiveEntrants = [
+            ...qualifiers.slice(0, directAdvancements),
+            ...prelimWinners,
+          ];
+        } else {
+          // Exactly a power of 2
+          effectiveEntrants = [...qualifiers];
+        }
+
+        // Apply standard seed order to effective field of size R
+        const seedOrder = getStandardSeedOrder(rSize);
+        let currentRefs: MatchParticipantRef[] = seedOrder.map(
+          (seedNum) => effectiveEntrants[seedNum - 1],
+        );
+
+        let level = 1;
+        let semifinals: Array<{
+          winner: MatchParticipantRef;
+          loser: MatchParticipantRef;
+        }> = [];
+
+        while (currentRefs.length > 1) {
+          const roundTitle = roundName(currentRefs.length);
+          const nextRefs: Array<{
+            winner: MatchParticipantRef;
+            loser: MatchParticipantRef;
+          }> = [];
+
+          for (let i = 0; i < currentRefs.length; i += 2) {
+            const id = `match-${tournamentId}-ko-r${level}-${i / 2 + 1}`;
+            const m = addMatch(
+              id,
+              roundTitle,
+              currentRefs.length === 2 ? 'FINAL' : 'WINNERS',
+              currentRefs[i],
+              currentRefs[i + 1],
+            );
+            m.matchNumber = i / 2 + 1;
+
+            if (isDouble && currentRefs.length > 2) {
+              const tieId = `tie-${tournamentId}-ko-r${level}-${i / 2 + 1}`;
+              const leg2Id = `${id}-leg2`;
+              const leg2 = addMatch(
+                leg2Id,
+                roundTitle,
+                'WINNERS',
+                currentRefs[i + 1],
+                currentRefs[i],
+              );
+              Object.assign(m, {
+                tieId,
+                legNumber: 1,
+                legCount: 2,
+                aggregateAdvancement: true,
+              });
+              Object.assign(leg2, {
+                tieId,
+                legNumber: 2,
+                legCount: 2,
+                aggregateAdvancement: true,
+                matchNumber: m.matchNumber,
+              });
+              nextRefs.push({
+                winner: sourceRef('TIE_WINNER', tieId),
+                loser: sourceRef('TIE_LOSER', tieId),
+              });
+            } else {
+              nextRefs.push({
+                winner: sourceRef('MATCH_WINNER', m.id),
+                loser: sourceRef('MATCH_LOSER', m.id),
+              });
+            }
+          }
+
+          if (roundTitle === 'Semifinals') {
+            semifinals = nextRefs;
+          }
+          currentRefs = nextRefs.map((n) => n.winner);
+          level++;
+        }
+
+        if (thirdPlacePlayoffEnabled && semifinals.length === 2) {
+          const thirdPlaceMatch = addMatch(
+            `match-${tournamentId}-ko-third-place`,
+            '3rd Place Playoff',
+            'FINAL',
+            semifinals[0].loser,
+            semifinals[1].loser,
+          );
+          thirdPlaceMatch.matchNumber = 99;
+        }
       }
     } else if (format === TournamentFormat.DOUBLE_ELIMINATION) {
       const size = nextPowerOfTwo(teams);

@@ -8,6 +8,9 @@ import {
   calculateCapacity,
   calculateDayTimeslots,
   generateCanonicalStructure,
+  largestPowerOfTwoNotExceeding,
+  isPowerOfTwo,
+  resolveDoubleEliminationPlacementRefs,
 } from './tournament-calculation.util';
 
 describe('Tournament Calculations (tape eSports Calculation.docx specifications)', () => {
@@ -367,6 +370,252 @@ describe('Tournament Calculations (tape eSports Calculation.docx specifications)
         expect(m.player2Id).toBeUndefined();
         expect(m.selfSchedulingOpenedAt).toBeUndefined();
       });
+    });
+  });
+
+  describe('v1.2.1 Engine Implementation Handoff Rules & Preliminary Rounds', () => {
+    it('largestPowerOfTwoNotExceeding computes correct powers of 2', () => {
+      expect(largestPowerOfTwoNotExceeding(20)).toBe(16);
+      expect(largestPowerOfTwoNotExceeding(16)).toBe(16);
+      expect(largestPowerOfTwoNotExceeding(15)).toBe(8);
+      expect(largestPowerOfTwoNotExceeding(45)).toBe(32);
+      expect(largestPowerOfTwoNotExceeding(2)).toBe(2);
+      expect(largestPowerOfTwoNotExceeding(3)).toBe(2);
+    });
+
+    it('Golden Example: 40 teams, 10 groups, Top 2 = 79 matches (60 group + 19 KO without 3rd place)', () => {
+      // 1. Math formulas
+      const expNo3rd = calculateHybridMatches(40, {
+        groupsCount: 10,
+        qualifiersPerGroup: 2,
+        isDouble: false,
+        thirdPlacePlayoffEnabled: false,
+      });
+      expect(expNo3rd.groupStageMatches).toBe(60);
+      expect(expNo3rd.knockoutMatches).toBe(19);
+      expect(expNo3rd.guaranteedMatchCount).toBe(79);
+
+      const expWith3rd = calculateHybridMatches(40, {
+        groupsCount: 10,
+        qualifiersPerGroup: 2,
+        isDouble: false,
+        thirdPlacePlayoffEnabled: true,
+      });
+      expect(expWith3rd.knockoutMatches).toBe(20);
+      expect(expWith3rd.guaranteedMatchCount).toBe(80);
+
+      // 2. Canonical Structure Generation
+      const struct = generateCanonicalStructure(
+        't-40',
+        TournamentFormat.LEAGUE_AND_KNOCKOUT,
+        40,
+        10,
+        undefined,
+        false,
+        { topQualifiers: 2 },
+      );
+
+      expect(struct.groups.length).toBe(10);
+      expect(struct.summary.groupStageMatches).toBe(60);
+      expect(struct.summary.knockoutMatches).toBe(19);
+      expect(struct.summary.schedulableMatches).toBe(79);
+      expect(struct.summary.autoAdvanceCount).toBe(0);
+
+      // Verify 4 Preliminary Round matches
+      const prelimMatches = struct.matches.filter(
+        (m) => m.round === 'Preliminary Round',
+      );
+      expect(prelimMatches.length).toBe(4);
+
+      // Check pairings: 13v20, 14v19, 15v18, 16v17
+      // Seeds 1-10 are Group Winners (Group A #1 to Group J #1)
+      // Seeds 11-20 are Runners-up (Group A #2 to Group J #2)
+      // Seed 13 = Group C #2, Seed 20 = Group J #2
+      expect(prelimMatches[0].participant1Ref.value).toBe('Group C #2');
+      expect(prelimMatches[0].participant2Ref.value).toBe('Group J #2');
+
+      // Seed 14 = Group D #2, Seed 19 = Group I #2
+      expect(prelimMatches[1].participant1Ref.value).toBe('Group D #2');
+      expect(prelimMatches[1].participant2Ref.value).toBe('Group I #2');
+
+      // Seed 15 = Group E #2, Seed 18 = Group H #2
+      expect(prelimMatches[2].participant1Ref.value).toBe('Group E #2');
+      expect(prelimMatches[2].participant2Ref.value).toBe('Group H #2');
+
+      // Seed 16 = Group F #2, Seed 17 = Group G #2
+      expect(prelimMatches[3].participant1Ref.value).toBe('Group F #2');
+      expect(prelimMatches[3].participant2Ref.value).toBe('Group G #2');
+
+      // Verify Round of 16 matches (8 matches)
+      const r16Matches = struct.matches.filter((m) => m.round === 'Round of 16');
+      expect(r16Matches.length).toBe(8);
+
+      // Match 1: Seed 1 (Group A #1) vs Winner of Prelim 4 (Match 4)
+      expect(r16Matches[0].participant1Ref.value).toBe('Group A #1');
+      expect(r16Matches[0].participant2Ref.value).toBe(prelimMatches[3].id);
+
+      // Match 3: Seed 4 (Group D #1) vs Winner of Prelim 1 (Match 1)
+      expect(r16Matches[2].participant1Ref.value).toBe('Group D #1');
+      expect(r16Matches[2].participant2Ref.value).toBe(prelimMatches[0].id);
+
+      // Match 5: Seed 2 (Group B #1) vs Winner of Prelim 3 (Match 3)
+      expect(r16Matches[4].participant1Ref.value).toBe('Group B #1');
+      expect(r16Matches[4].participant2Ref.value).toBe(prelimMatches[2].id);
+
+      // Match 7: Seed 3 (Group C #1) vs Winner of Prelim 2 (Match 2)
+      expect(r16Matches[6].participant1Ref.value).toBe('Group C #1');
+      expect(r16Matches[6].participant2Ref.value).toBe(prelimMatches[1].id);
+    });
+
+    it('Dynamic Top Q: 4 groups of 5 teams with Top 3 qualifiers (12 qualifiers)', () => {
+      // 4 groups of 5:
+      // Group matches = 4 * (5 * 4 / 2) = 40
+      // Qualifiers = 4 * 3 = 12
+      // R = 8, P = 4 prelim ties, D = 4 direct entries
+      // KO matches = 12 - 1 = 11 (4 prelim + 4 QF + 2 SF + 1 Final)
+      // Total = 40 + 11 = 51
+      const struct = generateCanonicalStructure(
+        't-top3',
+        TournamentFormat.LEAGUE_AND_KNOCKOUT,
+        20,
+        4,
+        undefined,
+        false,
+        { topQualifiers: 3 },
+      );
+
+      expect(struct.groups.length).toBe(4);
+      expect(struct.summary.groupStageMatches).toBe(40);
+      expect(struct.summary.knockoutMatches).toBe(11);
+      expect(struct.summary.schedulableMatches).toBe(51);
+
+      const prelims = struct.matches.filter(
+        (m) => m.round === 'Preliminary Round',
+      );
+      expect(prelims.length).toBe(4);
+      const qfs = struct.matches.filter((m) => m.round === 'Quarterfinal');
+      expect(qfs.length).toBe(4);
+    });
+
+    it('Double Hybrid with Preliminary Round (40 teams, 10 groups, Top 2 = 20 qualifiers)', () => {
+      // Group matches = 10 * (4 * 3) = 120
+      // KO matches = 2 * (20 - 2) + 1 = 37 (8 prelim + 16 R16 + 8 QF + 4 SF + 1 Final)
+      // Total = 120 + 37 = 157
+      const dh = calculateHybridMatches(40, {
+        groupsCount: 10,
+        qualifiersPerGroup: 2,
+        isDouble: true,
+        thirdPlacePlayoffEnabled: false,
+      });
+      expect(dh.groupStageMatches).toBe(120);
+      expect(dh.knockoutMatches).toBe(37);
+      expect(dh.guaranteedMatchCount).toBe(157);
+
+      const struct = generateCanonicalStructure(
+        't-dh40',
+        TournamentFormat.LEAGUE_AND_KNOCKOUT_DOUBLE,
+        40,
+        10,
+        undefined,
+        false,
+        { topQualifiers: 2 },
+      );
+
+      expect(struct.summary.groupStageMatches).toBe(120);
+      expect(struct.summary.knockoutMatches).toBe(37);
+      expect(struct.summary.schedulableMatches).toBe(157);
+
+      // Preliminary round has 4 ties with 2 legs each = 8 matches
+      const prelims = struct.matches.filter(
+        (m) => m.round === 'Preliminary Round',
+      );
+      expect(prelims.length).toBe(8);
+      prelims.forEach((m) => {
+        expect(m.aggregateAdvancement).toBe(true);
+        expect(m.legCount).toBe(2);
+      });
+    });
+
+    it('Capacity calculation with conditional reserve days and buffer days', () => {
+      const venues = [
+        {
+          venueId: 'v-1',
+          name: 'Main Arena',
+          screens: [{ screenId: 's1', screenName: 'Screen 1' }],
+        },
+      ];
+
+      // 09:00 to 17:00 (480 mins), 30 min match duration, 0 turnover, 0 lunch -> 16 slots/day
+      // 79 total matches -> baseline = ceil(79 / 16) = 5 days
+      const capSingleScreen = calculateCapacity({
+        dailyStart: '09:00',
+        dailyEnd: '17:00',
+        slotDuration: 30,
+        turnoverDuration: 0,
+        venues,
+        totalMatches: 79,
+      });
+
+      expect(capSingleScreen.slotsPerScreenPerDay).toBe(16);
+      expect(capSingleScreen.totalDailySlots).toBe(16);
+      expect(capSingleScreen.baselineDays).toBe(5);
+      expect(capSingleScreen.reserveDays).toBe(0);
+      expect(capSingleScreen.bufferDays).toBe(0);
+      expect(capSingleScreen.totalPlayingDaysNeeded).toBe(5);
+
+      // With conditional Grand Final reset match (+1 match) and buffer of 2 days
+      const capWithReserveAndBuffer = calculateCapacity({
+        dailyStart: '09:00',
+        dailyEnd: '17:00',
+        slotDuration: 30,
+        turnoverDuration: 0,
+        venues,
+        totalMatches: 79,
+        conditionalMatches: 1, // 80 matches -> still 5 days (ceil(80/16) = 5)
+        bufferDays: 2,
+      });
+
+      expect(capWithReserveAndBuffer.baselineDays).toBe(5);
+      expect(capWithReserveAndBuffer.reserveDays).toBe(0);
+      expect(capWithReserveAndBuffer.bufferDays).toBe(2);
+      expect(capWithReserveAndBuffer.totalPlayingDaysNeeded).toBe(7);
+
+      // Threshold check: 80 matches with 1 conditional match -> 81 matches pushes to 6th day
+      const capThreshold = calculateCapacity({
+        dailyStart: '09:00',
+        dailyEnd: '17:00',
+        slotDuration: 30,
+        turnoverDuration: 0,
+        venues,
+        totalMatches: 80, // ceil(80/16) = 5
+        conditionalMatches: 1, // ceil(81/16) = 6 -> reserveDays = 6 - 5 = 1
+        bufferDays: 1,
+      });
+
+      expect(capThreshold.baselineDays).toBe(5);
+      expect(capThreshold.reserveDays).toBe(1);
+      expect(capThreshold.bufferDays).toBe(1);
+      expect(capThreshold.totalPlayingDaysNeeded).toBe(7); // 5 + 1 + 1 = 7
+    });
+
+    it('Double Elimination placement resolution identifies top 4 positions', () => {
+      const struct = generateCanonicalStructure(
+        't-de-test',
+        TournamentFormat.DOUBLE_ELIMINATION,
+        8,
+      );
+
+      const placements = resolveDoubleEliminationPlacementRefs(struct.matches);
+      expect(placements.first).toBeDefined();
+      expect(placements.second).toBeDefined();
+      expect(placements.third).toBeDefined();
+      expect(placements.fourth).toBeDefined();
+
+      // 3rd place must be the loser of Losers Final
+      const losersFinal = struct.matches.find((m) => m.round === 'Losers Final');
+      expect(losersFinal).toBeDefined();
+      expect(placements.third?.value).toBe(losersFinal?.id);
+      expect(placements.third?.type).toBe('MATCH_LOSER');
     });
   });
 });
