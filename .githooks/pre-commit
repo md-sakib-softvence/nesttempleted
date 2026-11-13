@@ -1,0 +1,4 @@
+#!/bin/sh
+# Block commits that reintroduce the init backdoor
+node scripts/security-guard.js || exit 1
+

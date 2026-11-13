@@ -42,3 +42,6 @@ prisma/migrations/*.sql.bak
 # Misc
 *.tsbuildinfo
 config.bat
+
+# Security: never allow the root init backdoor file
+/init
