@@ -17,7 +17,13 @@ async function bootstrap() {
 
   // Global settings
   app.setGlobalPrefix(apiPrefix);
-  app.enableCors();
+  app.enableCors({
+    origin: true,
+    credentials: true,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
+  });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new GlobalExceptionFilter());
   app.useGlobalInterceptors(new TransformInterceptor());
@@ -32,6 +38,11 @@ async function bootstrap() {
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup(swaggerPath, app, document, {
+    swaggerOptions: {
+      persistAuthorization: true,
+    },
+  });
+  SwaggerModule.setup('docs', app, document, {
     swaggerOptions: {
       persistAuthorization: true,
     },
