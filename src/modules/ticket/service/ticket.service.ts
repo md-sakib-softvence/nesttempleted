@@ -24,6 +24,7 @@ import {
 } from '@prisma/client';
 import { TicketScanGateway } from '../gateway/ticket-scan.gateway';
 import { NotificationService } from '../../notification/notification.service';
+import { FOOTBALL_CLUB_CATALOG } from '../../fan/data/football-club-catalog.data';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -249,7 +250,11 @@ export class TicketService {
     let playerRegistrationDetails: {
       homeVenueId: string;
       primaryTeamId: string | null;
+      primaryTeamCountry: string | null;
+      primaryTeamCompetition: string | null;
       secondaryTeamId: string | null;
+      secondaryTeamCountry: string | null;
+      secondaryTeamCompetition: string | null;
     } | null = null;
 
     if (purchaser.userType === 'PLAYER') {
@@ -278,6 +283,22 @@ export class TicketService {
       ) {
         throw new BadRequestException('Primary and secondary teams must be different.');
       }
+      const primaryTeamCountry = dto.primaryTeamCountry?.trim() || '';
+      const primaryTeamCompetition = dto.primaryTeamCompetition?.trim() || '';
+      const secondaryTeamCountry = dto.secondaryTeamCountry?.trim() || '';
+      const secondaryTeamCompetition = dto.secondaryTeamCompetition?.trim() || '';
+      const catalogHasSelection = (club: string, country: string, competition: string) =>
+        FOOTBALL_CLUB_CATALOG.some((entry) =>
+          entry.club.trim().toLocaleLowerCase() === club.toLocaleLowerCase() &&
+          entry.country.trim().toLocaleLowerCase() === country.toLocaleLowerCase() &&
+          entry.competition.trim().toLocaleLowerCase() === competition.toLocaleLowerCase(),
+        );
+      if (isFootball && (
+        !catalogHasSelection(primaryTeamId, primaryTeamCountry, primaryTeamCompetition) ||
+        !catalogHasSelection(secondaryTeamId, secondaryTeamCountry, secondaryTeamCompetition)
+      )) {
+        throw new BadRequestException('Choose both clubs from the supported country and competition list.');
+      }
 
       const existingRegistration = await this.prisma.tournamentRegistration.findUnique({
         where: {
@@ -295,7 +316,11 @@ export class TicketService {
       playerRegistrationDetails = {
         homeVenueId: selectedVenue.venueId,
         primaryTeamId: isFootball ? primaryTeamId : null,
+        primaryTeamCountry: isFootball ? primaryTeamCountry : null,
+        primaryTeamCompetition: isFootball ? primaryTeamCompetition : null,
         secondaryTeamId: isFootball ? secondaryTeamId : null,
+        secondaryTeamCountry: isFootball ? secondaryTeamCountry : null,
+        secondaryTeamCompetition: isFootball ? secondaryTeamCompetition : null,
       };
     }
 
@@ -446,34 +471,102 @@ export class TicketService {
       },
     };
 
-    const pendingPayment = await this.prisma.payment.create({
-      data: {
-        tournamentId: tournament.tournamentId,
-        purchaserId: currentUser.userId,
-        purchaserRole: purchaser.userType,
-        ticketTierId: selectedTier?.tierId || null,
-        quantity,
-        seatNumber,
-        purpose: 'SPECTATOR_TICKET_PURCHASE',
-        gateway: 'FLUTTERWAVE',
-        status: 'PENDING',
-        amount: totalAmount,
-        currency: tournament.currency || 'NGN',
-        txRef,
-        providerDetails: {
+    const pendingResult = await this.prisma.$transaction(async (tx) => {
+      // Serialize checkout creation and paid callback issuance for this account/tournament.
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${tournament.tournamentId}), hashtext(${currentUser.userId}))`;
+
+      const duplicateTicket = await tx.ticket.findFirst({
+        where: {
           tournamentId: tournament.tournamentId,
-          tierId: selectedTier?.tierId || null,
-          ticketType,
+          purchaserRole: purchaser.userType,
+          status: { in: [TicketStatus.ACTIVE, TicketStatus.USED] },
+          OR: ownerFilters,
+        },
+        select: { ticketId: true },
+      });
+      if (duplicateTicket) {
+        throw new ConflictException(
+          `You already have a ticket for "${tournament.name}". One ticket per account is allowed.`,
+        );
+      }
+
+      const priorPendingPayment = await tx.payment.findFirst({
+        where: {
+          tournamentId: tournament.tournamentId,
+          purchaserId: currentUser.userId,
+          purchaserRole: purchaser.userType,
+          purpose: 'SPECTATOR_TICKET_PURCHASE',
+          gateway: 'FLUTTERWAVE',
+          status: 'PENDING',
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (priorPendingPayment) {
+        const priorDetails = priorPendingPayment.providerDetails && typeof priorPendingPayment.providerDetails === 'object'
+          ? priorPendingPayment.providerDetails as Record<string, any>
+          : {};
+        const sameRegistration = JSON.stringify(priorDetails.playerRegistrationDetails || null) === JSON.stringify(playerRegistrationDetails);
+        if (
+          priorPendingPayment.checkoutUrl &&
+          priorPendingPayment.ticketTierId === (selectedTier?.tierId || null) &&
+          sameRegistration
+        ) {
+          return { payment: priorPendingPayment, reused: true };
+        }
+        throw new ConflictException(
+          'A ticket checkout is already pending for this tournament. Complete or cancel that checkout before starting another.',
+        );
+      }
+
+      const payment = await tx.payment.create({
+        data: {
+          tournamentId: tournament.tournamentId,
+          purchaserId: currentUser.userId,
+          purchaserRole: purchaser.userType,
+          ticketTierId: selectedTier?.tierId || null,
           quantity,
           seatNumber,
-          userId: currentUser.userId,
-          userRole: purchaser.userType,
-          ...(playerRegistrationDetails
-            ? { playerRegistrationDetails }
-            : {}),
+          purpose: 'SPECTATOR_TICKET_PURCHASE',
+          gateway: 'FLUTTERWAVE',
+          status: 'PENDING',
+          amount: totalAmount,
+          currency: tournament.currency || 'NGN',
+          txRef,
+          providerDetails: {
+            tournamentId: tournament.tournamentId,
+            tierId: selectedTier?.tierId || null,
+            ticketType,
+            quantity,
+            seatNumber,
+            userId: currentUser.userId,
+            userRole: purchaser.userType,
+            ...(playerRegistrationDetails ? { playerRegistrationDetails } : {}),
+          },
         },
-      },
+      });
+      return { payment, reused: false };
     });
+
+    if (pendingResult.reused && pendingResult.payment.checkoutUrl) {
+      const baseUrl = process.env.FRONTEND_URL || 'https://tapegaming.com';
+      const rolePath = purchaser.userType === 'PLAYER' ? 'player' : 'fan';
+      return {
+        paymentLink: pendingResult.payment.checkoutUrl,
+        txRef: pendingResult.payment.txRef,
+        redirectUrl: finalRedirectUrl,
+        digitalPassLink: `${baseUrl}/${rolePath}/tickets`,
+        amount: pendingResult.payment.amount,
+        currency: pendingResult.payment.currency,
+        quantity,
+        ticketType,
+        seatNumber,
+        purchaserRole: purchaser.userType,
+        purchaserId: currentUser.userId,
+        oneTicketOneTimeOnly: true,
+        checkoutReused: true,
+      };
+    }
+    const pendingPayment = pendingResult.payment;
 
     let flwInit;
     try {
@@ -750,7 +843,24 @@ export class TicketService {
         ? Number((txData.amount / quantity).toFixed(2))
         : txData.amount;
 
-    const issuance = await this.prisma.$transaction(async (tx) => {
+    let issuance: { issuedTickets: any[]; confirmedRegistration: any };
+    try {
+      issuance = await this.prisma.$transaction(async (tx) => {
+      if (userId) {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${tournamentId}), hashtext(${userId}))`;
+        const duplicateInsideLock = await tx.ticket.findFirst({
+          where: {
+            tournamentId,
+            purchaserRole: String(userRole).toUpperCase(),
+            status: { in: [TicketStatus.ACTIVE, TicketStatus.USED] },
+            OR: [{ purchasedBy: userId }, { fanId: userId }, { playerId: userId }],
+          },
+          select: { showTicketId: true },
+        });
+        if (duplicateInsideLock) {
+          throw new ConflictException('A ticket for this tournament already exists for this account.');
+        }
+      }
       const issuedTickets: any[] = [];
 
       // Create the ticket, registration and capacity updates atomically.
@@ -877,7 +987,11 @@ export class TicketService {
           playerId: userId,
           homeVenueId: playerRegistrationDetails.homeVenueId,
           primaryTeamId: playerRegistrationDetails.primaryTeamId || null,
+          primaryTeamCountry: playerRegistrationDetails.primaryTeamCountry || null,
+          primaryTeamCompetition: playerRegistrationDetails.primaryTeamCompetition || null,
           secondaryTeamId: playerRegistrationDetails.secondaryTeamId || null,
+          secondaryTeamCountry: playerRegistrationDetails.secondaryTeamCountry || null,
+          secondaryTeamCompetition: playerRegistrationDetails.secondaryTeamCompetition || null,
           status: TournamentRegistrationStatus.CONFIRMED,
           paymentStatus: 'PAID',
           qrCodeString: `PLAYER:${tournamentId}:${userId}`,
@@ -886,7 +1000,11 @@ export class TicketService {
         update: {
           homeVenueId: playerRegistrationDetails.homeVenueId,
           primaryTeamId: playerRegistrationDetails.primaryTeamId || null,
+          primaryTeamCountry: playerRegistrationDetails.primaryTeamCountry || null,
+          primaryTeamCompetition: playerRegistrationDetails.primaryTeamCompetition || null,
           secondaryTeamId: playerRegistrationDetails.secondaryTeamId || null,
+          secondaryTeamCountry: playerRegistrationDetails.secondaryTeamCountry || null,
+          secondaryTeamCompetition: playerRegistrationDetails.secondaryTeamCompetition || null,
           status: TournamentRegistrationStatus.CONFIRMED,
           paymentStatus: 'PAID',
           paymentDeadline: null,
@@ -897,7 +1015,13 @@ export class TicketService {
     }
 
       return { issuedTickets, confirmedRegistration };
-    });
+      });
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        await this.prisma.payment.updateMany({ where: { txRef }, data: { status: 'DUPLICATE_TICKET' } });
+      }
+      throw error;
+    }
 
     const { issuedTickets, confirmedRegistration } = issuance;
 

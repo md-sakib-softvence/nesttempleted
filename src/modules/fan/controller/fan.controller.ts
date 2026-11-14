@@ -24,6 +24,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { FanService } from '../service/fan.service';
 import { FanPlayerRegistrationService } from '../service/fan-player-registration.service';
 import { FanCoinRefillService } from '../service/fan-coin-refill.service';
+import { FOOTBALL_CLUB_CATALOG } from '../data/football-club-catalog.data';
 import { CreateFanDto } from '../dto/create-fan.dto';
 import { UpdateFanDto } from '../dto/update-fan.dto';
 import { CompleteFanTournamentApplicationDto } from '../dto/complete-fan-tournament-application.dto';
@@ -54,6 +55,16 @@ export class FanController {
     private readonly fanPlayerRegistrationService: FanPlayerRegistrationService,
     private readonly fanCoinRefillService: FanCoinRefillService,
   ) {}
+
+  @Get('football-club-catalog')
+  @Public()
+  @ApiOperation({ summary: 'Get the domestic football country, competition, and club catalog' })
+  async getFootballClubCatalog() {
+    return sendResponse({
+      message: 'Football club catalog retrieved successfully',
+      data: { entries: FOOTBALL_CLUB_CATALOG },
+    });
+  }
 
   @Post('coins/requests')
   @Roles(Role.FAN, 'fan')
