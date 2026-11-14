@@ -3,7 +3,9 @@ import {
   IsNotEmpty,
   IsOptional,
   IsEnum,
+  IsInt,
   IsNumber,
+  Max,
   Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -36,12 +38,15 @@ export class PurchaseTicketDto {
   type?: TicketType;
 
   @ApiPropertyOptional({
-    description: 'Number of tickets to purchase (default 1)',
+    description: 'Tickets per checkout. Start another checkout to buy another ticket.',
     default: 1,
     minimum: 1,
+    maximum: 1,
   })
   @IsNumber()
+  @IsInt()
   @Min(1)
+  @Max(1)
   @IsOptional()
   quantity?: number;
 
@@ -50,7 +55,9 @@ export class PurchaseTicketDto {
   @IsOptional()
   homeVenueId?: string;
 
-  @ApiPropertyOptional({ description: 'Football tournament primary team ID/name' })
+  @ApiPropertyOptional({
+    description: 'Football tournament primary team ID/name',
+  })
   @IsString()
   @IsOptional()
   primaryTeamId?: string;
@@ -60,12 +67,16 @@ export class PurchaseTicketDto {
   @IsOptional()
   primaryTeamCountry?: string;
 
-  @ApiPropertyOptional({ description: 'Competition/series of the primary club' })
+  @ApiPropertyOptional({
+    description: 'Competition/series of the primary club',
+  })
   @IsString()
   @IsOptional()
   primaryTeamCompetition?: string;
 
-  @ApiPropertyOptional({ description: 'Football tournament secondary team ID/name' })
+  @ApiPropertyOptional({
+    description: 'Football tournament secondary team ID/name',
+  })
   @IsString()
   @IsOptional()
   secondaryTeamId?: string;
@@ -75,9 +86,10 @@ export class PurchaseTicketDto {
   @IsOptional()
   secondaryTeamCountry?: string;
 
-  @ApiPropertyOptional({ description: 'Competition/series of the secondary club' })
+  @ApiPropertyOptional({
+    description: 'Competition/series of the secondary club',
+  })
   @IsString()
   @IsOptional()
   secondaryTeamCompetition?: string;
-
 }
