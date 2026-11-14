@@ -30,7 +30,7 @@ model Ticket {
   screenId   String?
 
   // Payment integration (Flutterwave / Paystack)
-  paymentReference String? @unique
+  paymentReference String?
   flwTransactionId String? // Flutterwave transaction ID
   paymentGateway   String  @default("FLUTTERWAVE")
   paymentStatus    String  @default("SUCCESS")
