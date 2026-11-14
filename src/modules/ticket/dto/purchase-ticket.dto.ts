@@ -55,9 +55,29 @@ export class PurchaseTicketDto {
   @IsOptional()
   primaryTeamId?: string;
 
+  @ApiPropertyOptional({ description: 'Country/region of the primary club' })
+  @IsString()
+  @IsOptional()
+  primaryTeamCountry?: string;
+
+  @ApiPropertyOptional({ description: 'Competition/series of the primary club' })
+  @IsString()
+  @IsOptional()
+  primaryTeamCompetition?: string;
+
   @ApiPropertyOptional({ description: 'Football tournament secondary team ID/name' })
   @IsString()
   @IsOptional()
   secondaryTeamId?: string;
+
+  @ApiPropertyOptional({ description: 'Country/region of the secondary club' })
+  @IsString()
+  @IsOptional()
+  secondaryTeamCountry?: string;
+
+  @ApiPropertyOptional({ description: 'Competition/series of the secondary club' })
+  @IsString()
+  @IsOptional()
+  secondaryTeamCompetition?: string;
 
 }
