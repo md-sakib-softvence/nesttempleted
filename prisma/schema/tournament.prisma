@@ -286,7 +286,11 @@ model TournamentRegistration {
   fanApplication   FanTournamentApplication?    @relation(fields: [fanApplicationId], references: [id], onDelete: SetNull)
   homeVenueId      String?
   primaryTeamId    String?
+  primaryTeamCountry String?
+  primaryTeamCompetition String?
   secondaryTeamId  String?
+  secondaryTeamCountry String?
+  secondaryTeamCompetition String?
   status           TournamentRegistrationStatus @default(REGISTERED)
   paymentStatus    String                       @default("PENDING")
   paymentDeadline  DateTime?
@@ -303,23 +307,27 @@ model TournamentRegistration {
 }
 
 model FanTournamentApplication {
-  id              String                         @id @default(uuid())
-  fanId           String
-  fan             Fan                            @relation(fields: [fanId], references: [fanId], onDelete: Restrict)
-  tournamentId    String
-  tournament      Tournament                     @relation(fields: [tournamentId], references: [tournamentId], onDelete: Restrict)
-  homeVenueId     String?
-  homeVenue       Venue?                         @relation(fields: [homeVenueId], references: [venueId], onDelete: SetNull)
-  primaryTeamId   String?
-  secondaryTeamId String?
-  jerseySize      String?
-  status          FanTournamentApplicationStatus @default(PENDING_PAYMENT)
-  playerId        String?
-  player          Player?                        @relation(fields: [playerId], references: [playerId], onDelete: SetNull)
-  payments        Payment[]
-  registration    TournamentRegistration?
-  createdAt       DateTime                       @default(now())
-  updatedAt       DateTime                       @updatedAt
+  id                       String                         @id @default(uuid())
+  fanId                    String
+  fan                      Fan                            @relation(fields: [fanId], references: [fanId], onDelete: Restrict)
+  tournamentId             String
+  tournament               Tournament                     @relation(fields: [tournamentId], references: [tournamentId], onDelete: Restrict)
+  homeVenueId              String?
+  homeVenue                Venue?                         @relation(fields: [homeVenueId], references: [venueId], onDelete: SetNull)
+  primaryTeamId            String?
+  primaryTeamCountry       String?
+  primaryTeamCompetition   String?
+  secondaryTeamId          String?
+  secondaryTeamCountry     String?
+  secondaryTeamCompetition String?
+  jerseySize               String?
+  status                   FanTournamentApplicationStatus @default(PENDING_PAYMENT)
+  playerId                 String?
+  player                   Player?                        @relation(fields: [playerId], references: [playerId], onDelete: SetNull)
+  payments                 Payment[]
+  registration             TournamentRegistration?
+  createdAt                DateTime                       @default(now())
+  updatedAt                DateTime                       @updatedAt
 
   @@unique([fanId, tournamentId])
   @@index([tournamentId, status])

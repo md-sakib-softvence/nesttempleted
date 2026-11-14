@@ -1,0 +1,2 @@
+-- No database changes are needed for this migration version.
+-- Team country and competition fields are added by 20261114130000_fan_player_club_categories.

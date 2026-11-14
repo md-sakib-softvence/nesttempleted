@@ -18,12 +18,7 @@ import { FlutterwaveService } from '../../flutterwave/service/flutterwave.servic
 import { uploadBase64ToS3 } from '../../utils/s3.util';
 import { CompleteFanTournamentApplicationDto } from '../dto/complete-fan-tournament-application.dto';
 import { CreateFanTournamentApplicationDto } from '../dto/create-fan-tournament-application.dto';
-
-const FOOTBALL_NATIONAL_TEAMS = new Set([
-  'France', 'Spain', 'Portugal', 'England', 'Brazil', 'Germany', 'Netherlands',
-  'Argentina', 'Italy', 'Belgium', 'Sweden', 'Morocco', 'Senegal', 'Croatia',
-  'Norway', 'Türkiye', 'Colombia', 'Uruguay', "Côte d'Ivoire",
-]);
+import { FOOTBALL_CLUB_CATALOG } from '../data/football-club-catalog.data';
 
 @Injectable()
 export class FanPlayerRegistrationService {
@@ -113,11 +108,18 @@ export class FanPlayerRegistrationService {
           'Choose both a primary and a backup team for this football tournament.',
         );
       }
+      const isValidClub = (club: string, country?: string, competition?: string) =>
+        FOOTBALL_CLUB_CATALOG.some(
+          (entry) =>
+            entry.club.toLocaleLowerCase() === club.trim().toLocaleLowerCase() &&
+            entry.country.toLocaleLowerCase() === country?.trim().toLocaleLowerCase() &&
+            entry.competition.toLocaleLowerCase() === competition?.trim().toLocaleLowerCase(),
+        );
       if (
-        !FOOTBALL_NATIONAL_TEAMS.has(dto.primaryTeamId.trim()) ||
-        !FOOTBALL_NATIONAL_TEAMS.has(dto.secondaryTeamId.trim())
+        !isValidClub(dto.primaryTeamId, dto.primaryTeamCountry, dto.primaryTeamCompetition) ||
+        !isValidClub(dto.secondaryTeamId, dto.secondaryTeamCountry, dto.secondaryTeamCompetition)
       ) {
-        throw new BadRequestException('Choose teams from the supported national team list.');
+        throw new BadRequestException('Choose each club from its selected country and competition.');
       }
       if (dto.primaryTeamId.trim() === dto.secondaryTeamId.trim()) {
         throw new BadRequestException('Primary and backup teams must be different.');
@@ -153,7 +155,11 @@ export class FanPlayerRegistrationService {
           status: FanTournamentApplicationStatus.PENDING_PAYMENT,
           homeVenueId: dto.homeVenueId || null,
           primaryTeamId: footballGame ? dto.primaryTeamId!.trim() : null,
+          primaryTeamCountry: footballGame ? dto.primaryTeamCountry!.trim() : null,
+          primaryTeamCompetition: footballGame ? dto.primaryTeamCompetition!.trim() : null,
           secondaryTeamId: footballGame ? dto.secondaryTeamId!.trim() : null,
+          secondaryTeamCountry: footballGame ? dto.secondaryTeamCountry!.trim() : null,
+          secondaryTeamCompetition: footballGame ? dto.secondaryTeamCompetition!.trim() : null,
           jerseySize: dto.jerseySize?.trim() || null,
         },
       });
@@ -163,7 +169,11 @@ export class FanPlayerRegistrationService {
         data: {
           homeVenueId: dto.homeVenueId || null,
           primaryTeamId: footballGame ? dto.primaryTeamId!.trim() : null,
+          primaryTeamCountry: footballGame ? dto.primaryTeamCountry!.trim() : null,
+          primaryTeamCompetition: footballGame ? dto.primaryTeamCompetition!.trim() : null,
           secondaryTeamId: footballGame ? dto.secondaryTeamId!.trim() : null,
+          secondaryTeamCountry: footballGame ? dto.secondaryTeamCountry!.trim() : null,
+          secondaryTeamCompetition: footballGame ? dto.secondaryTeamCompetition!.trim() : null,
           jerseySize: dto.jerseySize?.trim() || null,
         },
       });
@@ -174,7 +184,11 @@ export class FanPlayerRegistrationService {
           tournamentId,
           homeVenueId: dto.homeVenueId || null,
           primaryTeamId: footballGame ? dto.primaryTeamId!.trim() : null,
+          primaryTeamCountry: footballGame ? dto.primaryTeamCountry!.trim() : null,
+          primaryTeamCompetition: footballGame ? dto.primaryTeamCompetition!.trim() : null,
           secondaryTeamId: footballGame ? dto.secondaryTeamId!.trim() : null,
+          secondaryTeamCountry: footballGame ? dto.secondaryTeamCountry!.trim() : null,
+          secondaryTeamCompetition: footballGame ? dto.secondaryTeamCompetition!.trim() : null,
           jerseySize: dto.jerseySize?.trim() || null,
         },
       });
