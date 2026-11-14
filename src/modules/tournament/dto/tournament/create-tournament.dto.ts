@@ -48,6 +48,8 @@ export function mapTournamentFormat(val: any): TournamentFormat | undefined {
     'League & Knockout (Double)': TournamentFormat.LEAGUE_AND_KNOCKOUT_DOUBLE,
     LEAGUE_AND_KNOCKOUT: TournamentFormat.LEAGUE_AND_KNOCKOUT,
     LEAGUE_AND_KNOCKOUT_DOUBLE: TournamentFormat.LEAGUE_AND_KNOCKOUT_DOUBLE,
+    LEAGUE_KNOCKOUT: TournamentFormat.LEAGUE_AND_KNOCKOUT,
+    LEAGUE_KNOCKOUT_DOUBLE: TournamentFormat.LEAGUE_AND_KNOCKOUT_DOUBLE,
   };
   return map[str] || (TournamentFormat as any)[str];
 }
@@ -1021,11 +1023,26 @@ export class CreateTournamentDto {
     description: 'Number of groups (for LEAGUE_AND_KNOCKOUT formats)',
     example: 4,
   })
+  @Transform(({ value, obj }) => {
+    const raw =
+      value ??
+      obj?.numberOfGroups ??
+      (typeof obj?.groups === 'number' || typeof obj?.groups === 'string'
+        ? obj?.groups
+        : undefined);
+    return raw !== undefined && raw !== null && raw !== '' ? Number(raw) : undefined;
+  })
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @IsOptional()
   groupsCount?: number;
+
+  @ApiPropertyOptional({ description: 'Number of groups alias' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  numberOfGroups?: number;
 
   @ApiPropertyOptional({
     description: 'Enable 3rd place playoff match',
@@ -1080,11 +1097,27 @@ export class CreateTournamentDto {
   registrationOpen?: boolean;
 
   @ApiPropertyOptional({ description: 'Top qualifiers count' })
+  @Transform(({ value, obj }) => {
+    const raw = value ?? obj?.topQualifiersPerGroup ?? obj?.topQ;
+    return raw !== undefined && raw !== null && raw !== '' ? Number(raw) : undefined;
+  })
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @IsOptional()
   topQualifiers?: number;
+
+  @ApiPropertyOptional({ description: 'Top qualifiers per group alias' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  topQualifiersPerGroup?: number;
+
+  @ApiPropertyOptional({ description: 'Top qualifiers per group alias' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  topQ?: number;
 
   @ApiPropertyOptional({ description: 'Seeding mode' })
   @IsOptional()

@@ -532,33 +532,65 @@ export class TournamentTabsService {
       (v.screens || []).forEach((s) => screenMap.set(s.screenId, s.screenName));
     });
 
+    // Helper to resolve clean display names for participant references
+    const formatParticipant = (rawPlayer: any, ref: any, fallbackId: string) => {
+      let resolvedName = rawPlayer?.name || rawPlayer?.gamertag;
+      if (!resolvedName || resolvedName === 'TBD') {
+        resolvedName = ref?.displayName || ref?.name || ref?.gamerTag;
+      }
+      if (!resolvedName || resolvedName === 'TBD') {
+        if (ref?.type === 'MATCH_WINNER' || ref?.type === 'MATCH_LOSER') {
+          const target = rawMatches.find((rm: any) => rm.id === ref.value);
+          const prefix = ref.type === 'MATCH_WINNER' ? 'Winner' : 'Loser';
+          if (target) {
+            const isPrelim =
+              target.round === 'Preliminary Round' ||
+              String(target.id).includes('-ko-prelim-');
+            const roundLabel = isPrelim
+              ? 'Prelim Match'
+              : target.round || 'Match';
+            const mNum =
+              target.matchNumber !== undefined ? ` #${target.matchNumber}` : '';
+            resolvedName = `${prefix} of ${roundLabel}${mNum}`;
+          } else {
+            resolvedName = `${prefix} of ${ref.value}`;
+          }
+        } else if (ref?.type === 'TIE_WINNER' || ref?.type === 'TIE_LOSER') {
+          const prefix = ref.type === 'TIE_WINNER' ? 'Winner' : 'Loser';
+          resolvedName = `${prefix} of ${ref.value}`;
+        } else if (ref?.type === 'QUALIFIER_SEED') {
+          resolvedName = `Qualifier Seed #${ref.value}`;
+        } else if (ref?.type === 'GROUP_POSITION') {
+          resolvedName = ref.value;
+        } else if (ref?.value) {
+          resolvedName = ref.value;
+        } else {
+          resolvedName = 'TBD';
+        }
+      }
+
+      if (ref && !ref.displayName && resolvedName !== 'TBD') {
+        ref.displayName = resolvedName;
+        ref.name = resolvedName;
+        ref.gamerTag = resolvedName;
+      }
+
+      return {
+        id: rawPlayer?.id || ref?.value || fallbackId,
+        gamertag: rawPlayer?.gamertag || resolvedName,
+        name: rawPlayer?.name || resolvedName,
+        avatar: rawPlayer?.avatar || ref?.avatar || null,
+      };
+    };
+
     // Normalize matches into standard contract
     const allMatches = rawMatches.map((m: any, idx: number) => {
       const matchId = m.id || m.matchId || `match-${idx + 1}`;
       const vId = m.venueId || m.physicalAllocation?.venueId || null;
       const sId = m.screenId || m.physicalAllocation?.screenId || null;
 
-      const p1 = m.player1 || {
-        id: m.participant1Ref?.value || 'p-tbd-1',
-        gamertag:
-          m.participant1Ref?.displayName ||
-          m.participant1Ref?.gamerTag ||
-          'TBD',
-        name:
-          m.participant1Ref?.name || m.participant1Ref?.displayName || 'TBD',
-        avatar: m.participant1Ref?.avatar || null,
-      };
-
-      const p2 = m.player2 || {
-        id: m.participant2Ref?.value || 'p-tbd-2',
-        gamertag:
-          m.participant2Ref?.displayName ||
-          m.participant2Ref?.gamerTag ||
-          'TBD',
-        name:
-          m.participant2Ref?.name || m.participant2Ref?.displayName || 'TBD',
-        avatar: m.participant2Ref?.avatar || null,
-      };
+      const p1 = formatParticipant(m.player1, m.participant1Ref, 'p-tbd-1');
+      const p2 = formatParticipant(m.player2, m.participant2Ref, 'p-tbd-2');
 
       return {
         id: matchId,

@@ -718,6 +718,18 @@ export class TournamentCoreService {
       input.tournamentFormat = mapTournamentFormat(input.format);
     if (input.numberOfTeams === undefined && input.teams !== undefined)
       input.numberOfTeams = Number(input.teams);
+    if (input.groupsCount === undefined) {
+      if (input.numberOfGroups !== undefined)
+        input.groupsCount = Number(input.numberOfGroups);
+      else if (input.groups !== undefined)
+        input.groupsCount = Number(input.groups);
+    }
+    if (input.topQualifiers === undefined) {
+      if (input.topQualifiersPerGroup !== undefined)
+        input.topQualifiers = Number(input.topQualifiersPerGroup);
+      else if (input.topQ !== undefined)
+        input.topQualifiers = Number(input.topQ);
+    }
     for (const key of [
       'matchDuration',
       'turnoverDuration',
@@ -770,36 +782,57 @@ export class TournamentCoreService {
     }
 
     const structure = existing.schedule?.structure;
-    if (structure) {
-      const input: any = updateTournamentDto;
-      const flags = structureFlags(structure);
-      const changes: Array<[any, any]> = [
-        [input.numberOfTeams ?? input.teams, existing.numberOfTeams],
-        [
-          input.tournamentFormat ??
-            (input.format ? mapTournamentFormat(input.format) : undefined),
-          existing.tournamentFormat,
-        ],
-        [
-          structure.groups?.length ? input.groupsCount : undefined,
-          structure.groupsCount ?? structure.groups?.length,
-        ],
-        [
-          structure.groups?.length ? input.topQualifiers : undefined,
-          structure.topQualifiers ?? 2,
-        ],
-        [input.thirdPlacePlayoffEnabled, flags.thirdPlacePlayoffEnabled],
-        [input.grandFinalResetEnabled, flags.hasGrandFinalReset],
-      ];
-      if (
-        changes.some(
-          ([proposed, current]) =>
-            proposed !== undefined && proposed !== current,
-        )
-      )
+    const input: any = updateTournamentDto;
+    const flags = structureFlags(structure || {});
+
+    const proposedTeams = input.numberOfTeams ?? input.teams;
+    const proposedFormat =
+      input.tournamentFormat ??
+      (input.format ? mapTournamentFormat(input.format) : undefined);
+    const proposedGroupsCount =
+      input.groupsCount ?? input.numberOfGroups ?? input.groups;
+    const proposedTopQualifiers =
+      input.topQualifiers ?? input.topQualifiersPerGroup ?? input.topQ;
+    const proposedThirdPlace = input.thirdPlacePlayoffEnabled;
+    const proposedGrandFinalReset = input.grandFinalResetEnabled;
+
+    const currentGroupsCount =
+      structure?.groupsCount ?? structure?.groups?.length;
+    const currentTopQualifiers = structure?.topQualifiers ?? 2;
+
+    const sportingChanges = [
+      proposedTeams !== undefined && proposedTeams !== existing.numberOfTeams,
+      proposedFormat !== undefined &&
+        proposedFormat !== existing.tournamentFormat,
+      proposedGroupsCount !== undefined &&
+        proposedGroupsCount !== currentGroupsCount,
+      proposedTopQualifiers !== undefined &&
+        proposedTopQualifiers !== currentTopQualifiers,
+      proposedThirdPlace !== undefined &&
+        proposedThirdPlace !== flags.thirdPlacePlayoffEnabled,
+      proposedGrandFinalReset !== undefined &&
+        proposedGrandFinalReset !== flags.hasGrandFinalReset,
+    ];
+    const isSportingStructureChanged = sportingChanges.some(Boolean);
+
+    if (isSportingStructureChanged && structure) {
+      const hasCompletedOrActiveMatches = structure.matches?.some(
+        (m: any) =>
+          m.status === 'COMPLETED' ||
+          m.status === 'IN_PROGRESS' ||
+          (m.score1 !== null && m.score1 !== undefined) ||
+          (m.score2 !== null && m.score2 !== undefined),
+      );
+      const isLockedLifecycle =
+        existing.status === TournamentStatus.ONGOING ||
+        existing.status === TournamentStatus.IN_PROGRESS ||
+        existing.status === TournamentStatus.COMPLETED;
+
+      if (hasCompletedOrActiveMatches || isLockedLifecycle) {
         throw new BadRequestException(
-          'Sporting structure cannot be changed after generation',
+          'Sporting structure cannot be changed after matches have started or completed',
         );
+      }
     }
     const {
       startDate,
@@ -1299,53 +1332,110 @@ export class TournamentCoreService {
         },
         include: { screens: true },
       });
-      const nextSchedule = JSON.parse(JSON.stringify(existing.schedule));
-      const physicalKeys = [
-        'startDate',
-        'dailyStart',
-        'dailyEnd',
-        'matchDuration',
-        'turnoverDuration',
-        'lunchBreakTime',
-        'lunchDuration',
-        'buffer',
-        'frequencyStatus',
-        'frequencyArray',
-      ];
-      const changed =
-        updateVenues !== undefined ||
-        physicalKeys.some(
-          (key) =>
-            filteredUpdateData[key] !== undefined &&
-            JSON.stringify(filteredUpdateData[key]) !==
-              JSON.stringify(existing[key]),
-        );
-      if (changed)
-        reconcileCalendarSettings(nextSchedule, {
-          ...existing,
-          ...filteredUpdateData,
-          venues,
-        });
-      const windows = (updateTournamentDto as any).matchdayWindows;
-      if (windows?.length) {
-        const found = new Set<string>();
-        for (const venue of nextSchedule.calendar)
-          for (const screen of venue.screens)
-            for (const day of screen.days) {
-              const policy = windows.find((w: any) => w.date === day.date);
-              if (policy) {
-                day.schedulingPolicy = {
-                  isWindowOpen: policy.isWindowOpen,
-                  windowOpenTime: policy.windowOpenTime || '',
-                  windowCloseTime: policy.windowCloseTime || '',
-                };
-                found.add(day.date);
+
+      if (isSportingStructureChanged) {
+        const nextTeams =
+          filteredUpdateData.numberOfTeams ?? existing.numberOfTeams;
+        const nextFormat =
+          filteredUpdateData.tournamentFormat ?? existing.tournamentFormat;
+        const nextGroupsCount = proposedGroupsCount ?? currentGroupsCount;
+        const nextTopQualifiers = proposedTopQualifiers ?? currentTopQualifiers;
+        const nextThirdPlace =
+          proposedThirdPlace ?? flags.thirdPlacePlayoffEnabled ?? false;
+
+        const venueInputs: ScheduleVenueInput[] = venues.map((v: any) => ({
+          venueId: v.venueId,
+          name: v.name,
+          screens: (v.screens || []).map((s: any) => ({
+            screenId: s.screenId,
+            screenName: s.screenName,
+          })),
+        }));
+
+        const existingAssignedSlots =
+          structure.slots?.filter((s: any) => s.participantId) || [];
+
+        const regeneratedSchedule =
+          await this.tournamentScheduleService.generateSchedule({
+            tournamentId: existing.tournamentId,
+            tournamentName: filteredUpdateData.name ?? existing.name,
+            tournamentFormat: nextFormat,
+            schedulingMode:
+              filteredUpdateData.schedulingMode ?? existing.schedulingMode,
+            numberOfTeams: nextTeams,
+            startDate: filteredUpdateData.startDate ?? existing.startDate,
+            dailyStart: filteredUpdateData.dailyStart ?? existing.dailyStart,
+            dailyEnd: filteredUpdateData.dailyEnd ?? existing.dailyEnd,
+            matchDuration:
+              filteredUpdateData.matchDuration ?? existing.matchDuration,
+            turnoverDuration:
+              filteredUpdateData.turnoverDuration ?? existing.turnoverDuration,
+            lunchBreakTime:
+              filteredUpdateData.lunchBreakTime ?? existing.lunchBreakTime,
+            lunchDuration:
+              filteredUpdateData.lunchDuration ?? existing.lunchDuration,
+            buffer: filteredUpdateData.buffer ?? existing.buffer,
+            frequencyStatus:
+              filteredUpdateData.frequencyStatus ?? existing.frequencyStatus,
+            frequencyArray:
+              filteredUpdateData.frequencyArray ?? existing.frequencyArray,
+            venues: venueInputs,
+            participants: existingAssignedSlots,
+            groupsCount: nextGroupsCount,
+            topQualifiers: nextTopQualifiers,
+            thirdPlacePlayoffEnabled: nextThirdPlace,
+          });
+
+        filteredUpdateData.schedule = regeneratedSchedule as any;
+      } else {
+        const nextSchedule = JSON.parse(JSON.stringify(existing.schedule));
+        const physicalKeys = [
+          'startDate',
+          'dailyStart',
+          'dailyEnd',
+          'matchDuration',
+          'turnoverDuration',
+          'lunchBreakTime',
+          'lunchDuration',
+          'buffer',
+          'frequencyStatus',
+          'frequencyArray',
+        ];
+        const changed =
+          updateVenues !== undefined ||
+          physicalKeys.some(
+            (key) =>
+              filteredUpdateData[key] !== undefined &&
+              JSON.stringify(filteredUpdateData[key]) !==
+                JSON.stringify(existing[key]),
+          );
+        if (changed)
+          reconcileCalendarSettings(nextSchedule, {
+            ...existing,
+            ...filteredUpdateData,
+            venues,
+          });
+        const windows = (updateTournamentDto as any).matchdayWindows;
+        if (windows?.length) {
+          const found = new Set<string>();
+          for (const venue of nextSchedule.calendar)
+            for (const screen of venue.screens)
+              for (const day of screen.days) {
+                const policy = windows.find((w: any) => w.date === day.date);
+                if (policy) {
+                  day.schedulingPolicy = {
+                    isWindowOpen: policy.isWindowOpen,
+                    windowOpenTime: policy.windowOpenTime || '',
+                    windowCloseTime: policy.windowCloseTime || '',
+                  };
+                  found.add(day.date);
+                }
               }
-            }
-        if (windows.some((w: any) => !found.has(w.date)))
-          throw new BadRequestException('Unknown matchday booking window date');
+          if (windows.some((w: any) => !found.has(w.date)))
+            throw new BadRequestException('Unknown matchday booking window date');
+        }
+        filteredUpdateData.schedule = nextSchedule;
       }
-      filteredUpdateData.schedule = nextSchedule;
     }
     const updated = await db.tournament.update({
       where: { tournamentId: id, version: existing.version },

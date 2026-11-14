@@ -54,6 +54,21 @@ export class UpdateDetailsTabDto {
   @IsNumber()
   numberOfTeams?: number;
 
+  @ApiPropertyOptional({ example: 32 })
+  @IsOptional()
+  @IsNumber()
+  teams?: number;
+
+  @ApiPropertyOptional({ description: 'Number of groups (1-30) for hybrid formats', example: 4 })
+  @IsOptional()
+  @IsNumber()
+  groupsCount?: number;
+
+  @ApiPropertyOptional({ description: 'Top qualifiers per group (1-3)', example: 2 })
+  @IsOptional()
+  @IsNumber()
+  topQualifiers?: number;
+
   @ApiPropertyOptional({ enum: RegistrationCutOffMode })
   @IsOptional()
   @IsEnum(RegistrationCutOffMode)
@@ -543,6 +558,41 @@ export class UpdateSettingsTabDto {
   @IsOptional()
   @IsNumber()
   numberOfTeams?: number;
+
+  @ApiPropertyOptional({ example: 16 })
+  @IsOptional()
+  @IsNumber()
+  teams?: number;
+
+  @ApiPropertyOptional({ description: 'Number of groups (1-30) for hybrid formats', example: 4 })
+  @IsOptional()
+  @IsNumber()
+  groupsCount?: number;
+
+  @ApiPropertyOptional({ description: 'Number of groups alias' })
+  @IsOptional()
+  @IsNumber()
+  numberOfGroups?: number;
+
+  @ApiPropertyOptional({ description: 'Number of groups alias' })
+  @IsOptional()
+  @IsNumber()
+  groups?: number;
+
+  @ApiPropertyOptional({ description: 'Top qualifiers per group (1-3)', example: 2 })
+  @IsOptional()
+  @IsNumber()
+  topQualifiers?: number;
+
+  @ApiPropertyOptional({ description: 'Top qualifiers per group alias' })
+  @IsOptional()
+  @IsNumber()
+  topQualifiersPerGroup?: number;
+
+  @ApiPropertyOptional({ description: 'Top qualifiers per group alias' })
+  @IsOptional()
+  @IsNumber()
+  topQ?: number;
 
   @ApiPropertyOptional()
   @IsOptional()

@@ -24,6 +24,10 @@ export type MatchParticipantRefType =
 export interface MatchParticipantRef {
   type: MatchParticipantRefType;
   value: string;
+  displayName?: string;
+  label?: string;
+  name?: string;
+  gamerTag?: string;
 }
 
 export interface TournamentPlayerSlot {
@@ -1338,7 +1342,20 @@ export function generateCanonicalStructure(
   const sourceRef = (
     type: MatchParticipantRefType,
     value: string,
-  ): MatchParticipantRef => ({ type, value });
+    displayName?: string,
+    label?: string,
+  ): MatchParticipantRef => ({
+    type,
+    value,
+    ...(displayName
+      ? {
+          displayName,
+          name: displayName,
+          gamerTag: displayName,
+          ...(label ? { label } : {}),
+        }
+      : {}),
+  });
   const byeRef = (): MatchParticipantRef => ({ type: 'BYE', value: 'BYE' });
   const seeded = (seed: number): MatchParticipantRef =>
     seed > teams ? byeRef() : sourceRef('SEED', String(seed));
@@ -1404,8 +1421,18 @@ export function generateCanonicalStructure(
           );
           m.matchNumber = i / 2 + 1;
           nextRefs.push({
-            winner: sourceRef('MATCH_WINNER', m.id),
-            loser: sourceRef('MATCH_LOSER', m.id),
+            winner: sourceRef(
+              'MATCH_WINNER',
+              m.id,
+              `Winner of ${roundTitle} #${i / 2 + 1}`,
+              `${roundTitle} #${i / 2 + 1}`,
+            ),
+            loser: sourceRef(
+              'MATCH_LOSER',
+              m.id,
+              `Loser of ${roundTitle} #${i / 2 + 1}`,
+              `${roundTitle} #${i / 2 + 1}`,
+            ),
           });
         }
 
@@ -1512,9 +1539,23 @@ export function generateCanonicalStructure(
                 aggregateAdvancement: true,
                 matchNumber: m.matchNumber,
               });
-              prelimWinners.push(sourceRef('TIE_WINNER', tieId));
+              prelimWinners.push(
+                sourceRef(
+                  'TIE_WINNER',
+                  tieId,
+                  `Winner of Prelim Match #${k + 1}`,
+                  `Prelim Match #${k + 1}`,
+                ),
+              );
             } else {
-              prelimWinners.push(sourceRef('MATCH_WINNER', m.id));
+              prelimWinners.push(
+                sourceRef(
+                  'MATCH_WINNER',
+                  m.id,
+                  `Winner of Prelim Match #${k + 1}`,
+                  `Prelim Match #${k + 1}`,
+                ),
+              );
             }
           }
 
@@ -1584,13 +1625,33 @@ export function generateCanonicalStructure(
                 matchNumber: m.matchNumber,
               });
               nextRefs.push({
-                winner: sourceRef('TIE_WINNER', tieId),
-                loser: sourceRef('TIE_LOSER', tieId),
+                winner: sourceRef(
+                  'TIE_WINNER',
+                  tieId,
+                  `Winner of ${roundTitle} #${i / 2 + 1}`,
+                  `${roundTitle} #${i / 2 + 1}`,
+                ),
+                loser: sourceRef(
+                  'TIE_LOSER',
+                  tieId,
+                  `Loser of ${roundTitle} #${i / 2 + 1}`,
+                  `${roundTitle} #${i / 2 + 1}`,
+                ),
               });
             } else {
               nextRefs.push({
-                winner: sourceRef('MATCH_WINNER', m.id),
-                loser: sourceRef('MATCH_LOSER', m.id),
+                winner: sourceRef(
+                  'MATCH_WINNER',
+                  m.id,
+                  `Winner of ${roundTitle} #${i / 2 + 1}`,
+                  `${roundTitle} #${i / 2 + 1}`,
+                ),
+                loser: sourceRef(
+                  'MATCH_LOSER',
+                  m.id,
+                  `Loser of ${roundTitle} #${i / 2 + 1}`,
+                  `${roundTitle} #${i / 2 + 1}`,
+                ),
               });
             }
           }
@@ -1634,7 +1695,14 @@ export function generateCanonicalStructure(
           );
         }
         winnersRounds.push(roundMatches);
-        entrants = roundMatches.map((m) => sourceRef('MATCH_WINNER', m.id));
+        entrants = roundMatches.map((m) =>
+          sourceRef(
+            'MATCH_WINNER',
+            m.id,
+            `Winner of ${m.round} #${m.matchNumber}`,
+            `${m.round} #${m.matchNumber}`,
+          ),
+        );
         wbRound++;
       }
 
@@ -1642,7 +1710,12 @@ export function generateCanonicalStructure(
       let lbChampion: MatchParticipantRef;
 
       if (size === 2) {
-        lbChampion = sourceRef('MATCH_LOSER', wbFinal.id);
+        lbChampion = sourceRef(
+          'MATCH_LOSER',
+          wbFinal.id,
+          `Loser of ${wbFinal.round}`,
+          wbFinal.round,
+        );
       } else {
         let survivors: MatchParticipantRef[] = [];
         let lbRound = 1;
@@ -1653,10 +1726,28 @@ export function generateCanonicalStructure(
             `match-${tournamentId}-lb-r${lbRound}-${i / 2 + 1}`,
             `Losers Round ${lbRound}`,
             'LOSERS',
-            sourceRef('MATCH_LOSER', opening[i].id),
-            sourceRef('MATCH_LOSER', opening[i + 1].id),
+            sourceRef(
+              'MATCH_LOSER',
+              opening[i].id,
+              `Loser of ${opening[i].round} #${opening[i].matchNumber}`,
+              `${opening[i].round} #${opening[i].matchNumber}`,
+            ),
+            sourceRef(
+              'MATCH_LOSER',
+              opening[i + 1].id,
+              `Loser of ${opening[i + 1].round} #${opening[i + 1].matchNumber}`,
+              `${opening[i + 1].round} #${opening[i + 1].matchNumber}`,
+            ),
           );
-          survivors.push(sourceRef('MATCH_WINNER', m.id));
+          m.matchNumber = i / 2 + 1;
+          survivors.push(
+            sourceRef(
+              'MATCH_WINNER',
+              m.id,
+              `Winner of ${m.round} #${m.matchNumber}`,
+              `${m.round} #${m.matchNumber}`,
+            ),
+          );
         }
 
         for (let r = 1; r < winnersRounds.length; r++) {
@@ -1670,9 +1761,20 @@ export function generateCanonicalStructure(
               last ? 'Losers Final' : `Losers Round ${lbRound}`,
               'LOSERS',
               ref,
-              sourceRef('MATCH_LOSER', drops[dropIndex].id),
+              sourceRef(
+                'MATCH_LOSER',
+                drops[dropIndex].id,
+                `Loser of ${drops[dropIndex].round} #${drops[dropIndex].matchNumber}`,
+                `${drops[dropIndex].round} #${drops[dropIndex].matchNumber}`,
+              ),
             );
-            return sourceRef('MATCH_WINNER', m.id);
+            m.matchNumber = i + 1;
+            return sourceRef(
+              'MATCH_WINNER',
+              m.id,
+              `Winner of ${m.round} #${m.matchNumber}`,
+              `${m.round} #${m.matchNumber}`,
+            );
           });
 
           if (r < winnersRounds.length - 1) {
@@ -1686,7 +1788,15 @@ export function generateCanonicalStructure(
                 survivors[i],
                 survivors[i + 1],
               );
-              consolidated.push(sourceRef('MATCH_WINNER', m.id));
+              m.matchNumber = i / 2 + 1;
+              consolidated.push(
+                sourceRef(
+                  'MATCH_WINNER',
+                  m.id,
+                  `Winner of ${m.round} #${m.matchNumber}`,
+                  `${m.round} #${m.matchNumber}`,
+                ),
+              );
             }
             survivors = consolidated;
           }
@@ -1699,7 +1809,12 @@ export function generateCanonicalStructure(
         `match-${tournamentId}-gf`,
         'Grand Final',
         'FINAL',
-        sourceRef('MATCH_WINNER', wbFinal.id),
+        sourceRef(
+          'MATCH_WINNER',
+          wbFinal.id,
+          `Winner of ${wbFinal.round}`,
+          wbFinal.round,
+        ),
         lbChampion,
       );
 
@@ -1708,8 +1823,8 @@ export function generateCanonicalStructure(
           `match-${tournamentId}-gf-reset`,
           'Grand Final Reset',
           'FINAL',
-          sourceRef('MATCH_WINNER', gf.id),
-          sourceRef('MATCH_LOSER', gf.id),
+          sourceRef('MATCH_WINNER', gf.id, 'Winner of Grand Final', 'Grand Final'),
+          sourceRef('MATCH_LOSER', gf.id, 'Loser of Grand Final', 'Grand Final'),
         );
         Object.assign(reset, {
           conditional: true,

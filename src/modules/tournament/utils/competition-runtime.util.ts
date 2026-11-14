@@ -170,11 +170,16 @@ export function refreshParticipants(schedule: TournamentSchedulePayload) {
         }
 }
 function referenceLabel(ref: MatchParticipantRef) {
+  if (ref.displayName) return ref.displayName;
   return ref.type === 'QUALIFIER_SEED'
     ? `Qualifier Seed #${ref.value}`
     : ref.type === 'GROUP_POSITION'
       ? ref.value
-      : 'TBD';
+      : ref.type === 'MATCH_WINNER'
+        ? `Winner of ${ref.value}`
+        : ref.type === 'MATCH_LOSER'
+          ? `Loser of ${ref.value}`
+          : 'TBD';
 }
 
 type Row = {
