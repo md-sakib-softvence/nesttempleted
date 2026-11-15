@@ -29,6 +29,7 @@ import {
 import {
   presignTournamentMedia,
   extractStorageKey,
+  syncTournamentLifecycleState,
 } from '../utils/tournament-media.util';
 import {
   TournamentScheduleService,
@@ -296,18 +297,20 @@ export class TournamentCoreService {
         ),
         rules,
         tsAndTc,
-        status:
-          createTournamentDto.status ||
-          (createTournamentDto.isDraft
-            ? TournamentStatus.DRAFT
-            : TournamentStatus.REGISTRATION_OPEN),
-        registrationOpen:
-          createTournamentDto.registrationOpen !== undefined
-            ? createTournamentDto.registrationOpen
-            : !createTournamentDto.isDraft &&
-              (!createTournamentDto.status ||
-                createTournamentDto.status ===
-                  TournamentStatus.REGISTRATION_OPEN),
+        ...syncTournamentLifecycleState({
+          status:
+            createTournamentDto.status ||
+            (createTournamentDto.isDraft
+              ? TournamentStatus.DRAFT
+              : TournamentStatus.REGISTRATION_OPEN),
+          registrationOpen:
+            createTournamentDto.registrationOpen !== undefined
+              ? createTournamentDto.registrationOpen
+              : !createTournamentDto.isDraft &&
+                (!createTournamentDto.status ||
+                  createTournamentDto.status ===
+                    TournamentStatus.REGISTRATION_OPEN),
+        }),
         requireJerseySize: createTournamentDto.requireJerseySize ?? false,
         ...(resolvedCostIds.length > 0 && {
           manageEventCosts: {
@@ -1307,6 +1310,9 @@ export class TournamentCoreService {
         filteredUpdateData[key] = updateData[key];
       }
     }
+
+    // Enforce lifecycle state machine synchronization
+    syncTournamentLifecycleState(filteredUpdateData, existing);
 
     if (updateData.manageEventCosts) {
       filteredUpdateData.manageEventCosts = updateData.manageEventCosts;

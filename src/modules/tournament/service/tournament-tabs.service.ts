@@ -32,6 +32,7 @@ import {
   presignTournamentMedia,
   safePresignUrl,
   extractStorageKey,
+  syncTournamentLifecycleState,
 } from '../utils/tournament-media.util';
 import { calculatePaginationMeta } from '../../utils/query.util';
 import { normalizeStringArray } from '../utils/file-upload.util';
@@ -173,6 +174,11 @@ export class TournamentTabsService {
     const description =
       tournament.rules?.[0] || 'Tournament details and overview';
 
+    const syncd = syncTournamentLifecycleState({
+      status: tournament.status,
+      registrationOpen: tournament.registrationOpen,
+    });
+
     return {
       tournamentId: tournament.tournamentId,
       basicInformation: {
@@ -180,11 +186,11 @@ export class TournamentTabsService {
         gameTitle: tournament.gameTitle,
         gameType: tournament.gameType,
         format: tournament.tournamentFormat,
-        status: tournament.status,
+        status: syncd.status,
         capacity: tournament.capacity,
         numberOfTeams: tournament.numberOfTeams,
         registrationMode: tournament.registrationCutOffMode,
-        registrationOpen: tournament.registrationOpen,
+        registrationOpen: syncd.registrationOpen,
         linkedGroup,
         possibleMatchCount,
         playedCount,
@@ -401,9 +407,14 @@ export class TournamentTabsService {
 
     const pagination = calculatePaginationMeta(tabFilteredCount, page, limit);
 
+    const syncd = syncTournamentLifecycleState({
+      status: tournament.status,
+      registrationOpen: tournament.registrationOpen,
+    });
+
     return {
       tournamentId: tournament.tournamentId,
-      registrationOpen: tournament.registrationOpen,
+      registrationOpen: syncd.registrationOpen,
       registrationCutOffMode: tournament.registrationCutOffMode,
       capacity: tournament.capacity,
       requireJerseySize: tournament.requireJerseySize,
@@ -420,11 +431,11 @@ export class TournamentTabsService {
       items: normalizedRegistrations, // Backward-compatibility
       pagination,
       config: {
-        registrationOpen: tournament.registrationOpen,
+        registrationOpen: syncd.registrationOpen,
         registrationCutOffMode: tournament.registrationCutOffMode,
         capacity: tournament.capacity,
         requireJerseySize: tournament.requireJerseySize,
-        status: tournament.status,
+        status: syncd.status,
       },
     };
   }
@@ -454,8 +465,20 @@ export class TournamentTabsService {
       });
     } else {
       const data: Prisma.TournamentUpdateInput = {};
-      if (dto.registrationOpen !== undefined)
+      if (dto.registrationOpen !== undefined) {
         data.registrationOpen = dto.registrationOpen;
+        if (
+          dto.registrationOpen === false &&
+          tournament.status === 'REGISTRATION_OPEN'
+        ) {
+          data.status = TournamentStatus.UPCOMING;
+        } else if (
+          dto.registrationOpen === true &&
+          tournament.status === 'UPCOMING'
+        ) {
+          data.status = TournamentStatus.REGISTRATION_OPEN;
+        }
+      }
       if (dto.registrationCutOffMode !== undefined)
         data.registrationCutOffMode = dto.registrationCutOffMode;
       if (dto.capacity !== undefined) data.capacity = dto.capacity;
@@ -477,6 +500,7 @@ export class TournamentTabsService {
         capacity: true,
         registrationCutOffMode: true,
         registrationOpen: true,
+        status: true,
         _count: {
           select: {
             registrations: {
@@ -495,7 +519,12 @@ export class TournamentTabsService {
     ) {
       await this.prisma.tournament.update({
         where: { tournamentId },
-        data: { registrationOpen: false },
+        data: {
+          registrationOpen: false,
+          ...(updated.status === 'REGISTRATION_OPEN'
+            ? { status: TournamentStatus.UPCOMING }
+            : {}),
+        },
       });
     }
 
@@ -1408,6 +1437,11 @@ export class TournamentTabsService {
       'Sun',
     ];
 
+    const syncd = syncTournamentLifecycleState({
+      status: tournament.status,
+      registrationOpen: tournament.registrationOpen,
+    });
+
     return {
       id: tournament.tournamentId,
       tournamentId: tournament.tournamentId,
@@ -1421,7 +1455,7 @@ export class TournamentTabsService {
       maxCapacity: tournament.capacity,
       registrationCutOffMode: tournament.registrationCutOffMode || 'CAPACITY',
       registrationMode: tournament.registrationCutOffMode || 'CAPACITY',
-      registrationOpen: tournament.registrationOpen,
+      registrationOpen: syncd.registrationOpen,
       deadline: tournament.deadline ? tournament.deadline.toISOString() : null,
       deadlineDate: tournament.deadline
         ? tournament.deadline.toISOString()
@@ -1436,8 +1470,8 @@ export class TournamentTabsService {
       thirdPlacePlayoffEnabled,
       requireJerseySize: tournament.requireJerseySize,
       couponCreation: tournament.couponCreation,
-      status: tournament.status,
-      isDraft: tournament.status === 'DRAFT',
+      status: syncd.status,
+      isDraft: syncd.status === 'DRAFT',
 
       tournamentLogo: presigned.tournamentLogo || null,
       tournamentBanner: presigned.tournamentBanner || null,

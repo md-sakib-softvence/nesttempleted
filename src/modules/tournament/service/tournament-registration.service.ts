@@ -20,6 +20,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { uploadBase64ToS3 } from '../../utils/s3.util';
+import { syncTournamentLifecycleState } from '../utils/tournament-media.util';
 
 @Injectable()
 export class TournamentRegistrationService {
@@ -46,9 +47,13 @@ export class TournamentRegistrationService {
     }
 
     // 1. Guard against registration on closed or non-active tournaments
+    const syncd = syncTournamentLifecycleState({
+      status: tournament.status,
+      registrationOpen: tournament.registrationOpen,
+    });
     const isRegistrationOpen =
-      tournament.registrationOpen ||
-      tournament.status === TournamentStatus.REGISTRATION_OPEN;
+      syncd.registrationOpen &&
+      syncd.status === TournamentStatus.REGISTRATION_OPEN;
 
     if (!isRegistrationOpen) {
       throw new BadRequestException(
@@ -317,16 +322,49 @@ export class TournamentRegistrationService {
       },
     });
 
-    if (
-      dto.status === TournamentRegistrationStatus.CONFIRMED &&
-      updated.assignedSlot &&
-      updated.player
-    ) {
-      await this.syncParticipantToTournamentSchedule(
-        tournamentId,
-        updated.assignedSlot,
-        updated.player,
-      );
+    if (dto.status === TournamentRegistrationStatus.CONFIRMED) {
+      if (updated.assignedSlot && updated.player) {
+        await this.syncParticipantToTournamentSchedule(
+          tournamentId,
+          updated.assignedSlot,
+          updated.player,
+        );
+      }
+
+      // Automated Capacity Trigger: auto-close registration if CAPACITY mode reached
+      const currentTournament = await this.prisma.tournament.findUnique({
+        where: { tournamentId },
+        select: {
+          capacity: true,
+          registrationCutOffMode: true,
+          registrationOpen: true,
+          status: true,
+          _count: {
+            select: {
+              registrations: {
+                where: { status: TournamentRegistrationStatus.CONFIRMED },
+              },
+            },
+          },
+        },
+      });
+
+      if (
+        currentTournament &&
+        currentTournament.registrationOpen &&
+        currentTournament.registrationCutOffMode === 'CAPACITY' &&
+        currentTournament._count.registrations >= currentTournament.capacity
+      ) {
+        await this.prisma.tournament.update({
+          where: { tournamentId },
+          data: {
+            registrationOpen: false,
+            ...(currentTournament.status === TournamentStatus.REGISTRATION_OPEN
+              ? { status: TournamentStatus.UPCOMING }
+              : {}),
+          },
+        });
+      }
     }
 
     return updated;

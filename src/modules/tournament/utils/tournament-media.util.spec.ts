@@ -1,6 +1,7 @@
 import {
   presignTournamentMedia,
   extractStorageKey,
+  syncTournamentLifecycleState,
 } from './tournament-media.util';
 
 describe('presignTournamentMedia (Payload Optimization & On-Demand Slots/Seeds)', () => {
@@ -99,5 +100,57 @@ describe('presignTournamentMedia (Payload Optimization & On-Demand Slots/Seeds)'
     expect(extractStorageKey('74cbf62c-e09a-4737-8628-c49e7931e325.png')).toBe(
       '74cbf62c-e09a-4737-8628-c49e7931e325.png',
     );
+  });
+
+  describe('syncTournamentLifecycleState (registrationOpen vs status synchronization)', () => {
+    it('should transition status to UPCOMING and keep registrationOpen false when registrationOpen is false', () => {
+      const result = syncTournamentLifecycleState({
+        status: 'REGISTRATION_OPEN',
+        registrationOpen: false,
+      });
+      expect(result.status).toBe('UPCOMING');
+      expect(result.registrationOpen).toBe(false);
+    });
+
+    it('should transition status to REGISTRATION_OPEN and keep registrationOpen true when registrationOpen is true', () => {
+      const result = syncTournamentLifecycleState({
+        status: 'UPCOMING',
+        registrationOpen: true,
+      });
+      expect(result.status).toBe('REGISTRATION_OPEN');
+      expect(result.registrationOpen).toBe(true);
+    });
+
+    it('should force registrationOpen to true when status is set to REGISTRATION_OPEN', () => {
+      const result = syncTournamentLifecycleState({
+        status: 'REGISTRATION_OPEN',
+      });
+      expect(result.status).toBe('REGISTRATION_OPEN');
+      expect(result.registrationOpen).toBe(true);
+    });
+
+    it('should force registrationOpen to false when status is UPCOMING and registrationOpen is not specified', () => {
+      const result = syncTournamentLifecycleState({
+        status: 'UPCOMING',
+      });
+      expect(result.status).toBe('UPCOMING');
+      expect(result.registrationOpen).toBe(false);
+    });
+
+    it('should force registrationOpen to false for IN_PROGRESS, ONGOING, COMPLETED', () => {
+      expect(
+        syncTournamentLifecycleState({
+          status: 'IN_PROGRESS',
+          registrationOpen: true,
+        }).registrationOpen,
+      ).toBe(false);
+
+      expect(
+        syncTournamentLifecycleState({
+          status: 'COMPLETED',
+          registrationOpen: true,
+        }).registrationOpen,
+      ).toBe(false);
+    });
   });
 });
