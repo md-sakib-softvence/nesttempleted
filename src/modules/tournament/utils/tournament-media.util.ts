@@ -12,6 +12,70 @@ const isStoredDocumentKey = (value: string) =>
     value,
   ) || /\.(pdf|doc|docx|txt|rtf|png|jpe?g|webp|gif|svg)$/i.test(value);
 
+export const CLOSED_TOURNAMENT_STATUSES: string[] = [
+  'IN_PROGRESS',
+  'ONGOING',
+  'COMPLETED',
+  'CANCELLED',
+  'ARCHIVED',
+];
+
+export function syncTournamentLifecycleState<
+  T extends { status?: any; registrationOpen?: boolean },
+>(
+  target: T,
+  existing?: { status?: any; registrationOpen?: boolean },
+): T {
+  const currentStatus = target.status ?? existing?.status;
+
+  // Rule 1: Explicitly closing registration (registrationOpen: false)
+  // Transitions status from REGISTRATION_OPEN -> UPCOMING
+  if (target.registrationOpen === false) {
+    if (
+      currentStatus === 'REGISTRATION_OPEN' ||
+      target.status === 'REGISTRATION_OPEN'
+    ) {
+      target.status = 'UPCOMING';
+    }
+  }
+
+  // Rule 2: Setting status to REGISTRATION_OPEN forces registrationOpen to true
+  if (target.status === 'REGISTRATION_OPEN') {
+    target.registrationOpen = true;
+  }
+
+  // Rule 3: Moving to IN_PROGRESS, ONGOING, COMPLETED, CANCELLED, ARCHIVED closes registration
+  if (target.status && CLOSED_TOURNAMENT_STATUSES.includes(target.status)) {
+    target.registrationOpen = false;
+  } else if (
+    !target.status &&
+    existing?.status &&
+    CLOSED_TOURNAMENT_STATUSES.includes(existing.status)
+  ) {
+    target.registrationOpen = false;
+  }
+
+  // Rule 4: Explicitly opening registration (registrationOpen: true)
+  // Transition to REGISTRATION_OPEN (unless in a closed/ongoing match status)
+  if (target.registrationOpen === true) {
+    const effectiveStatus = target.status ?? existing?.status;
+    if (
+      !effectiveStatus ||
+      effectiveStatus === 'UPCOMING' ||
+      effectiveStatus === 'DRAFT'
+    ) {
+      target.status = 'REGISTRATION_OPEN';
+    }
+  }
+
+  // Rule 5: If status is UPCOMING (and registrationOpen not explicitly true), registration is closed
+  if (target.status === 'UPCOMING' && target.registrationOpen !== true) {
+    target.registrationOpen = false;
+  }
+
+  return target;
+}
+
 /**
  * Extracts the raw S3 key if a pre-signed or full S3 URL is passed back from the client,
  * preventing expiring query parameters from being saved in the database.
@@ -197,9 +261,9 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
   formatted.registrationOpen =
     formatted.registrationOpen !== undefined
       ? formatted.registrationOpen
-      : formatted.registrationCutOffMode
-        ? true
-        : true;
+      : formatted.status === 'REGISTRATION_OPEN';
+
+  syncTournamentLifecycleState(formatted);
   formatted.registrationMode =
     formatted.registrationCutOffMode === 'DEADLINE' ? 'DEADLINE' : 'CAPACITY';
   formatted.maxCapacity = formatted.capacity || formatted.numberOfTeams;
