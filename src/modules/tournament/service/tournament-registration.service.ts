@@ -381,9 +381,7 @@ export class TournamentRegistrationService {
           registrationOpen: true,
           status: TournamentStatus.REGISTRATION_OPEN,
           registrationCutOffMode: dto.mode,
-          ...(dto.ticketPrice !== undefined
-            ? { ticketPrice: dto.ticketPrice }
-            : {}),
+          ticketPrice: tournament.entryFee,
           ...(dto.capacity !== undefined ? { capacity: dto.capacity } : {}),
           ...(dto.deadline ? { deadline: new Date(dto.deadline) } : {}),
           ...(dto.requireJerseySize !== undefined

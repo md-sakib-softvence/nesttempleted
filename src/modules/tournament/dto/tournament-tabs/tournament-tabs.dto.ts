@@ -1,7 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
-  Min,
   IsOptional,
   IsString,
   IsNumber,
@@ -25,16 +24,6 @@ import {
 } from '@prisma/client';
 
 export class UpdateDetailsTabDto {
-  @ApiPropertyOptional({
-    description: 'Price per admission ticket',
-    example: 1500,
-  })
-  @Type(() => Number)
-  @IsNumber({ allowNaN: false, allowInfinity: false })
-  @Min(0)
-  @IsOptional()
-  ticketPrice?: number;
-
   @ApiPropertyOptional({ example: 'Winter Championship 2024' })
   @IsOptional()
   @IsString()
@@ -133,16 +122,6 @@ export class UpdateDetailsTabDto {
 }
 
 export class UpdateRegistrationsTabDto {
-  @ApiPropertyOptional({
-    description: 'Price per admission ticket',
-    example: 1500,
-  })
-  @Type(() => Number)
-  @IsNumber({ allowNaN: false, allowInfinity: false })
-  @Min(0)
-  @IsOptional()
-  ticketPrice?: number;
-
   @ApiPropertyOptional({ example: true })
   @IsOptional()
   @IsBoolean()
