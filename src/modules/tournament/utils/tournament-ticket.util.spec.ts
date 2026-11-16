@@ -17,7 +17,7 @@ const configuration = {
   currency: 'NGN',
   capacity: 40,
   registrationOpen: true,
-  ticketPrice: 1500,
+  entryFee: 1500,
 };
 
 function fixture() {
@@ -93,7 +93,7 @@ describe('Tournament-owned ticket inventory', () => {
       ...configuration,
       registrationOpen: false,
       name: 'Renamed',
-      ticketPrice: 2000,
+      entryFee: 2000,
       capacity: 50,
     });
     expect(tier()).toMatchObject({
@@ -117,20 +117,19 @@ describe('Tournament-owned ticket inventory', () => {
     await syncTournamentTicket(db, {
       ...configuration,
       registrationOpen: false,
-      ticketPrice: null,
+      entryFee: null,
     });
     expect(db.ticketTier.create).not.toHaveBeenCalled();
   });
-  it('requires an explicit price when registration opens', async () => {
-    const { db } = fixture();
-    await expect(
-      syncTournamentTicket(db, { ...configuration, ticketPrice: null }),
-    ).rejects.toThrow(BadRequestException);
+  it('supports zero entry fee without a separate ticket price', async () => {
+    const { db, tier } = fixture();
+    await syncTournamentTicket(db, { ...configuration, entryFee: 0 });
+    expect(tier().price).toBe(0);
   });
   it.each([-1, NaN, Infinity])('rejects invalid price %s', async (price) => {
     const { db } = fixture();
     await expect(
-      syncTournamentTicket(db, { ...configuration, ticketPrice: price }),
+      syncTournamentTicket(db, { ...configuration, entryFee: price }),
     ).rejects.toThrow(BadRequestException);
   });
   it('rejects capacity below already issued tickets', async () => {
@@ -147,13 +146,13 @@ describe('Tournament-owned ticket inventory', () => {
       name: 'Championship',
       startDate: '2026-11-18',
       registrationOpen: true,
-      ticketPrice: 1500,
+      entryFee: 1500,
       maxCapacity: 40,
     });
     expect(created.ticketTiers[0]).toMatchObject({ capacity: 40, price: 1500 });
     await core.updateTournament('t', {
       name: 'Renamed',
-      ticketPrice: 2000,
+      entryFee: 2000,
       capacity: 50,
     });
     expect(tier()).toMatchObject({
@@ -166,17 +165,25 @@ describe('Tournament-owned ticket inventory', () => {
     await core.updateTournament('t', { registrationOpen: true });
     expect(tier().status).toBe('ACTIVE');
   });
-  it('rolls back tournament creation if ticket price is missing', async () => {
-    const { core, tournament, tier } = fixture();
-    await expect(
-      core.createTournament({
-        name: 'Missing price',
-        startDate: '2026-11-18',
-        registrationOpen: true,
-      }),
-    ).rejects.toThrow('ticketPrice');
-    expect(tournament()).toBeNull();
-    expect(tier()).toBeNull();
+  it('creates an open tournament using the default zero entry fee', async () => {
+    const { core, tier } = fixture();
+    await core.createTournament({
+      name: 'Free',
+      startDate: '2026-11-18',
+      registrationOpen: true,
+    });
+    expect(tier().price).toBe(0);
+  });
+  it('ignores stale separate price when entryFee is supplied', async () => {
+    const { core, tier } = fixture();
+    await core.createTournament({
+      name: 'Same price',
+      startDate: '2026-11-18',
+      registrationOpen: true,
+      entryFee: 1500,
+      ticketPrice: 9999,
+    } as any);
+    expect(tier().price).toBe(1500);
   });
   it('creates inventory when a closed tournament is later opened', async () => {
     const { core, tier } = fixture();
@@ -184,7 +191,7 @@ describe('Tournament-owned ticket inventory', () => {
       name: 'Closed',
       startDate: '2026-11-18',
       registrationOpen: false,
-      ticketPrice: 100,
+      entryFee: 100,
       capacity: 20,
     });
     expect(tier()).toBeNull();
@@ -197,7 +204,7 @@ describe('Tournament-owned ticket inventory', () => {
       name: 'Championship',
       startDate: '2026-11-18',
       registrationOpen: true,
-      ticketPrice: 100,
+      entryFee: 100,
       capacity: 40,
     });
     db.ticket.count.mockResolvedValue(30);
@@ -211,18 +218,18 @@ describe('Tournament-owned ticket inventory', () => {
     expect(TicketController.prototype).not.toHaveProperty('createTier');
     expect(TicketController.prototype).not.toHaveProperty('updateTier');
   });
-  it('validates ticketPrice from multipart input', async () => {
+  it('validates entryFee from multipart input', async () => {
     const valid = plainToInstance(CreateTournamentDto, {
       name: 'Valid',
-      ticketPrice: '1250',
+      entryFee: '1250',
     });
-    expect(valid.ticketPrice).toBe(1250);
+    expect(valid.entryFee).toBe(1250);
     const invalid = plainToInstance(CreateTournamentDto, {
       name: 'Invalid',
-      ticketPrice: 'bad',
+      entryFee: 'bad',
     });
     expect(
-      (await validate(invalid)).some((e) => e.property === 'ticketPrice'),
+      (await validate(invalid)).some((e) => e.property === 'entryFee'),
     ).toBe(true);
   });
 });

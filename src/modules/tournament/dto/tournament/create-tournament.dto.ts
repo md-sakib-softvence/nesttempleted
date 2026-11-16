@@ -174,24 +174,13 @@ export class CreateTournamentDto {
   numberOfTeams?: number;
 
   @ApiPropertyOptional({
-    description:
-      'Price per admission ticket. Required when creating or opening registration; quantity follows tournament capacity.',
-    example: 1500,
-  })
-  @Type(() => Number)
-  @IsNumber({ allowNaN: false, allowInfinity: false })
-  @Min(0)
-  @IsOptional()
-  ticketPrice?: number;
-
-  @ApiPropertyOptional({
-    description: 'Entry Fee amount',
+    description: 'Entry fee per player and price per ticket (single price)',
     example: 50,
     default: 0,
   })
   @Transform(({ value }) => {
     const n = Number(value);
-    return isNaN(n) ? 0 : n;
+    return n;
   })
   @Type(() => Number)
   @IsNumber()

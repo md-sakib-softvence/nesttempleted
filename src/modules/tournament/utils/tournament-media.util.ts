@@ -260,6 +260,8 @@ export async function presignTournamentMedia<T extends Record<string, any>>(
   formatted.format =
     formatMap[formatted.tournamentFormat] || formatted.tournamentFormat;
 
+  formatted.ticketPrice = formatted.entryFee ?? 0;
+
   formatted.paymentWindowHours = formatted.paymentWindow ?? 24;
   formatted.registrationOpen =
     formatted.registrationOpen !== undefined

@@ -222,7 +222,7 @@ export class TournamentCoreService {
         numberOfTeams:
           createTournamentDto.numberOfTeams || createTournamentDto.teams || 8,
         entryFee: createTournamentDto.entryFee ?? 0,
-        ticketPrice: createTournamentDto.ticketPrice,
+        ticketPrice: createTournamentDto.entryFee ?? 0,
         currency: createTournamentDto.currency || Currency.NGN,
         paymentWindow: createTournamentDto.paymentWindow || 48,
         prizeRule: createTournamentDto.prizeRule || PrizeRule.PERCENTAGE,
@@ -679,18 +679,17 @@ export class TournamentCoreService {
 
   private normalizeConfigurationAliases(dto: any) {
     const input: any = { ...dto };
-    if (
-      input.ticketPrice !== undefined &&
-      (input.ticketPrice === null ||
-        !Number.isFinite(Number(input.ticketPrice)) ||
-        Number(input.ticketPrice) < 0)
-    ) {
-      throw new BadRequestException(
-        'ticketPrice must be a finite nonnegative number.',
-      );
+    // The player entry fee is the sole admission ticket price.
+    delete input.ticketPrice;
+    if (input.entryFee !== undefined) {
+      const price = Number(input.entryFee);
+      if (input.entryFee === null || !Number.isFinite(price) || price < 0) {
+        throw new BadRequestException(
+          'entryFee must be a finite nonnegative number.',
+        );
+      }
+      input.entryFee = price;
     }
-    if (input.ticketPrice !== undefined)
-      input.ticketPrice = Number(input.ticketPrice);
     const nested = input.scheduleSettings || {};
     const aliases: Record<string, string[]> = {
       dailyStart: ['eventStartTime', 'dailyStart'],
@@ -1281,7 +1280,6 @@ export class TournamentCoreService {
       'tournamentFormat',
       'numberOfTeams',
       'entryFee',
-      'ticketPrice',
       'currency',
       'paymentWindow',
       'prizeRule',
@@ -1329,6 +1327,9 @@ export class TournamentCoreService {
         filteredUpdateData[key] = updateData[key];
       }
     }
+
+    filteredUpdateData.ticketPrice =
+      filteredUpdateData.entryFee ?? existing.entryFee ?? 0;
 
     // Enforce lifecycle state machine synchronization
     syncTournamentLifecycleState(filteredUpdateData, existing);
@@ -1527,7 +1528,7 @@ export class TournamentCoreService {
 
     if (
       updated.ticketPrice != null ||
-      updateTournamentDto.ticketPrice !== undefined ||
+      updateTournamentDto.entryFee !== undefined ||
       updateTournamentDto.registrationOpen === true ||
       updateTournamentDto.status === TournamentStatus.REGISTRATION_OPEN
     ) {

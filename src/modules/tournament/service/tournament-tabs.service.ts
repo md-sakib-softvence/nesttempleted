@@ -209,7 +209,7 @@ export class TournamentTabsService {
       },
       financialSettings: {
         entryFee: tournament.entryFee,
-        ticketPrice: tournament.ticketPrice,
+        ticketPrice: tournament.entryFee,
         currency: tournament.currency,
         prizePoolRule: tournament.prizeRule,
         percentage: tournament.percentage,
@@ -455,7 +455,6 @@ export class TournamentTabsService {
       await this.registrationService.openRegistration(tournamentId, {
         mode,
         capacity: dto.capacity,
-        ticketPrice: dto.ticketPrice,
       });
     } else if (dto.action === 'close') {
       await this.registrationService.closeRegistration(tournamentId);
@@ -474,7 +473,6 @@ export class TournamentTabsService {
         registrationCutOffMode: dto.registrationCutOffMode,
         capacity: dto.capacity,
         requireJerseySize: dto.requireJerseySize,
-        ticketPrice: dto.ticketPrice,
       });
     }
 

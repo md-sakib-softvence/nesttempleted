@@ -474,17 +474,17 @@ On `POST /api/v1/tournaments`, include these fields along with the normal tourna
 {
   "name": "Championship",
   "registrationOpen": true,
-  "ticketPrice": 1500,
+  "entryFee": 1500,
   "maxCapacity": 40,
   "currency": "NGN"
 }
 ```
 
-- `ticketPrice` is the price per admission ticket, separate from player `entryFee`.
-- Opening registration requires a configured ticket price. Closed tournaments can save a price without creating inventory until opened.
+- `entryFee` is the single price for both player entry and admission tickets. No separate `ticketPrice` input is required.
+- Opening registration uses the saved `entryFee` (default 0). Closed tournaments create inventory when opened.
 - One tournament-managed `FAN` / `DAY_PASS` tier is created, named after the tournament, with capacity exactly equal to tournament capacity. Individual QR tickets are issued after purchase, not pre-generated for fictional purchasers.
-- `PATCH /api/v1/tournaments/:id` updates name, `ticketPrice`, currency and capacity together with the inventory. `maxCapacity` is accepted as the capacity alias.
-- The tournament details tab accepts `ticketPrice` too. Registration open actions can supply `ticketPrice` if it has not been configured yet.
+- `PATCH /api/v1/tournaments/:id` updates name, `entryFee`, currency and capacity together with the inventory. `maxCapacity` is accepted as the capacity alias.
+- The tournament details tab updates `entryFee` too. Registration open actions reuse the tournament entry fee. Historical paid tickets retain their original price.
 - Closing registration hides the managed tier; reopening reuses it without resetting sold counts.
 - Capacity cannot drop below tickets already sold. Tournament changes and inventory changes commit or roll back together.
 - `GET /api/v1/tickets/tournament/:tournamentId/tiers` and `GET /api/v1/tickets/tiers` remain available. Use the returned `tierId` for checkout and display only ACTIVE tiers for sale.

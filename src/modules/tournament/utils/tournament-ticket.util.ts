@@ -7,7 +7,7 @@ type TicketConfiguration = {
   currency: string;
   capacity: number;
   registrationOpen: boolean;
-  ticketPrice?: number | null;
+  entryFee?: number | null;
 };
 
 /** Call inside the same transaction that changes the tournament. */
@@ -15,17 +15,10 @@ export async function syncTournamentTicket(
   db: Prisma.TransactionClient,
   tournament: TicketConfiguration,
 ) {
-  if (tournament.ticketPrice == null) {
-    if (tournament.registrationOpen) {
-      throw new BadRequestException(
-        'ticketPrice is required before opening tournament registration.',
-      );
-    }
-    return null;
-  }
-  if (!Number.isFinite(tournament.ticketPrice) || tournament.ticketPrice < 0) {
+  const price = tournament.entryFee ?? 0;
+  if (!Number.isFinite(price) || price < 0) {
     throw new BadRequestException(
-      'ticketPrice must be a finite nonnegative number.',
+      'entryFee must be a finite nonnegative number.',
     );
   }
   if (!Number.isInteger(tournament.capacity) || tournament.capacity < 1) {
@@ -55,7 +48,7 @@ export async function syncTournamentTicket(
   }
   const data = {
     name: tournament.name,
-    price: tournament.ticketPrice,
+    price,
     currency: tournament.currency,
     capacity: tournament.capacity,
     status: tournament.registrationOpen ? 'ACTIVE' : 'HIDDEN',
