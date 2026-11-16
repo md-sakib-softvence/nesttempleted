@@ -1,5 +1,7 @@
 import { syncTournamentTicket } from '../utils/tournament-ticket.util';
 import {
+  allocatePending,
+  refreshParticipants,
   reconcileCalendarSettings,
   structureFlags,
 } from '../utils/competition-runtime.util';
@@ -1465,6 +1467,27 @@ export class TournamentCoreService {
         filteredUpdateData.schedule = nextSchedule;
       }
     }
+    // Saving automatic mode is an explicit request to fill pending fixtures,
+    // including re-saving an existing AUTO_RANDOM tournament with an empty grid.
+    if (updateTournamentDto.schedulingMode === SchedulingMode.AUTO_RANDOM) {
+      const nextSchedule = JSON.parse(
+        JSON.stringify(
+          filteredUpdateData.schedule ?? existing.schedule ?? null,
+        ),
+      );
+      if (!nextSchedule?.structure || !Array.isArray(nextSchedule.calendar)) {
+        throw new BadRequestException(
+          'Generate a tournament schedule before enabling automatic allocation.',
+        );
+      }
+      refreshParticipants(nextSchedule);
+      filteredUpdateData.schedule = allocatePending(
+        nextSchedule,
+        SchedulingMode.AUTO_RANDOM,
+        [],
+      ).schedule;
+    }
+
     const updated = await db.tournament.update({
       where: { tournamentId: id, version: existing.version },
       data: {

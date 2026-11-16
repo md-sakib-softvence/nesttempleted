@@ -234,6 +234,8 @@ D = 3
 
 ## ৭. কোন venue, কোন screen: chronological automatic allocation
 
+Tournament create, explicit Auto-Fill এবং tournament update-এ `schedulingMode: "AUTO_RANDOM"` save করলে pending fixtures-এর automatic allocation চালানো হয়। আগে mode AUTO_RANDOM থাকা সত্ত্বেও grid খালি থাকলে একই mode আবার save করেও allocation করা যায়। শুধু GET/refresh করলে কোনো allocation হয় না।
+
 API compatibility-এর জন্য mode-এর নাম `AUTO_RANDOM` রাখা হয়েছে, কিন্তু বর্তমান automatic allocator আর match বা slot shuffle করে না। এটি নিচের algorithm অনুসরণ করে:
 
 ```text
