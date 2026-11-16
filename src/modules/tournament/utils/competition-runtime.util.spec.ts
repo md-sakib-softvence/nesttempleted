@@ -12,6 +12,7 @@ import {
   resolveDoubleEliminationPlacementRefs,
 } from './tournament-calculation.util';
 import {
+  allocatePending,
   applyQualificationDraw,
   compareQualificationStats,
   capacitySummary,
@@ -352,5 +353,128 @@ describe('Handoff v1.2.1 regression cases', () => {
     expect(() =>
       generatePlayingDates('2026-02-31', 1, FrequencyStatus.DAILY, ['1']),
     ).toThrow('valid start date');
+  });
+});
+
+describe('chronological automatic allocation', () => {
+  const generate = (customVenues = venues) =>
+    new TournamentScheduleService().generateSchedule({
+      ...config,
+      frequencyArray: ['0', '1', '2', '3', '4', '5', '6'],
+      venues: customVenues,
+      tournamentFormat: F.LEAGUE_AND_KNOCKOUT,
+      schedulingMode: SchedulingMode.AUTO_RANDOM,
+      numberOfTeams: 40,
+      groupsCount: 10,
+      topQualifiers: 2,
+      thirdPlacePlayoffEnabled: false,
+    });
+
+  it('places 79 matches on one screen in order over five days, excluding lunch', async () => {
+    const schedule = await generate();
+    const matches = schedule.structure.matches;
+    expect(matches).toHaveLength(79);
+    const starts = [
+      '09:00',
+      '09:25',
+      '09:50',
+      '10:15',
+      '10:40',
+      '11:05',
+      '11:30',
+      '11:55',
+      '12:20',
+      '14:00',
+      '14:25',
+      '14:50',
+      '15:15',
+      '15:40',
+      '16:05',
+      '16:30',
+    ];
+    matches.forEach((match, i) => {
+      expect(match.date).toBe(`2026-11-${16 + Math.floor(i / 16)}`);
+      expect(match.time).toBe(starts[i % 16]);
+      expect(match.venueId).toBe('v');
+      expect(match.screenId).toBe('s');
+    });
+    expect(matches.at(-1)).toMatchObject({ date: '2026-11-20', time: '16:05' });
+    const result = allocatePending(schedule, 'AUTO_RANDOM', []);
+    expect(result.allocated).toEqual([]);
+    expect(result.pending).toEqual([]);
+    expect(result.schedule).toEqual(schedule);
+  });
+
+  it('uses earlier times across venues and screens before later times or days', async () => {
+    const schedule = await generate(
+      [1, 2].map((v) => ({
+        venueId: `v${v}`,
+        name: `Venue ${v}`,
+        screens: [1, 2].map((s) => ({
+          screenId: `v${v}s${s}`,
+          screenName: `Screen ${s}`,
+        })),
+      })),
+    );
+    expect(
+      schedule.structure.matches
+        .slice(0, 5)
+        .map((m) => [m.venueId, m.screenId, m.time]),
+    ).toEqual([
+      ['v1', 'v1s1', '09:00'],
+      ['v1', 'v1s2', '09:00'],
+      ['v2', 'v2s1', '09:00'],
+      ['v2', 'v2s2', '09:00'],
+      ['v1', 'v1s1', '09:25'],
+    ]);
+    expect(schedule.structure.matches[63].date).toBe('2026-11-16');
+    expect(schedule.structure.matches[64]).toMatchObject({
+      date: '2026-11-17',
+      time: '09:00',
+    });
+  });
+
+  it('uses only configured playing weekdays when rolling into the next day', async () => {
+    const schedule = await make(F.LEAGUE_AND_KNOCKOUT, 40, 10, 2);
+    // Use unresolved fixtures here to test the physical order independently of players.
+    schedule.structure.matches.forEach((m) => {
+      delete m.player1Id;
+      delete m.player2Id;
+    });
+    const result = allocatePending(schedule, 'AUTO_RANDOM', []);
+    expect(result.schedule.structure.matches[16].date).toBe('2026-11-23');
+  });
+
+  it('preserves an existing allocation while filling earlier free slots', async () => {
+    const schedule = await make(F.LEAGUE_AND_KNOCKOUT, 40, 10, 2);
+    const firstId = schedule.structure.matches[0].id;
+    const booked = allocateMatch(
+      schedule,
+      firstId,
+      'v',
+      's',
+      '2026-11-16',
+      '14:00',
+    ).updatedSchedule;
+    const result = allocatePending(booked, 'AUTO_RANDOM', []);
+    expect(result.schedule.structure.matches[0]).toMatchObject({
+      date: '2026-11-16',
+      time: '14:00',
+    });
+    expect(result.schedule.structure.matches[1]).toMatchObject({
+      date: '2026-11-16',
+      time: '09:00',
+    });
+    const ids = result.schedule.calendar.flatMap((v) =>
+      v.screens.flatMap((s) =>
+        s.days.flatMap((d) =>
+          d.timeslots.flatMap((t) =>
+            t.canonicalMatchId ? [t.canonicalMatchId] : [],
+          ),
+        ),
+      ),
+    );
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.filter((id) => id === firstId)).toHaveLength(1);
   });
 });

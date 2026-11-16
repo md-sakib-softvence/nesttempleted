@@ -756,7 +756,8 @@ export function allocatePending(
   const candidates = current.structure.matches.filter(
     (m) => !terminal(m) && active(m) && !m.date,
   );
-  if (mode === 'AUTO_RANDOM') candidates.sort(() => Math.random() - 0.5);
+  // Preserve canonical match order. AUTO_RANDOM is retained as the API mode
+  // name, but automatic placement now fills the earliest valid physical slots.
   for (const original of candidates) {
     const m = current.structure.matches.find(
       (match) => match.id === original.id,
@@ -779,8 +780,13 @@ export function allocatePending(
         ),
       ),
     );
-    if (mode === 'AUTO_RANDOM') slots.sort(() => Math.random() - 0.5);
-    else
+    if (mode === 'AUTO_RANDOM') {
+      // Sort across all venues/screens by playing date, then start time.
+      // Stable ties retain the configured venue/screen order.
+      slots.sort(
+        (a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time),
+      );
+    } else
       slots.sort(
         (a, b) =>
           Number(

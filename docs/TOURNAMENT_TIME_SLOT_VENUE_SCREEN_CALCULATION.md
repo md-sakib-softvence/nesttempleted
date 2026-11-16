@@ -1,6 +1,6 @@
 # Tournament: ম্যাচ, সময়, venue ও screen নির্বাচনের হিসাব
 
-এই নথি বর্তমান backend-এর আচরণ ব্যাখ্যা করে। উদাহরণের সময় ও venue সেটিংস বোঝানোর জন্য নেওয়া হয়েছে; এগুলো screenshot-এর সংরক্ষিত configuration বলে ধরে নেওয়া হয়নি। এখানে কোনো scheduling আচরণ পরিবর্তন করা হয়নি।
+এই নথি বর্তমান backend-এর আচরণ ব্যাখ্যা করে। উদাহরণের সময় ও venue সেটিংস বোঝানোর জন্য নেওয়া হয়েছে; এগুলো screenshot-এর সংরক্ষিত configuration বলে ধরে নেওয়া হয়নি। Chronological automatic allocation-এর বর্তমান আচরণ Section 7-এ দেওয়া আছে।
 
 ## ১. ম্যাচের সংখ্যা ও slot capacity আলাদা
 
@@ -232,64 +232,42 @@ D = 3
 
 তারিখের arithmetic UTC date-only হিসেবে করা হয়, host timezone/DST-এর পরিবর্তন এড়াতে। `HH:MM` slot নিজে timezone-aware timestamp নয়; venue timezone অনুযায়ী frontend ও operations-এ একই অর্থে ব্যবহার করতে হবে।
 
-## ৭. কোন venue, কোন screen: বর্তমান AUTO_RANDOM
+## ৭. কোন venue, কোন screen: chronological automatic allocation
 
-একটি physical slot-এর পরিচয়:
-
-```text
-slot = (venueId, screenId, date, time)
-```
-
-Calendar-এর গঠন:
+API compatibility-এর জন্য mode-এর নাম `AUTO_RANDOM` রাখা হয়েছে, কিন্তু বর্তমান automatic allocator আর match বা slot shuffle করে না। এটি নিচের algorithm অনুসরণ করে:
 
 ```text
-venue → screens → days → timeslots
+Candidates = canonical তালিকার unallocated, active, non-terminal matches
+
+প্রতিটি match-এর জন্য:
+    সব venue/screen থেকে বর্তমান খালি slot সংগ্রহ করো
+    date ascending, তারপর time ascending অনুযায়ী sort করো
+    একই date/time হলে configured venue/screen order রাখো
+    প্রথম allocation-valid slot-এ match বসাও
+    কোনো valid slot না পেলে pending রাখো
 ```
 
-Engine সব খালি slot সংগ্রহ করে:
+একটি slot-এর পরিচয় `(venueId, screenId, date, time)`। এক screen-এর ক্ষেত্রে প্রথম দিন earliest slot থেকে পূরণ হয়ে তারপর পরের playing day ব্যবহৃত হয়। একাধিক screen থাকলে একই সময়ের সব screen আগে ব্যবহার করা যায়, তারপর পরের সময় নেওয়া হয়। Player conflict থাকলে প্রথম খালি slot গ্রহণযোগ্য নাও হতে পারে; তখন পরের valid slot পরীক্ষা হয়।
 
-```text
-E = {সব slot যেখানে game নেই এবং canonicalMatchId নেই}
-```
+উদাহরণ: দুই venue-তে দুটি করে screen:
 
-তারপর:
-
-```text
-Candidates = unallocated, active, non-terminal matches
-Candidates = random order(Candidates)
-
-প্রতিটি match m-এর জন্য:
-    E = বর্তমান খালি slot-গুলো
-    E = random order(E)
-    E থেকে প্রথম allocation-valid slot বেছে নাও
-    ওই slot-এ match বসাও
-    কোনো slot গ্রহণযোগ্য না হলে pending রাখো
-```
-
-কোডে random order করা হয় `sort(() => Math.random() - 0.5)` দিয়ে। এটি seed-ভিত্তিক reproducible বা সমান সম্ভাবনার shuffle-এর নিশ্চয়তা দেয় না। Venue বা screen নির্ধারণে কোনো নির্দিষ্ট ভাগের সমীকরণ নেই।
-
-ধরি shuffled slot-এর প্রথম অংশ হলো:
-
-| পরীক্ষার ক্রম | Venue | Screen | Date | Time |
+| ম্যাচের ক্রম | Venue | Screen | Date | Time |
 |---:|---|---|---|---|
-| ১ | Venue 2 | Screen 3 | 2026-11-19 | 14:25 |
-| ২ | Main Arena | Screen 1 | 2026-11-18 | 09:00 |
-| ৩ | Main Arena | Screen 2 | 2026-11-18 | 09:25 |
+| ১ | Main Arena | Screen 1 | 2026-11-18 | 09:00 |
+| ২ | Main Arena | Screen 2 | 2026-11-18 | 09:00 |
+| ৩ | Venue 2 | Screen 1 | 2026-11-18 | 09:00 |
+| ৪ | Venue 2 | Screen 2 | 2026-11-18 | 09:00 |
+| ৫ | Main Arena | Screen 1 | 2026-11-18 | 09:25 |
 
-প্রথম slot valid হলে ম্যাচটি Venue 2 / Screen 3 / 19 November / 14:25-এ বসবে। Player conflict হলে পরেরটি পরীক্ষা করবে। এই তালিকা শুধু প্রক্রিয়া বোঝানোর উদাহরণ—আসল allocation নয়।
+এটি player conflict নেই ধরে উদাহরণ। আগে থেকে allocated ম্যাচ সরানো হয় না; তাই পুরোনো random schedule-এর Auto-Fill পুরোনো ম্যাচগুলো নতুন করে সাজাবে না। তৈরি করা calendar-এ valid slot না থাকলে `NO_VALID_CAPACITY` pending হবে; এই allocator নিজে বাড়তি তারিখ তৈরি করে না।
 
-অতএব বর্তমান AUTO_RANDOM-এ নিচের কোনোটিই নিশ্চয়তা নয়:
-
-- প্রথম দিনের earliest slot আগে পূরণ হবে।
-- Screen 1 ভরে তারপর Screen 2 ব্যবহার হবে।
-- সব venue বা screen সমান ম্যাচ পাবে।
-- Group Stage শেষ করে knockout শুরু হবে।
+Canonical match order ধরে সময় দেওয়া হচ্ছে; এটি feeder dependency অনুযায়ী earliest start constraint যোগ করার সমান নয়। Group completion, qualification এবং knockout feeder-এর chronological correctness-এর জন্য Section 10-এর পৃথক নিয়ম এখনও প্রয়োজন।
 
 ## ৮. অন্য scheduling mode-এর পার্থক্য
 
 | Mode | বর্তমান আচরণ |
 |---|---|
-| AUTO_RANDOM | Generate-এর সময় auto-allocation হতে পারে; match ও খালি slot-এর order random হয় |
+| AUTO_RANDOM | Generate/Auto-Fill-এ canonical match order ধরে earliest valid date/time slot নেওয়া হয়; নামটি compatibility-এর জন্য রাখা |
 | AUTO_HOME_VENUE | Generate-এর সময় grid রেখে দেয়; explicit allocation command-এ পরিচিত দুই player-এর home venue-কে priority দেয় |
 | MANUAL | খালি grid তৈরি হয়; admin explicit slot বেছে বরাদ্দ করে |
 | PLAYER_SELF | খালি grid ও booking policy তৈরি হয়; আলাদা self-scheduling flow-তে booking হয় |
