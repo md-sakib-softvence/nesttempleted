@@ -311,3 +311,104 @@ describe('Backend handoff commands and frontend projections', () => {
     expect(JSON.stringify(schedule)).toBe(before);
   });
 });
+
+describe('saving automatic scheduling mode', () => {
+  async function editableFixture() {
+    const result = await fixture();
+    const { db, state } = result;
+    Object.assign(state(), {
+      capacity: 40,
+      entryFee: 1500,
+      currency: 'NGN',
+      registrationOpen: false,
+    });
+    db.venue = { findMany: jest.fn(async () => config.venues) };
+    db.$queryRaw = jest.fn(async () => []);
+    db.ticket = { count: jest.fn(async () => 0) };
+    db.ticketTier = {
+      findFirst: jest.fn(async () => null),
+      findMany: jest.fn(async () => []),
+    };
+    db.tournament.update = jest.fn(async ({ where, data }) => {
+      if (where.version !== state().version) throw new Error('stale version');
+      const version = state().version + 1;
+      Object.assign(state(), data, { version });
+      return clone(state());
+    });
+    db.$transaction = jest.fn(async (fn) => {
+      const before = clone(state());
+      try {
+        return await fn(db);
+      } catch (e) {
+        Object.keys(state()).forEach((key) => delete state()[key]);
+        Object.assign(state(), before);
+        throw e;
+      }
+    });
+    return {
+      ...result,
+      core: new TournamentCoreService(db, new TournamentScheduleService()),
+    };
+  }
+
+  it('allocates existing manual fixtures when AUTO_RANDOM is saved', async () => {
+    const { core, state } = await editableFixture();
+    const ids = state().schedule.structure.matches.map((m) => m.id);
+    const result: any = await core.updateTournament('t', {
+      schedulingMode: SchedulingMode.AUTO_RANDOM,
+    });
+    expect(result.schedulingMode).toBe(SchedulingMode.AUTO_RANDOM);
+    expect(state().schedule.structure.matches.map((m) => m.id)).toEqual(ids);
+    expect(
+      state().schedule.structure.matches.every(
+        (m) => m.date && m.time && m.screenId,
+      ),
+    ).toBe(true);
+    expect(state().schedule.structure.matches[0].time).toBe('09:00');
+  });
+
+  it('fills an empty grid even when AUTO_RANDOM was already stored', async () => {
+    const { core, state } = await editableFixture();
+    state().schedulingMode = SchedulingMode.AUTO_RANDOM;
+    await core.updateTournament('t', {
+      schedulingMode: SchedulingMode.AUTO_RANDOM,
+    });
+    expect(state().schedule.structure.matches.every((m) => m.date)).toBe(true);
+    const allocated = clone(state().schedule);
+    await core.updateTournament('t', {
+      schedulingMode: SchedulingMode.AUTO_RANDOM,
+    });
+    expect(state().schedule).toEqual(allocated);
+  });
+
+  it('keeps manual saves unallocated', async () => {
+    const { core, state } = await editableFixture();
+    await core.updateTournament('t', { schedulingMode: SchedulingMode.MANUAL });
+    expect(state().schedule.structure.matches.every((m) => !m.date)).toBe(true);
+  });
+
+  it('does not enable automatic mode when the schedule is missing', async () => {
+    const { core, state, db } = await editableFixture();
+    state().schedule = null;
+    await expect(
+      core.updateTournament('t', {
+        schedulingMode: SchedulingMode.AUTO_RANDOM,
+      }),
+    ).rejects.toThrow('Generate a tournament schedule');
+    expect(db.tournament.update).not.toHaveBeenCalled();
+  });
+
+  it('rolls back mode and allocation together if a later write fails', async () => {
+    const { core, state, db } = await editableFixture();
+    const before = clone(state());
+    db.ticketTier.findMany.mockRejectedValueOnce(
+      new Error('inventory read failed'),
+    );
+    await expect(
+      core.updateTournament('t', {
+        schedulingMode: SchedulingMode.AUTO_RANDOM,
+      }),
+    ).rejects.toThrow('inventory read failed');
+    expect(state()).toEqual(before);
+  });
+});
