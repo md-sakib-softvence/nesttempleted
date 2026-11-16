@@ -1,3 +1,4 @@
+import { NotificationGateway } from '../../notification/notification.gateway';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PlayerService } from './player.service';
 import { PlayerDocumentService } from './player-document.service';
@@ -72,6 +73,7 @@ describe('PlayerService', () => {
         findMany: jest.fn(),
         create: jest.fn(),
       },
+      playerActivityLog: { create: jest.fn() },
       activity: {
         create: jest.fn(),
       },
@@ -85,6 +87,7 @@ describe('PlayerService', () => {
         PlayerPassService,
         PlayerWalletService,
         { provide: PrismaService, useValue: prisma },
+        { provide: NotificationGateway, useValue: { sendToUser: jest.fn() } },
         {
           provide: JwtService,
           useValue: { signAsync: jest.fn(), verifyAsync: jest.fn() },

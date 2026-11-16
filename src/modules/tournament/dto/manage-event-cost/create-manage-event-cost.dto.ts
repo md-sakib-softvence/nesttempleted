@@ -53,4 +53,3 @@ export class CreateManageEventCostDto {
   @Min(0, { message: 'Amount must be a positive number' })
   amount: number;
 }
-

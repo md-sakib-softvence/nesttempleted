@@ -73,7 +73,7 @@ export class MatchIncidentService {
   private context(tournament: any, matchId: string) {
     if (!tournament || tournament.isDeleted)
       throw new NotFoundException('Tournament not found');
-    const schedule = (tournament.schedule as any) || {};
+    const schedule = tournament.schedule || {};
     const matches: any[] =
       schedule.structure?.matches || schedule.matches || [];
     const match = matches.find(

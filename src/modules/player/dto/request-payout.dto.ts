@@ -22,12 +22,17 @@ export class RequestPayoutDto {
   })
   bankAccount: string;
 
-  @ApiProperty({ description: 'Destination bank or supported payment institution' })
+  @ApiProperty({
+    description: 'Destination bank or supported payment institution',
+  })
   @IsString()
   @IsNotEmpty()
   bankName: string;
 
-  @ApiProperty({ description: 'Account holder name supplied by the player for admin verification' })
+  @ApiProperty({
+    description:
+      'Account holder name supplied by the player for admin verification',
+  })
   @IsString()
   @IsNotEmpty()
   accountName: string;
@@ -49,5 +54,4 @@ export class RequestPayoutDto {
   @IsString()
   @IsOptional()
   bankCode?: string;
-
 }

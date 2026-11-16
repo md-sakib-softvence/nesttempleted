@@ -73,9 +73,13 @@ describe('AdminMatchController & DisputeController (Unit & Success Message Tests
   });
 
   it('disputeMatch should return success: true and proper message', async () => {
-    const res = await matchController.disputeMatch('m1', {
-      reason: 'Controller disconnect',
-    }, { user: { userId: 'admin-1', role: 'ADMIN' } });
+    const res = await matchController.disputeMatch(
+      'm1',
+      {
+        reason: 'Controller disconnect',
+      },
+      { user: { userId: 'admin-1', role: 'ADMIN' } },
+    );
     expect(res.success).toBe(true);
     expect(res.message).toBe(
       'Match marked under review and dispute logged successfully',
@@ -102,10 +106,14 @@ describe('AdminMatchController & DisputeController (Unit & Success Message Tests
   });
 
   it('resolveDispute should return success: true and proper message', async () => {
-    const res = await disputeController.resolveDispute('disp-01', {
-      resolution: DisputeStatus.RESOLVED,
-      reason: 'Footage verified',
-    }, { user: { userId: 'admin-1', role: 'ADMIN' } });
+    const res = await disputeController.resolveDispute(
+      'disp-01',
+      {
+        resolution: DisputeStatus.RESOLVED,
+        reason: 'Footage verified',
+      },
+      { user: { userId: 'admin-1', role: 'ADMIN' } },
+    );
     expect(res.success).toBe(true);
     expect(res.message).toBe('Match dispute resolved successfully');
   });

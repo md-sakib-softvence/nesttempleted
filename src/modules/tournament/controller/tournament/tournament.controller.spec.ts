@@ -194,7 +194,7 @@ describe('TournamentController (Success Message & Spec API Verification)', () =>
       {
         banner: 'banner-image-key.png',
         tournamentLogo: 'logo-image-key.png',
-      } as any,
+      },
       {},
     );
     expect(res.success).toBe(true);

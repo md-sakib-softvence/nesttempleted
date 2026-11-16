@@ -58,7 +58,9 @@ export class FanController {
 
   @Get('football-club-catalog')
   @Public()
-  @ApiOperation({ summary: 'Get the domestic football country, competition, and club catalog' })
+  @ApiOperation({
+    summary: 'Get the domestic football country, competition, and club catalog',
+  })
   async getFootballClubCatalog() {
     return sendResponse({
       message: 'Football club catalog retrieved successfully',
@@ -68,28 +70,43 @@ export class FanController {
 
   @Post('coins/requests')
   @Roles(Role.FAN, 'fan')
-  @ApiOperation({ summary: 'Request a free coin refill after the fan balance reaches zero' })
+  @ApiOperation({
+    summary: 'Request a free coin refill after the fan balance reaches zero',
+  })
   async createFanCoinRefillRequest(
     @Req() req: Request & { user: { userId: string } },
     @Body() dto: CreateFanCoinRefillRequestDto,
   ) {
-    const data = await this.fanCoinRefillService.createRequest(req.user.userId, dto);
+    const data = await this.fanCoinRefillService.createRequest(
+      req.user.userId,
+      dto,
+    );
     return sendResponse({ message: 'Coin refill request sent to admin', data });
   }
 
   @Get('coins/requests')
   @Roles(Role.FAN, 'fan')
-  @ApiOperation({ summary: 'Get the authenticated fan coin balance and refill request history' })
+  @ApiOperation({
+    summary:
+      'Get the authenticated fan coin balance and refill request history',
+  })
   async getMyFanCoinRefillRequests(
     @Req() req: Request & { user: { userId: string } },
   ) {
-    const data = await this.fanCoinRefillService.listMyRequests(req.user.userId);
-    return sendResponse({ message: 'Your coin refill requests retrieved', data });
+    const data = await this.fanCoinRefillService.listMyRequests(
+      req.user.userId,
+    );
+    return sendResponse({
+      message: 'Your coin refill requests retrieved',
+      data,
+    });
   }
 
   @Get('admin/coins/requests')
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
-  @ApiOperation({ summary: 'List fan free coin refill requests for admin review' })
+  @ApiOperation({
+    summary: 'List fan free coin refill requests for admin review',
+  })
   @ApiQuery({
     name: 'status',
     required: false,
@@ -116,15 +133,25 @@ export class FanController {
 
   @Patch('admin/coins/requests/:requestId/review')
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
-  @ApiOperation({ summary: 'Approve and grant free coins or reject a fan refill request' })
+  @ApiOperation({
+    summary: 'Approve and grant free coins or reject a fan refill request',
+  })
   async reviewFanCoinRefillRequest(
     @Param('requestId') requestId: string,
     @Body() dto: ReviewFanCoinRefillRequestDto,
-    @Req() req: Request & { user: { userId: string; role: string; email?: string } },
+    @Req()
+    req: Request & { user: { userId: string; role: string; email?: string } },
   ) {
-    const data = await this.fanCoinRefillService.reviewRequest(requestId, dto, req.user);
+    const data = await this.fanCoinRefillService.reviewRequest(
+      requestId,
+      dto,
+      req.user,
+    );
     return sendResponse({
-      message: dto.decision === 'APPROVED' ? 'Coin refill request approved' : 'Coin refill request rejected',
+      message:
+        dto.decision === 'APPROVED'
+          ? 'Coin refill request approved'
+          : 'Coin refill request rejected',
       data,
     });
   }
@@ -139,12 +166,13 @@ export class FanController {
     @Req() req: Request & { user: { userId: string } },
     @Body() dto: CreateFanTournamentApplicationDto,
   ) {
-    const data = await this.fanPlayerRegistrationService.createTournamentApplication(
-      req.user.userId,
-      tournamentId,
-      dto,
-      typeof req.headers.origin === 'string' ? req.headers.origin : undefined,
-    );
+    const data =
+      await this.fanPlayerRegistrationService.createTournamentApplication(
+        req.user.userId,
+        tournamentId,
+        dto,
+        typeof req.headers.origin === 'string' ? req.headers.origin : undefined,
+      );
     return sendResponse({
       message: data.requiresPayment
         ? 'Tournament application created; payment is pending'
@@ -155,15 +183,18 @@ export class FanController {
 
   @Get('tournaments/:id/registrations/me')
   @Roles(Role.FAN, 'fan')
-  @ApiOperation({ summary: 'Resume the authenticated fan tournament application' })
+  @ApiOperation({
+    summary: 'Resume the authenticated fan tournament application',
+  })
   async getMyTournamentApplication(
     @Param('id') tournamentId: string,
     @Req() req: Request & { user: { userId: string } },
   ) {
-    const data = await this.fanPlayerRegistrationService.getMyTournamentApplication(
-      req.user.userId,
-      tournamentId,
-    );
+    const data =
+      await this.fanPlayerRegistrationService.getMyTournamentApplication(
+        req.user.userId,
+        tournamentId,
+      );
     return sendResponse({ message: 'Tournament application retrieved', data });
   }
 
@@ -177,10 +208,11 @@ export class FanController {
     @Query('txRef') txRef: string,
     @Req() req: Request & { user: { userId: string } },
   ) {
-    const data = await this.fanPlayerRegistrationService.getTournamentForPaymentReturn(
-      req.user.userId,
-      txRef,
-    );
+    const data =
+      await this.fanPlayerRegistrationService.getTournamentForPaymentReturn(
+        req.user.userId,
+        txRef,
+      );
     return sendResponse({
       message: 'Tournament payment return context retrieved',
       data,
@@ -192,9 +224,10 @@ export class FanController {
   @ApiOperation({ summary: 'Check whether a player Gamer Tag is available' })
   @ApiQuery({ name: 'gamerTag', required: true, type: String })
   async checkPlayerGamerTagAvailability(@Query('gamerTag') gamerTag: string) {
-    const data = await this.fanPlayerRegistrationService.checkGamerTagAvailability(
-      gamerTag,
-    );
+    const data =
+      await this.fanPlayerRegistrationService.checkGamerTagAvailability(
+        gamerTag,
+      );
     return sendResponse({ message: 'Gamer Tag availability checked', data });
   }
 
@@ -209,19 +242,21 @@ export class FanController {
     @Req() req: Request & { user: { userId: string } },
     @Body() dto: VerifyFanTournamentPaymentDto,
   ) {
-    const data = await this.fanPlayerRegistrationService.verifyApplicationPayment(
-      req.user.userId,
-      tournamentId,
-      applicationId,
-      dto.txRef,
-    );
+    const data =
+      await this.fanPlayerRegistrationService.verifyApplicationPayment(
+        req.user.userId,
+        tournamentId,
+        applicationId,
+        dto.txRef,
+      );
     return sendResponse({ message: 'Tournament payment verified', data });
   }
 
   @Post('tournaments/:id/registrations/:applicationId/complete')
   @Roles(Role.FAN, 'fan')
   @ApiOperation({
-    summary: 'Create the player account and paid tournament registration after payment',
+    summary:
+      'Create the player account and paid tournament registration after payment',
   })
   async completeFanTournamentApplication(
     @Param('id') tournamentId: string,
@@ -243,7 +278,9 @@ export class FanController {
 
   @Public()
   @Post('register')
-  @ApiOperation({ summary: 'Register a new Fan and award the signup coin bonus' })
+  @ApiOperation({
+    summary: 'Register a new Fan and award the signup coin bonus',
+  })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('profileImage'))
   async registerFan(

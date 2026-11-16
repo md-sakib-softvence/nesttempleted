@@ -54,6 +54,7 @@ model TicketTier {
   tournamentId String
   tournament   Tournament @relation(fields: [tournamentId], references: [tournamentId], onDelete: Cascade)
 
+  tournamentManaged Boolean @default(false)
   name         String // e.g. "Day Pass", "VIP Pass", "Season Pass"
   audienceRole TicketAudienceRole @default(FAN)
   type         TicketType         @default(DAY_PASS)

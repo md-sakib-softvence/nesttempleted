@@ -77,10 +77,10 @@ export const fanLoginUtil = async (
 
   return {
     ...formatAuthResponse(accessToken, refreshToken, {
-    userId: fan.fanId,
-    email: fan.email,
-    name: fan.firstName,
-    role: loginDto.role,
+      userId: fan.fanId,
+      email: fan.email,
+      name: fan.firstName,
+      role: loginDto.role,
     }),
     availableRoles: linkedPlayer ? ['fan', 'player'] : ['fan'],
   };

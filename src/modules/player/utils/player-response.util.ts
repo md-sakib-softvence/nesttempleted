@@ -107,13 +107,14 @@ export const formatPlayerResponse = async (player: any) => {
 
   // Compute isVerified compliance badge flag
   const isVerified = formattedDocs.some((d) => d.status === 'Verified');
-  const kycStatus = formattedDocs.length === 0
-    ? 'NOT_SUBMITTED'
-    : formattedDocs.some((doc) => doc.status === 'Rejected')
-      ? 'REJECTED'
-      : formattedDocs.every((doc) => doc.status === 'Verified')
-        ? 'VERIFIED'
-        : 'PENDING_REVIEW';
+  const kycStatus =
+    formattedDocs.length === 0
+      ? 'NOT_SUBMITTED'
+      : formattedDocs.some((doc) => doc.status === 'Rejected')
+        ? 'REJECTED'
+        : formattedDocs.every((doc) => doc.status === 'Verified')
+          ? 'VERIFIED'
+          : 'PENDING_REVIEW';
   const accountVerificationStatus = isVerified ? 'VERIFIED' : kycStatus;
 
   // Format full name
@@ -126,7 +127,6 @@ export const formatPlayerResponse = async (player: any) => {
       : String(player.dateOfBirth).split('T')[0]
     : null;
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const {
     password,
     photoModerationNotes,
@@ -142,13 +142,21 @@ export const formatPlayerResponse = async (player: any) => {
   return {
     ...safePlayerData,
     photoStatus:
-      ({ PENDING: 'Pending', APPROVED: 'Approved', REJECTED: 'Rejected' } as Record<string, string>)[
-        player.photoStatus
-      ] || 'Approved',
+      (
+        {
+          PENDING: 'Pending',
+          APPROVED: 'Approved',
+          REJECTED: 'Rejected',
+        } as Record<string, string>
+      )[player.photoStatus] || 'Approved',
     gamertagStatus:
-      ({ PENDING: 'Pending', APPROVED: 'Approved', FLAGGED: 'Flagged' } as Record<string, string>)[
-        player.gamertagStatus
-      ] || 'Approved',
+      (
+        {
+          PENDING: 'Pending',
+          APPROVED: 'Approved',
+          FLAGGED: 'Flagged',
+        } as Record<string, string>
+      )[player.gamertagStatus] || 'Approved',
     // Frontend Contract Properties
     id: player.playerId,
     fullName,
@@ -171,7 +179,8 @@ export const formatPlayerResponse = async (player: any) => {
     ...(Array.isArray(tournamentRegistrations)
       ? {
           tournamentsEntered: tournamentRegistrations.filter(
-            (registration: { status: string }) => registration.status !== 'CANCELLED',
+            (registration: { status: string }) =>
+              registration.status !== 'CANCELLED',
           ).length,
         }
       : {}),

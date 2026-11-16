@@ -23,7 +23,10 @@ import {
   ApiBearerAuth,
   ApiBody,
 } from '@nestjs/swagger';
-import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
+import {
+  FileFieldsInterceptor,
+  FileInterceptor,
+} from '@nestjs/platform-express';
 import { UploadedFile } from '@nestjs/common';
 import { PlayerService } from '../service/player.service';
 import { AuthService } from '../../auth/service/auth.service';
@@ -156,14 +159,22 @@ export class PlayerController {
   }
 
   @Get('profile/activity')
-  @ApiOperation({ summary: 'Get account activity history for the signed-in player' })
+  @ApiOperation({
+    summary: 'Get account activity history for the signed-in player',
+  })
   @Roles('player', Role.PLAYER)
-  async getMyPlayerActivity(@Req() req: RequestWithUser, @Query('limit') limit?: string) {
+  async getMyPlayerActivity(
+    @Req() req: RequestWithUser,
+    @Query('limit') limit?: string,
+  ) {
     const data = await this.playerService.getPlayerActivity(
       req.user.userId,
       Number(limit) || 50,
     );
-    return sendResponse({ message: 'Account activity retrieved successfully', data });
+    return sendResponse({
+      message: 'Account activity retrieved successfully',
+      data,
+    });
   }
 
   @Post('profile/documents')
@@ -179,7 +190,12 @@ export class PlayerController {
         document: { type: 'string', format: 'binary' },
         type: {
           type: 'string',
-          enum: ['National ID', 'Passport', "Driver's License", 'Government ID'],
+          enum: [
+            'National ID',
+            'Passport',
+            "Driver's License",
+            'Government ID',
+          ],
         },
       },
     },
@@ -195,7 +211,8 @@ export class PlayerController {
     @UploadedFile() file: Express.Multer.File | undefined,
     @Body('type') type = 'Government ID',
   ) {
-    if (!file) throw new BadRequestException('Choose an ID image or PDF to upload.');
+    if (!file)
+      throw new BadRequestException('Choose an ID image or PDF to upload.');
 
     const extension = file.originalname.split('.').pop()?.toLowerCase();
     const allowedTypes: Record<string, string> = {
@@ -441,7 +458,9 @@ export class PlayerController {
   }
 
   @Patch(':playerId/moderation/photo')
-  @ApiOperation({ summary: 'Approve or reject a player profile photo (Admin only)' })
+  @ApiOperation({
+    summary: 'Approve or reject a player profile photo (Admin only)',
+  })
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
   async moderatePlayerPhoto(
     @Param('playerId') playerId: string,
@@ -481,7 +500,9 @@ export class PlayerController {
   }
 
   @Patch(':playerId/discipline')
-  @ApiOperation({ summary: 'Update player status and private discipline notes (Admin only)' })
+  @ApiOperation({
+    summary: 'Update player status and private discipline notes (Admin only)',
+  })
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
   async updatePlayerDiscipline(
     @Param('playerId') playerId: string,
@@ -500,7 +521,9 @@ export class PlayerController {
   }
 
   @Get(':playerId/discipline')
-  @ApiOperation({ summary: 'Get private player discipline information (Admin only)' })
+  @ApiOperation({
+    summary: 'Get private player discipline information (Admin only)',
+  })
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
   async getPlayerDiscipline(@Param('playerId') playerId: string) {
     const data = await this.playerService.getDiscipline(playerId);
@@ -511,7 +534,9 @@ export class PlayerController {
   }
 
   @Get(':playerId/activity')
-  @ApiOperation({ summary: 'Get account activity history for a player (Admin only)' })
+  @ApiOperation({
+    summary: 'Get account activity history for a player (Admin only)',
+  })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
   async getPlayerActivity(
@@ -522,11 +547,16 @@ export class PlayerController {
       playerId,
       Number(limit) || 50,
     );
-    return sendResponse({ message: 'Player activity retrieved successfully', data });
+    return sendResponse({
+      message: 'Player activity retrieved successfully',
+      data,
+    });
   }
 
   @Get(':playerId/financials')
-  @ApiOperation({ summary: 'Get admin financial summary and ledger for a player' })
+  @ApiOperation({
+    summary: 'Get admin financial summary and ledger for a player',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
@@ -592,7 +622,8 @@ export class PlayerController {
   @ApiOperation({ summary: 'Regenerate all tournament QR codes for a player' })
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
   async regenerateAdminPlayerQrCodes(@Param('playerId') playerId: string) {
-    const data = await this.playerService.regenerateAdminPlayerQrCodes(playerId);
+    const data =
+      await this.playerService.regenerateAdminPlayerQrCodes(playerId);
     return sendResponse({
       message: 'Player tournament QR codes regenerated successfully',
       data,
@@ -661,7 +692,11 @@ export class PlayerController {
   async getAllPlayer(@Query() query: any) {
     const { data, meta } = await this.playerService.getAllPlayer(query);
     const publicPlayers = data.map((player: any) => {
-      const { documents: _documents, document: _document, ...safePlayer } = player;
+      const {
+        documents: _documents,
+        document: _document,
+        ...safePlayer
+      } = player;
       return safePlayer;
     });
     return sendResponse({

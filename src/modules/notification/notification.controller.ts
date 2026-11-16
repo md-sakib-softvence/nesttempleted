@@ -66,8 +66,13 @@ export class NotificationController {
     Role.AMBASSADOR,
     'SECURITY',
   )
-  @ApiOperation({ summary: 'Mark all notifications for the authenticated fan as read' })
-  @ApiResponse({ status: 200, description: 'All unread fan notifications were marked as read.' })
+  @ApiOperation({
+    summary: 'Mark all notifications for the authenticated fan as read',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'All unread fan notifications were marked as read.',
+  })
   markAllMineAsRead(@Req() req: Request & { user: { userId: string } }) {
     return this.notificationService.markAllAsReadForUser(req.user.userId);
   }
@@ -83,8 +88,13 @@ export class NotificationController {
     Role.AMBASSADOR,
     'SECURITY',
   )
-  @ApiOperation({ summary: 'Mark one notification for the authenticated fan as read' })
-  @ApiResponse({ status: 200, description: 'The fan notification was marked as read.' })
+  @ApiOperation({
+    summary: 'Mark one notification for the authenticated fan as read',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'The fan notification was marked as read.',
+  })
   markMineAsRead(
     @Param('id') id: string,
     @Req() req: Request & { user: { userId: string } },

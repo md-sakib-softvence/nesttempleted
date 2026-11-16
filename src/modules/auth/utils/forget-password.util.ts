@@ -22,18 +22,29 @@ export const forgetPasswordUtil = async (
   const email = dto.email.trim().toLowerCase();
   const [fan, player] = await Promise.all([
     prisma.fan.findFirst({
-      where: { email: { equals: email, mode: 'insensitive' }, isDeleted: false, status: 'ACTIVE' },
+      where: {
+        email: { equals: email, mode: 'insensitive' },
+        isDeleted: false,
+        status: 'ACTIVE',
+      },
       select: { fanId: true },
     }),
     prisma.player.findFirst({
-      where: { email: { equals: email, mode: 'insensitive' }, isDeleted: false, status: 'ACTIVE' },
+      where: {
+        email: { equals: email, mode: 'insensitive' },
+        isDeleted: false,
+        status: 'ACTIVE',
+      },
       select: { playerId: true },
     }),
   ]);
 
   // Return the same response for unknown addresses to avoid account enumeration.
   if (!fan && !player) {
-    return { message: 'If an active Fan or Player account uses this email, a reset code has been sent.' };
+    return {
+      message:
+        'If an active Fan or Player account uses this email, a reset code has been sent.',
+    };
   }
 
   const resendAfter = new Date(Date.now() - 60_000);
@@ -42,7 +53,10 @@ export const forgetPasswordUtil = async (
     select: { passwordResetCodeId: true },
   });
   if (recentCode) {
-    return { message: 'If an active Fan or Player account uses this email, a reset code has been sent.' };
+    return {
+      message:
+        'If an active Fan or Player account uses this email, a reset code has been sent.',
+    };
   }
 
   const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
@@ -68,11 +82,14 @@ export const forgetPasswordUtil = async (
     new Logger('PasswordReset').error(
       `Could not send password reset code: ${error instanceof Error ? error.message : String(error)}`,
     );
-    throw new InternalServerErrorException('Could not send the reset code. Please try again later.');
+    throw new InternalServerErrorException(
+      'Could not send the reset code. Please try again later.',
+    );
   }
 
   return {
-    message: 'If an active Fan or Player account uses this email, a reset code has been sent.',
+    message:
+      'If an active Fan or Player account uses this email, a reset code has been sent.',
     expiresInMinutes: RESET_CODE_TTL_MINUTES,
   };
 };
@@ -82,7 +99,9 @@ export const resetPasswordWithCodeUtil = async (
   prisma: PrismaService,
 ) => {
   if (dto.newPassword !== dto.confirmPassword) {
-    throw new BadRequestException('New password and confirmation password do not match.');
+    throw new BadRequestException(
+      'New password and confirmation password do not match.',
+    );
   }
 
   const email = dto.email.trim().toLowerCase();
@@ -103,7 +122,9 @@ export const resetPasswordWithCodeUtil = async (
         data: { attempts: { increment: 1 } },
       });
     }
-    throw new UnauthorizedException('The reset code is invalid or expired. Request a new code and try again.');
+    throw new UnauthorizedException(
+      'The reset code is invalid or expired. Request a new code and try again.',
+    );
   }
 
   const hashedPassword = await bcrypt.hash(
@@ -123,7 +144,9 @@ export const resetPasswordWithCodeUtil = async (
       data: { consumedAt: now },
     });
     if (consumed.count !== 1) {
-      throw new UnauthorizedException('The reset code is invalid, expired, or already used.');
+      throw new UnauthorizedException(
+        'The reset code is invalid, expired, or already used.',
+      );
     }
 
     const accountWhere = {
@@ -131,14 +154,25 @@ export const resetPasswordWithCodeUtil = async (
       isDeleted: false,
     };
     const [fanUpdate, playerUpdate] = await Promise.all([
-      tx.fan.updateMany({ where: accountWhere, data: { password: hashedPassword } }),
-      tx.player.updateMany({ where: accountWhere, data: { password: hashedPassword } }),
+      tx.fan.updateMany({
+        where: accountWhere,
+        data: { password: hashedPassword },
+      }),
+      tx.player.updateMany({
+        where: accountWhere,
+        data: { password: hashedPassword },
+      }),
     ]);
 
     if (fanUpdate.count + playerUpdate.count === 0) {
-      throw new UnauthorizedException('No active Fan or Player account was found for this email.');
+      throw new UnauthorizedException(
+        'No active Fan or Player account was found for this email.',
+      );
     }
   });
 
-  return { message: 'Password reset successfully for all linked Fan and Player accounts.' };
+  return {
+    message:
+      'Password reset successfully for all linked Fan and Player accounts.',
+  };
 };

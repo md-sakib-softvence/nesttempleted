@@ -96,7 +96,9 @@ export class PlayerService {
     const normalizedGamerTag = (gamerTag || gamertag)?.trim() || undefined;
     if (normalizedGamerTag) {
       const tagExists = await this.prisma.player.findFirst({
-        where: { gamerTag: { equals: normalizedGamerTag, mode: 'insensitive' } },
+        where: {
+          gamerTag: { equals: normalizedGamerTag, mode: 'insensitive' },
+        },
       });
       if (tagExists) {
         throw new ConflictException('This Gamer Tag is already in use');
@@ -124,64 +126,64 @@ export class PlayerService {
     let newPlayer;
     try {
       newPlayer = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.player.create({
-        data: {
-          ...rest,
-          password: hashedPassword,
-          showPlayerId,
-          gamerTag: normalizedGamerTag,
-          profilePicture: profilePictureKey || null,
-          photoStatus: profilePictureKey
-            ? PhotoModerationStatus.PENDING
-            : PhotoModerationStatus.APPROVED,
-          gamertagStatus: normalizedGamerTag
-            ? GamerTagModerationStatus.PENDING
-            : GamerTagModerationStatus.APPROVED,
-          dateOfBirth: parsedDob || null,
-          document: initialDocs,
-        },
-      });
-
-      await tx.playerActivityLog.create({
-        data: {
-          playerId: created.playerId,
-          eventType: 'ACCOUNT_CREATED',
-          title: 'Player account created',
-          description: 'Your player account was created.',
-          actorId: created.playerId,
-          actorRole: 'SYSTEM',
-          toValue: 'ACTIVE',
-        },
-      });
-
-      if (initialDocs.length > 0) {
-        await tx.playerDocument.createMany({
-          data: initialDocs.map((url) => ({
-            playerId: created.playerId,
-            type: 'Government ID',
-            url,
-            status: DocumentStatus.PENDING,
-          })),
+        const created = await tx.player.create({
+          data: {
+            ...rest,
+            password: hashedPassword,
+            showPlayerId,
+            gamerTag: normalizedGamerTag,
+            profilePicture: profilePictureKey || null,
+            photoStatus: profilePictureKey
+              ? PhotoModerationStatus.PENDING
+              : PhotoModerationStatus.APPROVED,
+            gamertagStatus: normalizedGamerTag
+              ? GamerTagModerationStatus.PENDING
+              : GamerTagModerationStatus.APPROVED,
+            dateOfBirth: parsedDob || null,
+            document: initialDocs,
+          },
         });
-      }
 
-      // Initialize compliant wallet ledger account atomically
-      await tx.wallet.create({
-        data: {
-          playerId: created.playerId,
-          userId: created.playerId,
-          userRole: 'PLAYER',
-          cashBalance: 0.0,
-          creditBalance: 0.0,
-          escrowBalance: 0.0,
-          currency: 'NGN',
-        },
-      });
+        await tx.playerActivityLog.create({
+          data: {
+            playerId: created.playerId,
+            eventType: 'ACCOUNT_CREATED',
+            title: 'Player account created',
+            description: 'Your player account was created.',
+            actorId: created.playerId,
+            actorRole: 'SYSTEM',
+            toValue: 'ACTIVE',
+          },
+        });
 
-      return tx.player.findUnique({
-        where: { playerId: created.playerId },
-        include: { documents: true },
-      });
+        if (initialDocs.length > 0) {
+          await tx.playerDocument.createMany({
+            data: initialDocs.map((url) => ({
+              playerId: created.playerId,
+              type: 'Government ID',
+              url,
+              status: DocumentStatus.PENDING,
+            })),
+          });
+        }
+
+        // Initialize compliant wallet ledger account atomically
+        await tx.wallet.create({
+          data: {
+            playerId: created.playerId,
+            userId: created.playerId,
+            userRole: 'PLAYER',
+            cashBalance: 0.0,
+            creditBalance: 0.0,
+            escrowBalance: 0.0,
+            currency: 'NGN',
+          },
+        });
+
+        return tx.player.findUnique({
+          where: { playerId: created.playerId },
+          include: { documents: true },
+        });
       });
     } catch (error) {
       if (
@@ -332,11 +334,13 @@ export class PlayerService {
     }
 
     // GamerTag Uniqueness Check
-    const requestedGamerTag = updatePlayerDto.gamerTag || updatePlayerDto.gamertag;
+    const requestedGamerTag =
+      updatePlayerDto.gamerTag || updatePlayerDto.gamertag;
     const targetGamerTag = requestedGamerTag?.trim();
     if (
       targetGamerTag &&
-      targetGamerTag.toLowerCase() !== existingPlayer.gamerTag?.trim().toLowerCase()
+      targetGamerTag.toLowerCase() !==
+        existingPlayer.gamerTag?.trim().toLowerCase()
     ) {
       const gamerTagTaken = await this.prisma.player.findFirst({
         where: {
@@ -424,84 +428,97 @@ export class PlayerService {
     let updatedPlayerRecord;
     try {
       updatedPlayerRecord = await this.prisma.$transaction(async (tx) => {
-      const { updatedLegacyDocumentList, documentsToDeleteFromS3 } =
-        await this.documentService.reconcileDocumentsInTx(
-          tx,
-          existingPlayer,
-          updatePlayerDto,
-          newDocumentKeys,
-        );
+        const { updatedLegacyDocumentList, documentsToDeleteFromS3 } =
+          await this.documentService.reconcileDocumentsInTx(
+            tx,
+            existingPlayer,
+            updatePlayerDto,
+            newDocumentKeys,
+          );
 
-      docsToDeleteFromS3 = documentsToDeleteFromS3;
+        docsToDeleteFromS3 = documentsToDeleteFromS3;
 
-      const changedFields: string[] = [];
-      if (resolvedFirstName && resolvedFirstName !== existingPlayer.firstName) changedFields.push('first name');
-      if (resolvedLastName && resolvedLastName !== existingPlayer.lastName) changedFields.push('last name');
-      if (targetUsername && targetUsername !== existingPlayer.username) changedFields.push('username');
-      if (targetGamerTag && targetGamerTag !== existingPlayer.gamerTag) changedFields.push('gamer tag');
-      if (targetPhoneNumber && targetPhoneNumber !== existingPlayer.phoneNumber) changedFields.push('phone number');
-      if (parsedDob && parsedDob.getTime() !== existingPlayer.dateOfBirth?.getTime()) changedFields.push('date of birth');
-      if (newProfilePictureKey || updatePlayerDto.deleteProfilePicture) changedFields.push('profile photo');
+        const changedFields: string[] = [];
+        if (resolvedFirstName && resolvedFirstName !== existingPlayer.firstName)
+          changedFields.push('first name');
+        if (resolvedLastName && resolvedLastName !== existingPlayer.lastName)
+          changedFields.push('last name');
+        if (targetUsername && targetUsername !== existingPlayer.username)
+          changedFields.push('username');
+        if (targetGamerTag && targetGamerTag !== existingPlayer.gamerTag)
+          changedFields.push('gamer tag');
+        if (
+          targetPhoneNumber &&
+          targetPhoneNumber !== existingPlayer.phoneNumber
+        )
+          changedFields.push('phone number');
+        if (
+          parsedDob &&
+          parsedDob.getTime() !== existingPlayer.dateOfBirth?.getTime()
+        )
+          changedFields.push('date of birth');
+        if (newProfilePictureKey || updatePlayerDto.deleteProfilePicture)
+          changedFields.push('profile photo');
 
-      const updated = await tx.player.update({
-        where: { playerId: id },
-        data: {
-          ...(resolvedFirstName ? { firstName: resolvedFirstName } : {}),
-          ...(resolvedLastName ? { lastName: resolvedLastName } : {}),
-          ...(targetUsername
-            ? { username: targetUsername }
-            : {}),
-          ...(targetGamerTag ? { gamerTag: targetGamerTag } : {}),
-          ...(targetGamerTag && targetGamerTag.toLowerCase() !== existingPlayer.gamerTag?.trim().toLowerCase()
-            ? {
-                gamertagStatus: GamerTagModerationStatus.PENDING,
-                gamertagModerationNotes: null,
-                gamertagModeratedAt: null,
-                gamertagModeratedBy: null,
-              }
-            : {}),
-          ...(updatePlayerDto.surname
-            ? { surname: updatePlayerDto.surname }
-            : {}),
-          ...(targetPhoneNumber ? { phoneNumber: targetPhoneNumber } : {}),
-          ...(parsedDob ? { dateOfBirth: parsedDob } : {}),
-          profilePicture: updatedProfilePicture,
-          ...(newProfilePictureKey
-            ? {
-                photoStatus: PhotoModerationStatus.PENDING,
-                photoModerationNotes: null,
-                photoModeratedAt: null,
-                photoModeratedBy: null,
-              }
-            : updatePlayerDto.deleteProfilePicture
+        const updated = await tx.player.update({
+          where: { playerId: id },
+          data: {
+            ...(resolvedFirstName ? { firstName: resolvedFirstName } : {}),
+            ...(resolvedLastName ? { lastName: resolvedLastName } : {}),
+            ...(targetUsername ? { username: targetUsername } : {}),
+            ...(targetGamerTag ? { gamerTag: targetGamerTag } : {}),
+            ...(targetGamerTag &&
+            targetGamerTag.toLowerCase() !==
+              existingPlayer.gamerTag?.trim().toLowerCase()
               ? {
-                  photoStatus: PhotoModerationStatus.APPROVED,
+                  gamertagStatus: GamerTagModerationStatus.PENDING,
+                  gamertagModerationNotes: null,
+                  gamertagModeratedAt: null,
+                  gamertagModeratedBy: null,
+                }
+              : {}),
+            ...(updatePlayerDto.surname
+              ? { surname: updatePlayerDto.surname }
+              : {}),
+            ...(targetPhoneNumber ? { phoneNumber: targetPhoneNumber } : {}),
+            ...(parsedDob ? { dateOfBirth: parsedDob } : {}),
+            profilePicture: updatedProfilePicture,
+            ...(newProfilePictureKey
+              ? {
+                  photoStatus: PhotoModerationStatus.PENDING,
                   photoModerationNotes: null,
                   photoModeratedAt: null,
                   photoModeratedBy: null,
                 }
-              : {}),
-          document: updatedLegacyDocumentList,
-        },
-        include: {
-          documents: true,
-          registrationHistory: true,
-          marketingData: true,
-        },
-      });
-      if (changedFields.length > 0) {
-        await tx.playerActivityLog.create({
-          data: {
-            playerId: id,
-            eventType: 'PROFILE_UPDATED',
-            title: 'Profile updated',
-            description: `Updated profile ${changedFields.join(', ')}.`,
-            actorId: requestingUser?.userId || id,
-            actorRole: isAdmin ? 'ADMIN' : 'PLAYER',
+              : updatePlayerDto.deleteProfilePicture
+                ? {
+                    photoStatus: PhotoModerationStatus.APPROVED,
+                    photoModerationNotes: null,
+                    photoModeratedAt: null,
+                    photoModeratedBy: null,
+                  }
+                : {}),
+            document: updatedLegacyDocumentList,
+          },
+          include: {
+            documents: true,
+            registrationHistory: true,
+            marketingData: true,
           },
         });
-      }
-      return updated;
+        if (changedFields.length > 0) {
+          await tx.playerActivityLog.create({
+            data: {
+              playerId: id,
+              eventType: 'PROFILE_UPDATED',
+              title: 'Profile updated',
+              description: `Updated profile ${changedFields.join(', ')}.`,
+              actorId: requestingUser?.userId || id,
+              actorRole: isAdmin ? 'ADMIN' : 'PLAYER',
+            },
+          });
+        }
+        return updated;
       });
     } catch (error) {
       if (
@@ -915,7 +932,8 @@ export class PlayerService {
         amount: transaction.amount,
         currency: transaction.currency,
         status: transaction.status,
-        description: transaction.description || transaction.type.replace(/_/g, ' '),
+        description:
+          transaction.description || transaction.type.replace(/_/g, ' '),
         timestamp: transaction.createdAt,
       })),
       pagination,
@@ -958,11 +976,16 @@ export class PlayerService {
 
     for (const tournament of tournaments) {
       const schedule: any = tournament.schedule || {};
-      const matches: any[] = schedule.structure?.matches || schedule.matches || [];
+      const matches: any[] =
+        schedule.structure?.matches || schedule.matches || [];
       for (const match of matches) {
         const matchId = String(match.id || match.canonicalMatchId || '');
-        const matchTitle = String(match.title || match.name || matchId || 'Match');
-        for (const checkIn of Array.isArray(match.checkIns) ? match.checkIns : []) {
+        const matchTitle = String(
+          match.title || match.name || matchId || 'Match',
+        );
+        for (const checkIn of Array.isArray(match.checkIns)
+          ? match.checkIns
+          : []) {
           if (checkIn.playerId !== playerId || !checkIn.checkedInAt) continue;
           logs.push({
             id: `${tournament.tournamentId}:${matchId}:${playerId}`,
@@ -979,7 +1002,8 @@ export class PlayerService {
     }
 
     logs.sort(
-      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+      (a, b) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     );
     const total = logs.length;
     const pagination = {
@@ -1153,7 +1177,9 @@ export class PlayerService {
           tournamentName: r.tournament?.name || 'Tournament',
           totalEntries: entries.length,
           isJoined,
-          ticketNumber: entries.find((e: any) => e.userId === playerId)?.ticketNumber || null,
+          ticketNumber:
+            entries.find((e: any) => e.userId === playerId)?.ticketNumber ||
+            null,
           myWin: myWin
             ? {
                 ticketNumber: myWin.ticketNumber,
@@ -1197,11 +1223,11 @@ export class PlayerService {
           const isCompleted =
             m.status === 'COMPLETED' ||
             (m.status !== 'IN_PROGRESS' &&
-            (m.score1 !== undefined &&
+              m.score1 !== undefined &&
               m.score2 !== undefined &&
               m.score1 !== null &&
               m.score2 !== null &&
-              (m.score1 > 0 || m.score2 > 0)));
+              (m.score1 > 0 || m.score2 > 0));
 
           if (isCompleted) {
             const playerScore = isPlayer1 ? m.score1 : m.score2;
@@ -1209,8 +1235,7 @@ export class PlayerService {
             const isWinner =
               m.winnerId === playerId ||
               (m.winnerId == null && playerScore > opponentScore);
-            const isDraw =
-              m.winnerId == null && playerScore === opponentScore;
+            const isDraw = m.winnerId == null && playerScore === opponentScore;
             completedMatches.push({
               matchId: m.id || m.canonicalMatchId,
               tournamentId: tourney.tournamentId,
@@ -1303,7 +1328,11 @@ export class PlayerService {
     }
 
     // Populate opponent details
-    for (const match of [...upcomingMatches, ...completedMatches, ...liveMatches]) {
+    for (const match of [
+      ...upcomingMatches,
+      ...completedMatches,
+      ...liveMatches,
+    ]) {
       if (match.opponentId && opponentMap[match.opponentId]) {
         match.opponentGamertag = opponentMap[match.opponentId].gamertag;
         match.opponentName = opponentMap[match.opponentId].fullName;

@@ -2,7 +2,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class SendEmployeeMessageDto {
-  @ApiProperty({ description: 'Message text sent as a private staff notification' })
+  @ApiProperty({
+    description: 'Message text sent as a private staff notification',
+  })
   @IsString()
   @IsNotEmpty()
   @MaxLength(2000)

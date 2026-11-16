@@ -22,20 +22,19 @@ export const CLOSED_TOURNAMENT_STATUSES: string[] = [
 
 export function syncTournamentLifecycleState<
   T extends { status?: any; registrationOpen?: boolean },
->(
-  target: T,
-  existing?: { status?: any; registrationOpen?: boolean },
-): T {
+>(target: T, existing?: { status?: any; registrationOpen?: boolean }): T {
   const currentStatus = target.status ?? existing?.status;
 
   // Rule 1: Explicitly closing registration (registrationOpen: false)
-  // Transitions status from REGISTRATION_OPEN -> UPCOMING
+  // Use the registration flag as the source of truth before matches start.
   if (target.registrationOpen === false) {
     if (
-      currentStatus === 'REGISTRATION_OPEN' ||
-      target.status === 'REGISTRATION_OPEN'
+      ['REGISTRATION_OPEN', 'REGISTRATION_CLOSE', 'UPCOMING', 'DRAFT'].includes(
+        currentStatus,
+      ) ||
+      !currentStatus
     ) {
-      target.status = 'UPCOMING';
+      target.status = 'REGISTRATION_CLOSE';
     }
   }
 
@@ -62,6 +61,7 @@ export function syncTournamentLifecycleState<
     if (
       !effectiveStatus ||
       effectiveStatus === 'UPCOMING' ||
+      effectiveStatus === 'REGISTRATION_CLOSE' ||
       effectiveStatus === 'DRAFT'
     ) {
       target.status = 'REGISTRATION_OPEN';
@@ -69,7 +69,10 @@ export function syncTournamentLifecycleState<
   }
 
   // Rule 5: If status is UPCOMING (and registrationOpen not explicitly true), registration is closed
-  if (target.status === 'UPCOMING' && target.registrationOpen !== true) {
+  if (
+    ['UPCOMING', 'REGISTRATION_CLOSE'].includes(target.status) &&
+    target.registrationOpen !== true
+  ) {
     target.registrationOpen = false;
   }
 

@@ -103,12 +103,12 @@ describe('presignTournamentMedia (Payload Optimization & On-Demand Slots/Seeds)'
   });
 
   describe('syncTournamentLifecycleState (registrationOpen vs status synchronization)', () => {
-    it('should transition status to UPCOMING and keep registrationOpen false when registrationOpen is false', () => {
+    it('should transition status to REGISTRATION_CLOSE and keep registrationOpen false when registrationOpen is false', () => {
       const result = syncTournamentLifecycleState({
         status: 'REGISTRATION_OPEN',
         registrationOpen: false,
       });
-      expect(result.status).toBe('UPCOMING');
+      expect(result.status).toBe('REGISTRATION_CLOSE');
       expect(result.registrationOpen).toBe(false);
     });
 
@@ -119,6 +119,23 @@ describe('presignTournamentMedia (Payload Optimization & On-Demand Slots/Seeds)'
       });
       expect(result.status).toBe('REGISTRATION_OPEN');
       expect(result.registrationOpen).toBe(true);
+    });
+
+    it('reopens a closed registration', () => {
+      const result = syncTournamentLifecycleState(
+        { registrationOpen: true, status: undefined },
+        { status: 'REGISTRATION_CLOSE', registrationOpen: false },
+      );
+      expect(result.status).toBe('REGISTRATION_OPEN');
+      expect(result.registrationOpen).toBe(true);
+    });
+
+    it('closes registration when updating only the flag', () => {
+      const result = syncTournamentLifecycleState(
+        { registrationOpen: false, status: undefined },
+        { status: 'REGISTRATION_OPEN', registrationOpen: true },
+      );
+      expect(result.status).toBe('REGISTRATION_CLOSE');
     });
 
     it('should force registrationOpen to true when status is set to REGISTRATION_OPEN', () => {

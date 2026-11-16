@@ -110,7 +110,9 @@ export class RaffleController {
 
   @Get('mine')
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Get raffles joined by the authenticated fan or player' })
+  @ApiOperation({
+    summary: 'Get raffles joined by the authenticated fan or player',
+  })
   async getMyRaffles(
     @Req() req: Request & { user: { userId: string; role?: string } },
   ) {

@@ -180,7 +180,9 @@ export class RaffleService {
       throw new BadRequestException('Authenticated user ID is required');
     }
 
-    const expectedUserType = String(role || '').toUpperCase().includes('PLAYER')
+    const expectedUserType = String(role || '')
+      .toUpperCase()
+      .includes('PLAYER')
       ? 'PLAYER'
       : 'FAN';
 
@@ -493,7 +495,9 @@ export class RaffleService {
       );
       notificationResults.forEach((result) => {
         if (result.status === 'rejected') {
-          this.logger.warn(`Could not create raffle winner notification: ${String(result.reason)}`);
+          this.logger.warn(
+            `Could not create raffle winner notification: ${String(result.reason)}`,
+          );
         }
       });
     }

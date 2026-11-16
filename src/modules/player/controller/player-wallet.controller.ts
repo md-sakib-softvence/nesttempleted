@@ -86,7 +86,9 @@ export class PlayerWalletController {
       );
     }
     if (kind !== 'credits')
-      throw new BadRequestException('Only wallet credit refills are supported.');
+      throw new BadRequestException(
+        'Only wallet credit refills are supported.',
+      );
     const data = await this.playerRefillService.startPurchase(
       req.user.userId,
       kind,
@@ -111,7 +113,9 @@ export class PlayerWalletController {
       );
     }
     if (kind !== 'credits')
-      throw new BadRequestException('Only wallet credit refills are supported.');
+      throw new BadRequestException(
+        'Only wallet credit refills are supported.',
+      );
     const data = await this.playerRefillService.verifyPurchase(
       req.user.userId,
       kind,

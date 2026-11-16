@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  Min,
   IsOptional,
   IsString,
   IsNumber,
@@ -24,6 +25,16 @@ import {
 } from '@prisma/client';
 
 export class UpdateDetailsTabDto {
+  @ApiPropertyOptional({
+    description: 'Price per admission ticket',
+    example: 1500,
+  })
+  @Type(() => Number)
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(0)
+  @IsOptional()
+  ticketPrice?: number;
+
   @ApiPropertyOptional({ example: 'Winter Championship 2024' })
   @IsOptional()
   @IsString()
@@ -59,12 +70,18 @@ export class UpdateDetailsTabDto {
   @IsNumber()
   teams?: number;
 
-  @ApiPropertyOptional({ description: 'Number of groups (1-30) for hybrid formats', example: 4 })
+  @ApiPropertyOptional({
+    description: 'Number of groups (1-30) for hybrid formats',
+    example: 4,
+  })
   @IsOptional()
   @IsNumber()
   groupsCount?: number;
 
-  @ApiPropertyOptional({ description: 'Top qualifiers per group (1-3)', example: 2 })
+  @ApiPropertyOptional({
+    description: 'Top qualifiers per group (1-3)',
+    example: 2,
+  })
   @IsOptional()
   @IsNumber()
   topQualifiers?: number;
@@ -116,6 +133,16 @@ export class UpdateDetailsTabDto {
 }
 
 export class UpdateRegistrationsTabDto {
+  @ApiPropertyOptional({
+    description: 'Price per admission ticket',
+    example: 1500,
+  })
+  @Type(() => Number)
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(0)
+  @IsOptional()
+  ticketPrice?: number;
+
   @ApiPropertyOptional({ example: true })
   @IsOptional()
   @IsBoolean()
@@ -564,7 +591,10 @@ export class UpdateSettingsTabDto {
   @IsNumber()
   teams?: number;
 
-  @ApiPropertyOptional({ description: 'Number of groups (1-30) for hybrid formats', example: 4 })
+  @ApiPropertyOptional({
+    description: 'Number of groups (1-30) for hybrid formats',
+    example: 4,
+  })
   @IsOptional()
   @IsNumber()
   groupsCount?: number;
@@ -579,7 +609,10 @@ export class UpdateSettingsTabDto {
   @IsNumber()
   groups?: number;
 
-  @ApiPropertyOptional({ description: 'Top qualifiers per group (1-3)', example: 2 })
+  @ApiPropertyOptional({
+    description: 'Top qualifiers per group (1-3)',
+    example: 2,
+  })
   @IsOptional()
   @IsNumber()
   topQualifiers?: number;

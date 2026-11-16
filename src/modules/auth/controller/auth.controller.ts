@@ -43,7 +43,9 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Record sign-out activity for the authenticated user' })
+  @ApiOperation({
+    summary: 'Record sign-out activity for the authenticated user',
+  })
   logout(@Req() req: AuthenticatedRequest) {
     return this.authService.logoutPlayer(req.user);
   }
@@ -67,7 +69,9 @@ export class AuthController {
   @Public()
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Reset a Fan or Player password using an email code' })
+  @ApiOperation({
+    summary: 'Reset a Fan or Player password using an email code',
+  })
   resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
     return this.authService.resetPasswordWithCode(resetPasswordDto);
   }

@@ -9,11 +9,20 @@ describe('RaffleService notifications', () => {
       numberOfWinners: 1,
       status: 'OPEN',
       entries: [
-        { userId: 'fan-1', userType: 'FAN', name: 'Fan One', ticketNumber: 'T-1' },
+        {
+          userId: 'fan-1',
+          userType: 'FAN',
+          name: 'Fan One',
+          ticketNumber: 'T-1',
+        },
       ],
       winners: [],
     };
-    const updated = { ...raffle, status: 'DRAWN', winners: [{ userId: 'fan-1' }] };
+    const updated = {
+      ...raffle,
+      status: 'DRAWN',
+      winners: [{ userId: 'fan-1' }],
+    };
     const prisma = {
       raffle: {
         findFirst: jest.fn().mockResolvedValue(raffle),
@@ -21,7 +30,10 @@ describe('RaffleService notifications', () => {
       },
     };
     const notificationService = { create: jest.fn().mockResolvedValue({}) };
-    const service = new RaffleService(prisma as any, notificationService as any);
+    const service = new RaffleService(
+      prisma as any,
+      notificationService as any,
+    );
 
     await expect(service.drawRaffle('raffle-1')).resolves.toBe(updated);
     expect(prisma.raffle.update).toHaveBeenCalledWith(

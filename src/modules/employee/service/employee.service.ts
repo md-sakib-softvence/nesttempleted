@@ -19,7 +19,11 @@ import {
 import { getPreSignedUrl, deleteImageFromS3 } from '../../utils/s3.util';
 import { generateEmployeeId } from '../utils/generate-id.util';
 import { createActivities } from '../../utils/activity.util';
-import { EmployeeRole, EmployeeState, NotificationStatus } from '@prisma/client';
+import {
+  EmployeeRole,
+  EmployeeState,
+  NotificationStatus,
+} from '@prisma/client';
 import { CreateEmployeeTournamentAssignmentDto } from '../dto/create-employee-tournament-assignment.dto';
 import { SendEmployeeMessageDto } from '../dto/send-employee-message.dto';
 import { NotificationService } from '../../notification/notification.service';
@@ -285,7 +289,11 @@ export class EmployeeService {
         ({ index }) => finalQrCodeSerials[index],
       );
       finalQrCodes.splice(0, finalQrCodes.length, ...remainingCodes);
-      finalQrCodeSerials.splice(0, finalQrCodeSerials.length, ...remainingSerials);
+      finalQrCodeSerials.splice(
+        0,
+        finalQrCodeSerials.length,
+        ...remainingSerials,
+      );
     }
 
     // Clients may submit the full current list. Add only genuinely new values.
@@ -295,8 +303,11 @@ export class EmployeeService {
         const normalizedQr = incomingQr.trim();
         if (
           !normalizedQr ||
-          finalQrCodes.some((currentQr) => qrIdentity(currentQr) === qrIdentity(normalizedQr))
-        ) continue;
+          finalQrCodes.some(
+            (currentQr) => qrIdentity(currentQr) === qrIdentity(normalizedQr),
+          )
+        )
+          continue;
         finalQrCodes.push(normalizedQr);
         qrCodeGenerationCount += 1;
         finalQrCodeSerials.push(qrCodeGenerationCount);
@@ -432,7 +443,9 @@ export class EmployeeService {
     });
     if (!employee) throw new NotFoundException('Employee not found');
 
-    const identities = [...new Set([employee.employeeId, employee.showEmployeeId])];
+    const identities = [
+      ...new Set([employee.employeeId, employee.showEmployeeId]),
+    ];
     const assignments = await this.prisma.tournamentStaffAssignment.findMany({
       where: { employeeId: employee.employeeId },
       select: { matchId: true, tournament: { select: { schedule: true } } },
@@ -503,7 +516,8 @@ export class EmployeeService {
       where: { employeeId, isDeleted: false, state: 'ACTIVE' },
       select: { employeeId: true },
     });
-    if (!employee) throw new NotFoundException('Active employee account not found');
+    if (!employee)
+      throw new NotFoundException('Active employee account not found');
 
     return this.prisma.tournamentStaffAssignment.findMany({
       where: { employeeId: employee.employeeId },
@@ -552,7 +566,8 @@ export class EmployeeService {
       where: { employeeId, isDeleted: false, state: 'ACTIVE' },
       select: { employeeId: true },
     });
-    if (!employee) throw new NotFoundException('Active employee account not found');
+    if (!employee)
+      throw new NotFoundException('Active employee account not found');
 
     return this.prisma.employeeTournamentAssignment.findMany({
       where: { employeeId: employee.employeeId },
@@ -598,16 +613,28 @@ export class EmployeeService {
       : undefined;
     if (venueId) {
       if (!venue) {
-        throw new BadRequestException('Selected venue does not belong to this tournament');
+        throw new BadRequestException(
+          'Selected venue does not belong to this tournament',
+        );
       }
     }
     if (screenId) {
-      if (!venueId || !venue?.screens.some((screen) => screen.screenId === screenId)) {
-        throw new BadRequestException('Selected screen must belong to the selected venue');
+      if (
+        !venueId ||
+        !venue?.screens.some((screen) => screen.screenId === screenId)
+      ) {
+        throw new BadRequestException(
+          'Selected screen must belong to the selected venue',
+        );
       }
     }
 
-    const assignmentKey = [employeeId, dto.tournamentId, venueId || '*', screenId || '*'].join(':');
+    const assignmentKey = [
+      employeeId,
+      dto.tournamentId,
+      venueId || '*',
+      screenId || '*',
+    ].join(':');
     return this.prisma.employeeTournamentAssignment.upsert({
       where: { assignmentKey },
       create: {
@@ -620,7 +647,12 @@ export class EmployeeService {
       update: {},
       include: {
         tournament: {
-          select: { tournamentId: true, name: true, gameTitle: true, startDate: true },
+          select: {
+            tournamentId: true,
+            name: true,
+            gameTitle: true,
+            startDate: true,
+          },
         },
         venue: { select: { venueId: true, name: true, address: true } },
         screen: { select: { screenId: true, screenName: true } },
@@ -632,11 +664,14 @@ export class EmployeeService {
     employeeId: string,
     assignmentId: string,
   ) {
-    const assignment = await this.prisma.employeeTournamentAssignment.findFirst({
-      where: { id: assignmentId, employeeId },
-      select: { id: true },
-    });
-    if (!assignment) throw new NotFoundException('Tournament assignment not found');
+    const assignment = await this.prisma.employeeTournamentAssignment.findFirst(
+      {
+        where: { id: assignmentId, employeeId },
+        select: { id: true },
+      },
+    );
+    if (!assignment)
+      throw new NotFoundException('Tournament assignment not found');
     await this.prisma.employeeTournamentAssignment.delete({
       where: { id: assignment.id },
     });

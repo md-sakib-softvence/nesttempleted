@@ -57,8 +57,15 @@ export interface SlotValidationResult {
 }
 
 /** Older persisted calendars may have a game object without canonicalMatchId. */
-function occupiedByMatchId(slot: VenueSchedule['screens'][number]['days'][number]['timeslots'][number]): string | null {
-  return slot.canonicalMatchId || slot.game?.canonicalMatchId || slot.game?.id || null;
+function occupiedByMatchId(
+  slot: VenueSchedule['screens'][number]['days'][number]['timeslots'][number],
+): string | null {
+  return (
+    slot.canonicalMatchId ||
+    slot.game?.canonicalMatchId ||
+    slot.game?.id ||
+    null
+  );
 }
 
 /**
@@ -110,8 +117,13 @@ export function evaluateSelfSchedulingWindow(
 
   const playerChoiceLimitMs = 24 * 60 * 60 * 1000;
 
-  const autoAssignmentDueAt = new Date(start + playerChoiceLimitMs).toISOString();
-  const timeUntilAutoAssignmentMs = Math.max(0, start + playerChoiceLimitMs - now);
+  const autoAssignmentDueAt = new Date(
+    start + playerChoiceLimitMs,
+  ).toISOString();
+  const timeUntilAutoAssignmentMs = Math.max(
+    0,
+    start + playerChoiceLimitMs - now,
+  );
   const timeUntilAutoAssignmentFormatted = formatRemainingHoursMinutes(
     timeUntilAutoAssignmentMs,
   );

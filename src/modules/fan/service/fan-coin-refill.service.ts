@@ -79,17 +79,26 @@ export class FanCoinRefillService {
     return { balance: fan.coins, requests };
   }
 
-  async listAdminRequests(options: { status?: string; page?: number; limit?: number }) {
+  async listAdminRequests(options: {
+    status?: string;
+    page?: number;
+    limit?: number;
+  }) {
     const page = Math.max(1, Number(options.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(options.limit) || 25));
     const allowedStatuses = Object.values(FanCoinRefillStatus);
     const status = options.status?.toUpperCase();
-    if (status && status !== 'ALL' && !allowedStatuses.includes(status as FanCoinRefillStatus)) {
+    if (
+      status &&
+      status !== 'ALL' &&
+      !allowedStatuses.includes(status as FanCoinRefillStatus)
+    ) {
       throw new BadRequestException('Unsupported coin refill request status.');
     }
-    const where = status && status !== 'ALL'
-      ? { status: status as FanCoinRefillStatus }
-      : {};
+    const where =
+      status && status !== 'ALL'
+        ? { status: status as FanCoinRefillStatus }
+        : {};
     const [total, requests] = await this.prisma.$transaction([
       this.prisma.fanCoinRefillRequest.count({ where }),
       this.prisma.fanCoinRefillRequest.findMany({
@@ -133,12 +142,16 @@ export class FanCoinRefillService {
       const request = await tx.fanCoinRefillRequest.findUnique({
         where: { requestId },
       });
-      if (!request) throw new NotFoundException('Coin refill request not found.');
+      if (!request)
+        throw new NotFoundException('Coin refill request not found.');
       if (request.status !== FanCoinRefillStatus.PENDING) {
-        throw new ConflictException('This coin refill request has already been reviewed.');
+        throw new ConflictException(
+          'This coin refill request has already been reviewed.',
+        );
       }
 
-      const approvedCoins = dto.decision === 'APPROVED' ? dto.approvedCoins! : null;
+      const approvedCoins =
+        dto.decision === 'APPROVED' ? dto.approvedCoins! : null;
       const claimed = await tx.fanCoinRefillRequest.updateMany({
         where: { requestId, status: FanCoinRefillStatus.PENDING },
         data: {
@@ -153,7 +166,9 @@ export class FanCoinRefillService {
         },
       });
       if (claimed.count !== 1) {
-        throw new ConflictException('This coin refill request has already been reviewed.');
+        throw new ConflictException(
+          'This coin refill request has already been reviewed.',
+        );
       }
 
       let balance: number | null = null;
@@ -179,7 +194,13 @@ export class FanCoinRefillService {
         where: { requestId },
         include: {
           fan: {
-            select: { fanId: true, firstName: true, surname: true, email: true, coins: true },
+            select: {
+              fanId: true,
+              firstName: true,
+              surname: true,
+              email: true,
+              coins: true,
+            },
           },
         },
       });

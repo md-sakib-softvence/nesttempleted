@@ -365,7 +365,9 @@ export class EmployeeController {
 
   @Get('my-tournament-assignments')
   @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, ...Object.values(EmployeeRole))
-  @ApiOperation({ summary: 'Get tournament matches assigned to the logged-in employee' })
+  @ApiOperation({
+    summary: 'Get tournament matches assigned to the logged-in employee',
+  })
   async getMyTournamentAssignments(
     @Req() req: Request & { user: { userId: string } },
   ) {
@@ -380,7 +382,10 @@ export class EmployeeController {
 
   @Get('my-tournament-venue-assignments')
   @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN, ...Object.values(EmployeeRole))
-  @ApiOperation({ summary: 'Get tournament and venue access assigned to the logged-in employee' })
+  @ApiOperation({
+    summary:
+      'Get tournament and venue access assigned to the logged-in employee',
+  })
   async getMyTournamentVenueAssignments(
     @Req() req: Request & { user: { userId: string } },
   ) {
@@ -417,9 +422,12 @@ export class EmployeeController {
 
   @Get(':id/tournament-assignments')
   @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Get tournament and venue assignments for one employee' })
+  @ApiOperation({
+    summary: 'Get tournament and venue assignments for one employee',
+  })
   async getEmployeeTournamentAssignments(@Param('id') id: string) {
-    const data = await this.employeeService.getEmployeeTournamentAssignments(id);
+    const data =
+      await this.employeeService.getEmployeeTournamentAssignments(id);
     return sendResponse({
       message: 'Employee tournament assignments retrieved successfully',
       data,
@@ -428,7 +436,9 @@ export class EmployeeController {
 
   @Post(':id/tournament-assignments')
   @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Assign a manager or ambassador to a tournament venue' })
+  @ApiOperation({
+    summary: 'Assign a manager or ambassador to a tournament venue',
+  })
   async createEmployeeTournamentAssignment(
     @Param('id') id: string,
     @Body() dto: CreateEmployeeTournamentAssignmentDto,
@@ -463,7 +473,8 @@ export class EmployeeController {
   @Post(':id/communication')
   @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
   @ApiOperation({
-    summary: 'Send a private notification to an employee, manager, or ambassador',
+    summary:
+      'Send a private notification to an employee, manager, or ambassador',
   })
   async sendEmployeeMessage(
     @Param('id') id: string,
@@ -478,7 +489,9 @@ export class EmployeeController {
 
   @Get(':id')
   @Public()
-  @ApiOperation({ summary: 'Get public profile information for an employee by ID' })
+  @ApiOperation({
+    summary: 'Get public profile information for an employee by ID',
+  })
   async getEmployeeById(@Param('id') id: string) {
     const data = await this.employeeService.getPublicEmployeeById(id);
     return sendResponse({
@@ -489,10 +502,15 @@ export class EmployeeController {
 
   @Get(':id/private')
   @Roles(AdminRole.ADMIN, AdminRole.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Get full employee record for authorized administration' })
+  @ApiOperation({
+    summary: 'Get full employee record for authorized administration',
+  })
   async getEmployeeDetailsById(@Param('id') id: string) {
     const data = await this.employeeService.getEmployeeById(id);
-    return sendResponse({ message: 'Employee record retrieved successfully', data });
+    return sendResponse({
+      message: 'Employee record retrieved successfully',
+      data,
+    });
   }
 
   @Get()

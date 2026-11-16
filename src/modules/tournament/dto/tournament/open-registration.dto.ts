@@ -7,11 +7,23 @@ import {
   IsNotEmpty,
   IsOptional,
   Min,
+  IsNumber,
 } from 'class-validator';
 import { RegistrationCutOffMode } from '@prisma/client';
 import { Transform, Type } from 'class-transformer';
 
 export class OpenRegistrationDto {
+  @ApiPropertyOptional({
+    description:
+      'Admission ticket price; required if not previously configured.',
+    example: 1500,
+  })
+  @Type(() => Number)
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(0)
+  @IsOptional()
+  ticketPrice?: number;
+
   @ApiProperty({
     description: 'Registration Cutoff Mode',
     enum: RegistrationCutOffMode,

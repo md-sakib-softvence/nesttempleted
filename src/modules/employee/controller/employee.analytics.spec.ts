@@ -46,12 +46,15 @@ describe('GET /employee/:id/analytics', () => {
         ),
         findMany: jest
           .fn()
-          .mockResolvedValue([{ ticketId: 'ticket-1' }, { ticketId: 'ticket-2' }]),
+          .mockResolvedValue([
+            { ticketId: 'ticket-1' },
+            { ticketId: 'ticket-2' },
+          ]),
       },
       matchDispute: { count: jest.fn().mockResolvedValue(2) },
     };
 
-    service = new EmployeeService(prisma, {} as any, {} as any);
+    service = new EmployeeService(prisma, {} as any, {} as any, {} as any);
     controller = new EmployeeController(service);
   });
 
@@ -72,10 +75,7 @@ describe('GET /employee/:id/analytics', () => {
     expect(prisma.employee.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          OR: [
-            { employeeId: 'EMP-00001' },
-            { showEmployeeId: 'EMP-00001' },
-          ],
+          OR: [{ employeeId: 'EMP-00001' }, { showEmployeeId: 'EMP-00001' }],
           isDeleted: false,
         },
       }),
@@ -85,9 +85,9 @@ describe('GET /employee/:id/analytics', () => {
   it('returns not found for an unknown employee', async () => {
     prisma.employee.findFirst.mockResolvedValue(null);
 
-    await expect(service.getEmployeeAnalytics('missing')).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(
+      service.getEmployeeAnalytics('missing'),
+    ).rejects.toBeInstanceOf(NotFoundException);
     expect(prisma.tournamentStaffAssignment.findMany).not.toHaveBeenCalled();
   });
 });

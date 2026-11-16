@@ -13,9 +13,26 @@ import { FanPlayerRegistrationService } from './service/fan-player-registration.
 import { FanCoinRefillService } from './service/fan-coin-refill.service';
 
 @Module({
-  imports: [PrismaModule, MailModule, AuthModule, FlutterwaveModule, TournamentModule, PlayerModule],
+  imports: [
+    PrismaModule,
+    MailModule,
+    AuthModule,
+    FlutterwaveModule,
+    TournamentModule,
+    PlayerModule,
+  ],
   controllers: [FanFollowController, FanController],
-  providers: [FanService, FollowerService, FanPlayerRegistrationService, FanCoinRefillService],
-  exports: [FanService, FollowerService, FanPlayerRegistrationService, FanCoinRefillService],
+  providers: [
+    FanService,
+    FollowerService,
+    FanPlayerRegistrationService,
+    FanCoinRefillService,
+  ],
+  exports: [
+    FanService,
+    FollowerService,
+    FanPlayerRegistrationService,
+    FanCoinRefillService,
+  ],
 })
 export class FanModule {}

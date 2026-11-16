@@ -14,7 +14,9 @@ export class CompleteFanTournamentApplicationDto {
   @MaxLength(80)
   preferredPlatform?: string;
 
-  @ApiPropertyOptional({ description: 'Base64 JPEG, PNG, GIF or WebP image; uploaded to AWS S3' })
+  @ApiPropertyOptional({
+    description: 'Base64 JPEG, PNG, GIF or WebP image; uploaded to AWS S3',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(100000)

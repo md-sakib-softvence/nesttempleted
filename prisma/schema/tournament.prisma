@@ -5,6 +5,7 @@ model Tournament {
   gameType               TournamentGameType      @default(OTHER)
   tournamentFormat       TournamentFormat
   numberOfTeams          Int
+  ticketPrice            Float?
   entryFee               Float
   currency               Currency
   paymentWindow          Int
@@ -264,6 +265,7 @@ enum TournamentStatus {
   COMPLETED
   CANCELLED
   REGISTRATION_OPEN
+  REGISTRATION_CLOSE
   IN_PROGRESS
   PAUSED
   ARCHIVED

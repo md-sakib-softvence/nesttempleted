@@ -13,6 +13,7 @@ describe('TournamentService (Admin Invariants & Concurrency Tests)', () => {
   const mockTournament = {
     tournamentId: 'tourn-1',
     name: 'FC 25 Championship',
+    ticketPrice: 1500,
     status: TournamentStatus.DRAFT,
     version: 1,
     isDeleted: false,
@@ -79,6 +80,15 @@ describe('TournamentService (Admin Invariants & Concurrency Tests)', () => {
         findUnique: jest.fn(),
         update: jest.fn(),
       },
+    };
+
+    prisma.$queryRaw = jest.fn().mockResolvedValue([]);
+    prisma.$transaction = jest.fn(async (fn) => fn(prisma));
+    prisma.ticket = { count: jest.fn().mockResolvedValue(0) };
+    prisma.ticketTier = {
+      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue({ tierId: 'tier' }),
     };
 
     const scheduleService = {

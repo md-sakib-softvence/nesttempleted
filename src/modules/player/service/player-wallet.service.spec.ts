@@ -1,3 +1,4 @@
+import { NotificationGateway } from '../../notification/notification.gateway';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PlayerWalletService } from './player-wallet.service';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -28,6 +29,7 @@ describe('PlayerWalletService', () => {
         findUnique: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       walletTransaction: {
         findMany: jest.fn(),
@@ -37,6 +39,7 @@ describe('PlayerWalletService', () => {
         findMany: jest.fn(),
         create: jest.fn(),
       },
+      payoutRequestEvent: { create: jest.fn() },
       activityLog: {
         create: jest.fn(),
       },
@@ -47,6 +50,7 @@ describe('PlayerWalletService', () => {
       providers: [
         PlayerWalletService,
         { provide: PrismaService, useValue: prisma },
+        { provide: NotificationGateway, useValue: { sendToUser: jest.fn() } },
       ],
     }).compile();
 
@@ -89,6 +93,8 @@ describe('PlayerWalletService', () => {
     it('should throw BadRequestException if NUBAN is not 10 digits', async () => {
       await expect(
         service.requestPayout('player-123', {
+          bankName: 'GTBank',
+          accountName: 'Test Player',
           bankAccount: '12345',
           amount: 5000,
         }),
@@ -98,6 +104,8 @@ describe('PlayerWalletService', () => {
     it('should throw BadRequestException if requested amount is under 1,000 NGN', async () => {
       await expect(
         service.requestPayout('player-123', {
+          bankName: 'GTBank',
+          accountName: 'Test Player',
           bankAccount: '0123456789',
           amount: 500,
         }),
@@ -112,6 +120,8 @@ describe('PlayerWalletService', () => {
 
       await expect(
         service.requestPayout('player-123', {
+          bankName: 'GTBank',
+          accountName: 'Test Player',
           bankAccount: '0123456789',
           amount: 5000.0,
         }),
@@ -126,6 +136,8 @@ describe('PlayerWalletService', () => {
 
       await expect(
         service.requestPayout('player-123', {
+          bankName: 'GTBank',
+          accountName: 'Test Player',
           bankAccount: '0123456789',
           amount: 5000.0,
         }),
@@ -155,14 +167,19 @@ describe('PlayerWalletService', () => {
         bankAccount: '0123456789',
         amount: 5000.0,
         bankName: 'GTBank',
+        accountName: 'Test Player',
       });
 
       expect(response.success).toBe(true);
-      expect(prisma.wallet.update).toHaveBeenCalledWith({
-        where: { walletId: 'wallet-1' },
+      expect(prisma.wallet.updateMany).toHaveBeenCalledWith({
+        where: {
+          walletId: 'wallet-1',
+          status: WalletStatus.ACTIVE,
+          cashBalance: { gte: 5000 },
+        },
         data: {
-          cashBalance: 15000.0,
-          escrowBalance: 5000.0,
+          cashBalance: { decrement: 5000 },
+          escrowBalance: { increment: 5000 },
         },
       });
       expect(prisma.payoutRequest.create).toHaveBeenCalled();
