@@ -18,7 +18,10 @@ describe('AnnouncementService fan notifications', () => {
       $transaction: jest.fn((callback) => callback(tx)),
     };
     const notificationGateway = { publishCreated: jest.fn() };
-    const service = new AnnouncementService(prisma as any, notificationGateway as any);
+    const service = new AnnouncementService(
+      prisma as any,
+      notificationGateway as any,
+    );
 
     await expect(
       service.create({

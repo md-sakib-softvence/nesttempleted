@@ -35,11 +35,11 @@ export class CreateVenueDto {
   address: string;
 
   @ApiPropertyOptional({
-    description: 'List of screen names or screen objects for this venue (optional)',
+    description:
+      'List of screen names or screen objects for this venue (optional)',
     example: ['Screen 1', 'Screen 2'],
   })
   @IsArray()
   @IsOptional()
   screens?: any[];
 }
-

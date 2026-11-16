@@ -38,7 +38,8 @@ export class PurchaseTicketDto {
   type?: TicketType;
 
   @ApiPropertyOptional({
-    description: 'Tickets per checkout. Start another checkout to buy another ticket.',
+    description:
+      'Tickets per checkout. Start another checkout to buy another ticket.',
     default: 1,
     minimum: 1,
     maximum: 1,

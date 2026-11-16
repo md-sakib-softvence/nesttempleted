@@ -52,9 +52,10 @@ export class SeriesLeaderboardService {
       const tournamentIds = linkedTournaments.map((item) => item.tournamentId);
 
       if (tournamentIds.length > 0) {
-        const registrationCount = await this.prisma.tournamentRegistration.count({
-          where: { tournamentId: { in: tournamentIds } },
-        });
+        const registrationCount =
+          await this.prisma.tournamentRegistration.count({
+            where: { tournamentId: { in: tournamentIds } },
+          });
 
         if (registrationCount > 0) {
           await this.recalculateSeriesStandings(seriesId, true);

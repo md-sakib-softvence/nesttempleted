@@ -144,7 +144,8 @@ export const changePasswordUtil = async (
   // ActivityLog Role enum stores the corresponding value as `SECURITY_GUARD`.
   // Keep audit logging best-effort: a log failure must not make a committed
   // password update look like it failed to the user.
-  const activityRole = role === 'security' ? 'SECURITY_GUARD' : role.toUpperCase();
+  const activityRole =
+    role === 'security' ? 'SECURITY_GUARD' : role.toUpperCase();
   try {
     await createActivities(prisma, title, description, activityRole);
   } catch (error) {

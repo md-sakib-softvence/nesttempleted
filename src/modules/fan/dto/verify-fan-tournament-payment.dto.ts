@@ -7,4 +7,3 @@ export class VerifyFanTournamentPaymentDto {
   @IsNotEmpty()
   txRef: string;
 }
-

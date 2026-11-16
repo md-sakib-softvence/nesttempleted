@@ -15,7 +15,7 @@ describe('NotificationService delivery', () => {
     const service = new NotificationService(prisma as any, gateway as any);
 
     const result = await service.create({
-      status: 'INFORMATION' as any,
+      status: 'INFORMATION',
       title: notification.title,
       description: notification.description,
       userId: notification.userId,

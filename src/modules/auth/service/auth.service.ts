@@ -154,11 +154,7 @@ export class AuthService {
   }
 
   async forgetPassword(dto: ForgetPasswordDto) {
-    return forgetPasswordUtil(
-      dto,
-      this.prisma,
-      this.mailService,
-    );
+    return forgetPasswordUtil(dto, this.prisma, this.mailService);
   }
 
   async resetPasswordWithCode(dto: ResetPasswordDto) {

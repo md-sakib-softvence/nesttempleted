@@ -12,7 +12,12 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Role, TournamentGuidelineSection } from '@prisma/client';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../../common/guards/roles.guard';
@@ -34,7 +39,9 @@ export class TournamentGuidelineController {
 
   @Public()
   @Get(':id/guidelines')
-  @ApiOperation({ summary: 'List published tournament rules, terms, and policies' })
+  @ApiOperation({
+    summary: 'List published tournament rules, terms, and policies',
+  })
   async list(@Param('id') id: string) {
     return sendResponse({
       message: 'Tournament guidelines retrieved successfully',
@@ -44,7 +51,9 @@ export class TournamentGuidelineController {
 
   @Get(':id/guidelines/admin')
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
-  @ApiOperation({ summary: 'List all tournament guidelines, including unpublished items' })
+  @ApiOperation({
+    summary: 'List all tournament guidelines, including unpublished items',
+  })
   async listAdmin(@Param('id') id: string) {
     return sendResponse({
       message: 'All tournament guidelines retrieved successfully',
@@ -71,7 +80,9 @@ export class TournamentGuidelineController {
   @Post(':id/guidelines')
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiConsumes('multipart/form-data', 'application/json')
-  @ApiOperation({ summary: 'Create a tournament rule, term, policy, link, or document' })
+  @ApiOperation({
+    summary: 'Create a tournament rule, term, policy, link, or document',
+  })
   @UseInterceptors(FileInterceptor('file'))
   async create(
     @Param('id') id: string,

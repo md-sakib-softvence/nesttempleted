@@ -66,7 +66,9 @@ export const uploadPlayerIdentityDocumentToS3 = async (
   });
   const bucketName = process.env.AWS_S3_BUCKET_NAME || '';
   if (!bucketName) {
-    throw new Error('AWS_S3_BUCKET_NAME is not defined in environment variables');
+    throw new Error(
+      'AWS_S3_BUCKET_NAME is not defined in environment variables',
+    );
   }
 
   const extension = path.extname(file.originalname).toLowerCase();

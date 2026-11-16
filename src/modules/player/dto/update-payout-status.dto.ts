@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 export class ReviewPayoutDto {
   @ApiProperty({ enum: ['APPROVED', 'REJECTED'] })
@@ -14,7 +20,9 @@ export class ReviewPayoutDto {
 }
 
 export class StartPayoutProcessingDto {
-  @ApiProperty({ description: 'Reference from the bank transfer initiated by clearing' })
+  @ApiProperty({
+    description: 'Reference from the bank transfer initiated by clearing',
+  })
   @IsString()
   @IsNotEmpty()
   @MaxLength(120)

@@ -1823,8 +1823,18 @@ export function generateCanonicalStructure(
           `match-${tournamentId}-gf-reset`,
           'Grand Final Reset',
           'FINAL',
-          sourceRef('MATCH_WINNER', gf.id, 'Winner of Grand Final', 'Grand Final'),
-          sourceRef('MATCH_LOSER', gf.id, 'Loser of Grand Final', 'Grand Final'),
+          sourceRef(
+            'MATCH_WINNER',
+            gf.id,
+            'Winner of Grand Final',
+            'Grand Final',
+          ),
+          sourceRef(
+            'MATCH_LOSER',
+            gf.id,
+            'Loser of Grand Final',
+            'Grand Final',
+          ),
         );
         Object.assign(reset, {
           conditional: true,

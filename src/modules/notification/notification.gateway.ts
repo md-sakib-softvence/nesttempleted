@@ -52,7 +52,9 @@ export class NotificationGateway implements OnGatewayConnection {
           select: { playerId: true },
         });
         if (!player) throw new Error('Active player account required');
-      } else if (['EMPLOYEE', 'MANAGER', 'AMBASSADOR', 'SECURITY'].includes(role)) {
+      } else if (
+        ['EMPLOYEE', 'MANAGER', 'AMBASSADOR', 'SECURITY'].includes(role)
+      ) {
         const employee = await this.prisma.employee.findFirst({
           where: {
             employeeId: user.userId,

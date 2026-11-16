@@ -17,41 +17,43 @@ export class AnnouncementService {
   ) {}
 
   async create(createAnnouncementDto: CreateAnnouncementDto) {
-    const { announcement, fanIds } = await this.prisma.$transaction(async (tx) => {
-      let fanIds: string[] = [];
-      const announcement = await tx.announcement.create({
-        data: createAnnouncementDto,
-      });
-
-      // In-app broadcasts for fans are persisted as personal notifications so
-      // each fan can read and dismiss only their own messages from the bell.
-      if (
-        ['GLOBAL', 'FANS_ALL'].includes(
-          String(createAnnouncementDto.audience || 'GLOBAL').toUpperCase(),
-        ) &&
-        createAnnouncementDto.status !== 'DRAFT' &&
-        (createAnnouncementDto.channels || ['APP']).includes('APP')
-      ) {
-        const fans = await tx.fan.findMany({
-          where: { isDeleted: false, status: 'ACTIVE' },
-          select: { fanId: true },
+    const { announcement, fanIds } = await this.prisma.$transaction(
+      async (tx) => {
+        let fanIds: string[] = [];
+        const announcement = await tx.announcement.create({
+          data: createAnnouncementDto,
         });
 
-        if (fans.length > 0) {
-          fanIds = fans.map((fan) => fan.fanId);
-          await tx.notification.createMany({
-            data: fans.map((fan) => ({
-              userId: fan.fanId,
-              title: createAnnouncementDto.title,
-              description: createAnnouncementDto.content,
-              status: 'INFORMATION',
-            })),
+        // In-app broadcasts for fans are persisted as personal notifications so
+        // each fan can read and dismiss only their own messages from the bell.
+        if (
+          ['GLOBAL', 'FANS_ALL'].includes(
+            String(createAnnouncementDto.audience || 'GLOBAL').toUpperCase(),
+          ) &&
+          createAnnouncementDto.status !== 'DRAFT' &&
+          (createAnnouncementDto.channels || ['APP']).includes('APP')
+        ) {
+          const fans = await tx.fan.findMany({
+            where: { isDeleted: false, status: 'ACTIVE' },
+            select: { fanId: true },
           });
-        }
-      }
 
-      return { announcement, fanIds };
-    });
+          if (fans.length > 0) {
+            fanIds = fans.map((fan) => fan.fanId);
+            await tx.notification.createMany({
+              data: fans.map((fan) => ({
+                userId: fan.fanId,
+                title: createAnnouncementDto.title,
+                description: createAnnouncementDto.content,
+                status: 'INFORMATION',
+              })),
+            });
+          }
+        }
+
+        return { announcement, fanIds };
+      },
+    );
 
     fanIds.forEach((fanId) => this.notificationGateway.publishCreated(fanId));
     return announcement;

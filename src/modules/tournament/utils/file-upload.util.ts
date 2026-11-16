@@ -183,7 +183,10 @@ export async function rollbackTournamentFiles(files: {
   if (fanBgImg) {
     await deleteImageFromS3(fanBgImg);
   }
-  if (files.tournamentLogoUrl && files.tournamentLogoUrl !== files.tournamentLogo) {
+  if (
+    files.tournamentLogoUrl &&
+    files.tournamentLogoUrl !== files.tournamentLogo
+  ) {
     await deleteImageFromS3(files.tournamentLogoUrl);
   }
   if (files.rules?.length) {

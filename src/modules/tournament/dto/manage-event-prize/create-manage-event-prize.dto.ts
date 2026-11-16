@@ -81,17 +81,15 @@ export class CreateManageEventPrizeDto {
     description: 'Prize amount',
     example: 1000,
   })
-  @Transform(
-    ({ value, obj }) =>
-      value !== undefined
-        ? Number(value)
-        : obj?.payout !== undefined
-          ? Number(obj.payout)
-          : 0,
+  @Transform(({ value, obj }) =>
+    value !== undefined
+      ? Number(value)
+      : obj?.payout !== undefined
+        ? Number(obj.payout)
+        : 0,
   )
   @Type(() => Number)
   @IsNumber()
   @Min(0, { message: 'Amount must be a positive number' })
   amount: number;
 }
-

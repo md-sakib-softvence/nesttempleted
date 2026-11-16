@@ -711,7 +711,7 @@ export class TournamentTabsController {
     return sendResponse({
       message: `Tournament ${tabName} tab retrieved successfully`,
       data,
-      meta: (data as any)?.pagination,
+      meta: data?.pagination,
     });
   }
 

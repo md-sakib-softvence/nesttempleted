@@ -9,7 +9,11 @@ import {
   TournamentGuidelineType,
 } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { uploadImageToS3, deleteImageFromS3, getPreSignedUrl } from '../../utils/s3.util';
+import {
+  uploadImageToS3,
+  deleteImageFromS3,
+  getPreSignedUrl,
+} from '../../utils/s3.util';
 import {
   CreateTournamentGuidelineDto,
   UpdateTournamentGuidelineDto,
@@ -59,7 +63,11 @@ export class TournamentGuidelineService {
     ) {
       throw new BadRequestException('TEXT guidelines require content');
     }
-    if (type === TournamentGuidelineType.FILE && !file && !existing?.storageKey) {
+    if (
+      type === TournamentGuidelineType.FILE &&
+      !file &&
+      !existing?.storageKey
+    ) {
       throw new BadRequestException('FILE guidelines require an uploaded file');
     }
     if (file) {
@@ -69,7 +77,9 @@ export class TournamentGuidelineService {
         );
       }
       if (file.size > MAX_GUIDELINE_FILE_SIZE) {
-        throw new BadRequestException('Guideline files must be 10 MB or smaller');
+        throw new BadRequestException(
+          'Guideline files must be 10 MB or smaller',
+        );
       }
     }
     if (
@@ -124,9 +134,12 @@ export class TournamentGuidelineService {
           type: dto.type,
           audience: dto.audience,
           title: dto.title,
-          content: dto.type === TournamentGuidelineType.TEXT ? dto.content : null,
-          storageKey: dto.type === TournamentGuidelineType.FILE ? storageKey : null,
-          externalUrl: dto.type === TournamentGuidelineType.LINK ? dto.externalUrl : null,
+          content:
+            dto.type === TournamentGuidelineType.TEXT ? dto.content : null,
+          storageKey:
+            dto.type === TournamentGuidelineType.FILE ? storageKey : null,
+          externalUrl:
+            dto.type === TournamentGuidelineType.LINK ? dto.externalUrl : null,
           fileName: file?.originalname,
           mimeType: file?.mimetype,
           sortOrder: dto.sortOrder,
@@ -153,10 +166,11 @@ export class TournamentGuidelineService {
     const existing = await this.prisma.tournamentGuideline.findFirst({
       where: { id: guidelineId, tournamentId },
     });
-    if (!existing) throw new NotFoundException('Tournament guideline not found');
+    if (!existing)
+      throw new NotFoundException('Tournament guideline not found');
 
     const nextType = dto.type || existing.type;
-    this.validatePayload(nextType, dto as CreateTournamentGuidelineDto, file, existing);
+    this.validatePayload(nextType, dto, file, existing);
     const newStorageKey =
       nextType === TournamentGuidelineType.FILE && file
         ? await uploadImageToS3(file)
@@ -170,11 +184,11 @@ export class TournamentGuidelineService {
       title: dto.title,
       content:
         nextType === TournamentGuidelineType.TEXT
-          ? dto.content ?? existing.content
+          ? (dto.content ?? existing.content)
           : null,
       externalUrl:
         nextType === TournamentGuidelineType.LINK
-          ? dto.externalUrl ?? existing.externalUrl
+          ? (dto.externalUrl ?? existing.externalUrl)
           : null,
       storageKey:
         nextType === TournamentGuidelineType.FILE
@@ -182,11 +196,11 @@ export class TournamentGuidelineService {
           : null,
       fileName:
         nextType === TournamentGuidelineType.FILE
-          ? file?.originalname ?? existing.fileName
+          ? (file?.originalname ?? existing.fileName)
           : null,
       mimeType:
         nextType === TournamentGuidelineType.FILE
-          ? file?.mimetype ?? existing.mimeType
+          ? (file?.mimetype ?? existing.mimeType)
           : null,
       sortOrder: dto.sortOrder,
       version: dto.version,
@@ -200,7 +214,11 @@ export class TournamentGuidelineService {
         where: { id: guidelineId },
         data,
       });
-      if (newStorageKey && existing.storageKey && existing.storageKey !== newStorageKey) {
+      if (
+        newStorageKey &&
+        existing.storageKey &&
+        existing.storageKey !== newStorageKey
+      ) {
         await deleteImageFromS3(existing.storageKey);
       }
       return this.present(updated);
@@ -215,13 +233,19 @@ export class TournamentGuidelineService {
     const existing = await this.prisma.tournamentGuideline.findFirst({
       where: { id: guidelineId, tournamentId },
     });
-    if (!existing) throw new NotFoundException('Tournament guideline not found');
-    await this.prisma.tournamentGuideline.delete({ where: { id: guidelineId } });
+    if (!existing)
+      throw new NotFoundException('Tournament guideline not found');
+    await this.prisma.tournamentGuideline.delete({
+      where: { id: guidelineId },
+    });
     if (existing.storageKey) await deleteImageFromS3(existing.storageKey);
     return { id: guidelineId, deleted: true };
   }
 
-  async getBySection(tournamentId: string, section: TournamentGuidelineSection) {
+  async getBySection(
+    tournamentId: string,
+    section: TournamentGuidelineSection,
+  ) {
     const rows = await this.list(tournamentId);
     return rows.filter((row) => row.section === section);
   }

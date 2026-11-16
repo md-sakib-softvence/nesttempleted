@@ -35,7 +35,9 @@ describe('TicketService transfer notifications', () => {
     };
     const tx = {
       ticket: {
-        findUnique: jest.fn().mockResolvedValue({ status: 'ACTIVE', checkedIn: false }),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ status: 'ACTIVE', checkedIn: false }),
         findFirst: jest.fn().mockResolvedValue(null),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         create: jest.fn().mockResolvedValue(createdTicket),
@@ -69,10 +71,16 @@ describe('TicketService transfer notifications', () => {
 
     expect(notificationService.create).toHaveBeenCalledTimes(2);
     expect(notificationService.create).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 'fan-sender', title: 'Ticket transferred' }),
+      expect.objectContaining({
+        userId: 'fan-sender',
+        title: 'Ticket transferred',
+      }),
     );
     expect(notificationService.create).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 'fan-recipient', title: 'Ticket received' }),
+      expect.objectContaining({
+        userId: 'fan-recipient',
+        title: 'Ticket received',
+      }),
     );
   });
 });
