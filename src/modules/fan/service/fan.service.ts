@@ -17,6 +17,10 @@ import { generateFanId } from '../utils/generate-id.util';
 import { createActivities } from '../../utils/activity.util';
 import { JwtService } from '@nestjs/jwt';
 import { MailService } from '../../mail/mail.service';
+import {
+  assertAccountEmailAvailable,
+  normalizeAccountEmail,
+} from '../../utils/account-email.util';
 
 @Injectable()
 export class FanService {
@@ -30,8 +34,9 @@ export class FanService {
     createFanDto: CreateFanDto,
     options: { awardSignupBonus?: boolean } = {},
   ) {
-    const existingFan = await this.prisma.fan.findUnique({
-      where: { email: createFanDto.email },
+    const normalizedEmail = normalizeAccountEmail(createFanDto.email);
+    const existingFan = await this.prisma.fan.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
     });
 
     if (existingFan) {
@@ -55,6 +60,8 @@ export class FanService {
       throw new ConflictException('Fan with this email already exists');
     }
 
+    await assertAccountEmailAvailable(this.prisma, normalizedEmail);
+
     const { password, coins, ...rest } = createFanDto;
     const hashedPassword = await bcrypt.hash(
       password,
@@ -67,6 +74,7 @@ export class FanService {
       const createdFan = await tx.fan.create({
         data: {
           ...rest,
+          email: normalizedEmail,
           password: hashedPassword,
           showFanId,
           coins: options.awardSignupBonus ? signupBonus : (coins ?? 0),
@@ -118,13 +126,17 @@ export class FanService {
       throw new NotFoundException('Fan not found');
     }
 
-    if (updateFanDto.email && updateFanDto.email !== existingFan.email) {
-      const emailTaken = await this.prisma.fan.findUnique({
-        where: { email: updateFanDto.email },
+    const normalizedEmail = updateFanDto.email
+      ? normalizeAccountEmail(updateFanDto.email)
+      : undefined;
+    if (
+      normalizedEmail &&
+      normalizedEmail !== normalizeAccountEmail(existingFan.email)
+    ) {
+      await assertAccountEmailAvailable(this.prisma, normalizedEmail, {
+        role: 'FAN',
+        id: existingFan.fanId,
       });
-      if (emailTaken) {
-        throw new ConflictException('Email is already in use');
-      }
     }
 
     if (
@@ -168,6 +180,7 @@ export class FanService {
       where: { fanId: id },
       data: {
         ...restData,
+        ...(normalizedEmail ? { email: normalizedEmail } : {}),
         ...(profileImage ? { profileImage } : {}),
         ...(hashedPassword ? { password: hashedPassword } : {}),
       },

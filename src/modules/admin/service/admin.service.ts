@@ -16,6 +16,10 @@ import {
   QueryOptions,
 } from '../../utils/query.util';
 import { getPreSignedUrl } from '../../utils/s3.util';
+import {
+  assertAccountEmailAvailable,
+  normalizeAccountEmail,
+} from '../../utils/account-email.util';
 
 @Injectable()
 export class AdminService {
@@ -26,8 +30,9 @@ export class AdminService {
   ) {}
 
   async createAdmin(createAdminDto: CreateAdminDto) {
-    const existingAdmin = await this.prisma.admin.findUnique({
-      where: { email: createAdminDto.email },
+    const normalizedEmail = normalizeAccountEmail(createAdminDto.email);
+    const existingAdmin = await this.prisma.admin.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
     });
 
     if (existingAdmin) {
@@ -48,6 +53,8 @@ export class AdminService {
       throw new ConflictException('Admin with this email already exists');
     }
 
+    await assertAccountEmailAvailable(this.prisma, normalizedEmail);
+
     const { password, ...rest } = createAdminDto;
     const hashedPassword = await bcrypt.hash(
       password,
@@ -57,6 +64,7 @@ export class AdminService {
     return this.prisma.admin.create({
       data: {
         ...rest,
+        email: normalizedEmail,
         password: hashedPassword,
       },
     });
@@ -73,13 +81,17 @@ export class AdminService {
     }
 
     // 2. Check email uniqueness if email is being updated
-    if (updateAdminDto.email && updateAdminDto.email !== existingAdmin.email) {
-      const emailTaken = await this.prisma.admin.findUnique({
-        where: { email: updateAdminDto.email },
+    const normalizedEmail = updateAdminDto.email
+      ? normalizeAccountEmail(updateAdminDto.email)
+      : undefined;
+    if (
+      normalizedEmail &&
+      normalizedEmail !== normalizeAccountEmail(existingAdmin.email)
+    ) {
+      await assertAccountEmailAvailable(this.prisma, normalizedEmail, {
+        role: 'ADMIN',
+        id: existingAdmin.adminId,
       });
-      if (emailTaken) {
-        throw new ConflictException('Email is already in use by another admin');
-      }
     }
 
     // 3. Prepare data safely without using 'any'
@@ -97,6 +109,7 @@ export class AdminService {
       where: { adminId: id },
       data: {
         ...restData,
+        ...(normalizedEmail ? { email: normalizedEmail } : {}),
         ...(hashedPassword ? { password: hashedPassword } : {}),
       },
     });

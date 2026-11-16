@@ -36,6 +36,10 @@ import { PlayerDocumentService } from './player-document.service';
 import { PlayerPassService } from './player-pass.service';
 import { PlayerWalletService } from './player-wallet.service';
 import { evaluateSelfSchedulingWindow } from '../../tournament/utils/self-schedule.util';
+import {
+  assertAccountEmailAvailable,
+  normalizeAccountEmail,
+} from '../../utils/account-email.util';
 
 @Injectable()
 export class PlayerService {
@@ -58,8 +62,9 @@ export class PlayerService {
     profilePictureKey?: string,
     documentKeys?: string[],
   ) {
-    const existingPlayer = await this.prisma.player.findUnique({
-      where: { email: createPlayerDto.email },
+    const normalizedEmail = normalizeAccountEmail(createPlayerDto.email);
+    const existingPlayer = await this.prisma.player.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
     });
 
     if (existingPlayer) {
@@ -82,6 +87,8 @@ export class PlayerService {
       }
       throw new ConflictException('Player with this email already exists');
     }
+
+    await assertAccountEmailAvailable(this.prisma, normalizedEmail);
 
     const {
       password,
@@ -129,6 +136,7 @@ export class PlayerService {
         const created = await tx.player.create({
           data: {
             ...rest,
+            email: normalizedEmail,
             password: hashedPassword,
             showPlayerId,
             gamerTag: normalizedGamerTag,
@@ -223,13 +231,15 @@ export class PlayerService {
       preferredPlatform?: string | null;
     },
   ) {
+    // Enforce one account per email across all roles, including conversions.
+    await assertAccountEmailAvailable(tx, fan.email);
     const showPlayerId = await generatePlayerId(this.prisma);
     const player = await tx.player.create({
       data: {
         showPlayerId,
         firstName: fan.firstName,
         lastName: fan.surname || '',
-        email: fan.email,
+        email: normalizeAccountEmail(fan.email),
         password: fan.password,
         phoneNumber: fan.phoneNumber,
         gamerTag: profile.gamerTag,
@@ -309,8 +319,8 @@ export class PlayerService {
     // Player email addresses are immutable after account creation.
     if (
       updatePlayerDto.email &&
-      updatePlayerDto.email.trim().toLowerCase() !==
-        existingPlayer.email.trim().toLowerCase()
+      normalizeAccountEmail(updatePlayerDto.email) !==
+        normalizeAccountEmail(existingPlayer.email)
     ) {
       throw new BadRequestException('Email address cannot be changed.');
     }

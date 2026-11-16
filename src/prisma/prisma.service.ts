@@ -8,6 +8,10 @@ import { PrismaClient, AdminRole } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import * as bcrypt from 'bcrypt';
+import {
+  assertAccountEmailAvailable,
+  normalizeAccountEmail,
+} from '../modules/utils/account-email.util';
 
 @Injectable()
 export class PrismaService
@@ -68,8 +72,9 @@ export class PrismaService
   private async seedSuperAdmin() {
     this.logger.log('🌱 Checking for super admin...');
 
-    const superAdminEmail =
-      process.env.SUPER_ADMIN_EMAIL || 'superadmin@example.com';
+    const superAdminEmail = normalizeAccountEmail(
+      process.env.SUPER_ADMIN_EMAIL || 'superadmin@example.com',
+    );
     const superAdminPassword =
       process.env.SUPER_ADMIN_PASSWORD || 'password123';
 
@@ -79,6 +84,7 @@ export class PrismaService
       });
 
       if (!existingSuperAdmin) {
+        await assertAccountEmailAvailable(this, superAdminEmail);
         const hashedPassword = await bcrypt.hash(
           superAdminPassword,
           Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
