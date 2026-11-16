@@ -1,3 +1,4 @@
+import { syncTournamentTicket } from '../utils/tournament-ticket.util';
 import {
   Injectable,
   NotFoundException,
@@ -217,7 +218,7 @@ export class TournamentRegistrationService {
       where: { tournamentId },
     });
 
-    if (!tournament) {
+    if (!tournament || tournament.isDeleted) {
       throw new NotFoundException(`Tournament #${tournamentId} not found`);
     }
 
@@ -355,15 +356,7 @@ export class TournamentRegistrationService {
         currentTournament.registrationCutOffMode === 'CAPACITY' &&
         currentTournament._count.registrations >= currentTournament.capacity
       ) {
-        await this.prisma.tournament.update({
-          where: { tournamentId },
-          data: {
-            registrationOpen: false,
-            ...(currentTournament.status === TournamentStatus.REGISTRATION_OPEN
-              ? { status: TournamentStatus.UPCOMING }
-              : {}),
-          },
-        });
+        await this.closeRegistration(tournamentId);
       }
     }
 
@@ -377,22 +370,29 @@ export class TournamentRegistrationService {
     const tournament = await this.prisma.tournament.findUnique({
       where: { tournamentId },
     });
-    if (!tournament) {
+    if (!tournament || tournament.isDeleted) {
       throw new NotFoundException(`Tournament #${tournamentId} not found`);
     }
 
-    return this.prisma.tournament.update({
-      where: { tournamentId },
-      data: {
-        registrationOpen: true,
-        status: TournamentStatus.REGISTRATION_OPEN,
-        registrationCutOffMode: dto.mode,
-        ...(dto.capacity !== undefined ? { capacity: dto.capacity } : {}),
-        ...(dto.deadline ? { deadline: new Date(dto.deadline) } : {}),
-        ...(dto.requireJerseySize !== undefined
-          ? { requireJerseySize: dto.requireJerseySize }
-          : {}),
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.tournament.update({
+        where: { tournamentId },
+        data: {
+          registrationOpen: true,
+          status: TournamentStatus.REGISTRATION_OPEN,
+          registrationCutOffMode: dto.mode,
+          ...(dto.ticketPrice !== undefined
+            ? { ticketPrice: dto.ticketPrice }
+            : {}),
+          ...(dto.capacity !== undefined ? { capacity: dto.capacity } : {}),
+          ...(dto.deadline ? { deadline: new Date(dto.deadline) } : {}),
+          ...(dto.requireJerseySize !== undefined
+            ? { requireJerseySize: dto.requireJerseySize }
+            : {}),
+        },
+      });
+      await syncTournamentTicket(tx, updated);
+      return updated;
     });
   }
 
@@ -403,18 +403,27 @@ export class TournamentRegistrationService {
     const tournament = await this.prisma.tournament.findUnique({
       where: { tournamentId },
     });
-    if (!tournament) {
+    if (!tournament || tournament.isDeleted) {
       throw new NotFoundException(`Tournament #${tournamentId} not found`);
     }
 
-    return this.prisma.tournament.update({
-      where: { tournamentId },
-      data: {
-        registrationOpen: false,
-        ...(tournament.status === TournamentStatus.REGISTRATION_OPEN
-          ? { status: TournamentStatus.UPCOMING }
-          : {}),
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.tournament.update({
+        where: { tournamentId },
+        data: {
+          registrationOpen: false,
+          ...([
+            'REGISTRATION_OPEN',
+            'REGISTRATION_CLOSE',
+            'UPCOMING',
+            'DRAFT',
+          ].includes(tournament.status)
+            ? { status: TournamentStatus.REGISTRATION_CLOSE }
+            : {}),
+        },
+      });
+      await syncTournamentTicket(tx, updated);
+      return updated;
     });
   }
 

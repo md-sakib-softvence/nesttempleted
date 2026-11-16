@@ -19,7 +19,7 @@ Complete documentation for the Tournament Ticketing System, including seat and c
    - [5. Get My Purchased Tickets (Wallet)](#5-get-my-purchased-tickets-wallet)
    - [6. Tournament Seat Capacity & Calculations Summary](#6-tournament-seat-capacity--calculations-summary)
    - [7. Ticket Sales Analytics (Admin)](#7-ticket-sales-analytics-admin)
-   - [8. Ticket Tiers Management (CRUD)](#8-ticket-tiers-management-crud)
+   - [8. Tournament-managed ticket inventory](#8-tournament-managed-ticket-inventory)
 
 ---
 
@@ -464,19 +464,36 @@ When `POST /api/v1/tickets/purchase` is invoked, the backend retrieves `process.
 
 ---
 
-### 8. Ticket Tiers Management (CRUD)
-- `GET /api/v1/tickets/tournament/:tournamentId/tiers` - Public list of tiers.
-- `POST /api/v1/tickets/tiers` - Admin creates tier:
-  ```json
-  {
-    "tournamentId": "8f3e2b41-3b7c-4a34-8c01-7c980d287ea6",
-    "name": "VIP Pass",
-    "type": "VIP",
-    "price": 5000,
-    "currency": "NGN",
-    "capacity": 50,
-    "description": "Front-row seats + VIP lounge access"
-  }
-  ```
-- `PUT /api/v1/tickets/tiers/:tierId` - Admin updates tier pricing/capacity.
-- `DELETE /api/v1/tickets/tiers/:tierId` - Admin deletes tier (only allowed if 0 tickets sold).
+### 8. Tournament-managed ticket inventory
+
+Create and update ticket inventory through tournament APIs. Standalone `POST /api/v1/tickets/tiers` and `PUT /api/v1/tickets/tiers/:tierId` have been removed.
+
+On `POST /api/v1/tournaments`, include these fields along with the normal tournament settings:
+
+```json
+{
+  "name": "Championship",
+  "registrationOpen": true,
+  "ticketPrice": 1500,
+  "maxCapacity": 40,
+  "currency": "NGN"
+}
+```
+
+- `ticketPrice` is the price per admission ticket, separate from player `entryFee`.
+- Opening registration requires a configured ticket price. Closed tournaments can save a price without creating inventory until opened.
+- One tournament-managed `FAN` / `DAY_PASS` tier is created, named after the tournament, with capacity exactly equal to tournament capacity. Individual QR tickets are issued after purchase, not pre-generated for fictional purchasers.
+- `PATCH /api/v1/tournaments/:id` updates name, `ticketPrice`, currency and capacity together with the inventory. `maxCapacity` is accepted as the capacity alias.
+- The tournament details tab accepts `ticketPrice` too. Registration open actions can supply `ticketPrice` if it has not been configured yet.
+- Closing registration hides the managed tier; reopening reuses it without resetting sold counts.
+- Capacity cannot drop below tickets already sold. Tournament changes and inventory changes commit or roll back together.
+- `GET /api/v1/tickets/tournament/:tournamentId/tiers` and `GET /api/v1/tickets/tiers` remain available. Use the returned `tierId` for checkout and display only ACTIVE tiers for sale.
+- The existing delete route remains for unsold legacy tiers; a tournament-managed tier cannot be deleted separately.
+- Existing tickets and legacy tiers are preserved. No historical records are deleted or automatically converted by the migration.
+
+Before running the updated application, deploy the Prisma migrations and regenerate the client:
+
+```bash
+npx prisma migrate deploy
+npx prisma generate
+```

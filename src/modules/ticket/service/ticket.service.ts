@@ -11,8 +11,6 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { FlutterwaveService } from '../../flutterwave/service/flutterwave.service';
 import { PurchaseTicketDto } from '../dto/purchase-ticket.dto';
 import { CheckInTicketDto } from '../dto/check-in-ticket.dto';
-import { CreateTierDto } from '../dto/create-tier.dto';
-import { UpdateTierDto } from '../dto/update-tier.dto';
 import { QueryTicketDto } from '../dto/query-ticket.dto';
 import { TransferTicketDto } from '../dto/transfer-ticket.dto';
 import {
@@ -547,8 +545,7 @@ export class TicketService {
       });
       const matchingPendingPayment = priorPendingPayments.find((payment) => {
         const priorDetails =
-          payment.providerDetails &&
-          typeof payment.providerDetails === 'object'
+          payment.providerDetails && typeof payment.providerDetails === 'object'
             ? (payment.providerDetails as Record<string, any>)
             : {};
         return (
@@ -1012,18 +1009,20 @@ export class TicketService {
           }
         }
 
+        const latestTournament = await tx.tournament.findUnique({
+          where: { tournamentId },
+          select: { capacity: true },
+        });
+        const latestCapacity = latestTournament?.capacity ?? effectiveCapacity;
         const latestTotalSold = await tx.ticket.count({
           where: {
             tournamentId,
             status: { in: [TicketStatus.ACTIVE, TicketStatus.USED] },
           },
         });
-        if (
-          effectiveCapacity > 0 &&
-          latestTotalSold + quantity > effectiveCapacity
-        ) {
+        if (latestCapacity > 0 && latestTotalSold + quantity > latestCapacity) {
           throw new BadRequestException(
-            `Payment verified, but no seats remain. Remaining seats: ${Math.max(0, effectiveCapacity - latestTotalSold)}.`,
+            `Payment verified, but no seats remain. Remaining seats: ${Math.max(0, latestCapacity - latestTotalSold)}.`,
           );
         }
         if (tierId) {
@@ -2623,30 +2622,6 @@ export class TicketService {
   /**
    * 10. Ticket Tier CRUD
    */
-  async createTier(dto: CreateTierDto) {
-    const tournament = await this.prisma.tournament.findUnique({
-      where: { tournamentId: dto.tournamentId },
-    });
-
-    if (!tournament) {
-      throw new NotFoundException(`Tournament #${dto.tournamentId} not found`);
-    }
-
-    return this.prisma.ticketTier.create({
-      data: {
-        tournamentId: dto.tournamentId,
-        name: dto.name,
-        audienceRole: dto.audienceRole || TicketAudienceRole.FAN,
-        type: dto.type || TicketType.DAY_PASS,
-        price: dto.price,
-        currency: dto.currency || tournament.currency || 'NGN',
-        capacity: dto.capacity || 100,
-        description: dto.description || null,
-        status: 'ACTIVE',
-      },
-    });
-  }
-
   async getTiersByTournament(
     tournamentId: string,
     audienceRole?: TicketAudienceRole,
@@ -2668,7 +2643,7 @@ export class TicketService {
     }));
   }
 
-  async updateTier(tierId: string, dto: UpdateTierDto) {
+  async deleteTier(tierId: string) {
     const tier = await this.prisma.ticketTier.findUnique({
       where: { tierId },
     });
@@ -2677,30 +2652,10 @@ export class TicketService {
       throw new NotFoundException(`Ticket Tier #${tierId} not found`);
     }
 
-    return this.prisma.ticketTier.update({
-      where: { tierId },
-      data: {
-        ...(dto.name ? { name: dto.name } : {}),
-        ...(dto.type ? { type: dto.type } : {}),
-        ...(dto.audienceRole ? { audienceRole: dto.audienceRole } : {}),
-        ...(dto.price !== undefined ? { price: dto.price } : {}),
-        ...(dto.currency ? { currency: dto.currency } : {}),
-        ...(dto.capacity !== undefined ? { capacity: dto.capacity } : {}),
-        ...(dto.description !== undefined
-          ? { description: dto.description }
-          : {}),
-        ...(dto.status ? { status: dto.status } : {}),
-      },
-    });
-  }
-
-  async deleteTier(tierId: string) {
-    const tier = await this.prisma.ticketTier.findUnique({
-      where: { tierId },
-    });
-
-    if (!tier) {
-      throw new NotFoundException(`Ticket Tier #${tierId} not found`);
+    if (tier.tournamentManaged) {
+      throw new BadRequestException(
+        'Manage this ticket through its tournament.',
+      );
     }
 
     if (tier.sold > 0) {
@@ -2766,6 +2721,10 @@ export class TicketService {
     let tier: any = null;
     if (body.tierId) {
       tier = tournament.ticketTiers.find((t) => t.tierId === body.tierId);
+      if (!tier)
+        throw new NotFoundException(
+          'Ticket tier not found for this tournament.',
+        );
     } else if (tournament.ticketTiers.length > 0) {
       tier = tournament.ticketTiers[0];
     }
@@ -2784,9 +2743,6 @@ export class TicketService {
       );
     }
     const ticketId = crypto.randomUUID();
-    const count = await this.prisma.ticket.count({
-      where: { tournamentId: body.tournamentId },
-    });
     const randomChunk1 = crypto.randomBytes(2).toString('hex').toUpperCase();
     const randomChunk2 = crypto.randomBytes(2).toString('hex').toUpperCase();
     const showTicketId = `TCK-2026-${randomChunk1}-${randomChunk2}`;
@@ -2825,8 +2781,45 @@ export class TicketService {
       .toUpperCase();
     const qrToken = `${purchaserRole}:${body.tournamentId}:${userId}:${ticketId}:${signature}`;
 
-    const [ticket] = await this.prisma.$transaction([
-      this.prisma.ticket.create({
+    const ticket = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`
+        WITH tournament_lock AS MATERIALIZED (
+          SELECT pg_advisory_xact_lock(hashtext(${body.tournamentId}), hashtext('ticket-issuance'))
+        ) SELECT 1::int AS locked FROM tournament_lock
+      `;
+      const latestTournament = await tx.tournament.findUnique({
+        where: { tournamentId: body.tournamentId },
+      });
+      const sold = await tx.ticket.count({
+        where: {
+          tournamentId: body.tournamentId,
+          status: { in: [TicketStatus.ACTIVE, TicketStatus.USED] },
+        },
+      });
+      if (
+        !latestTournament ||
+        latestTournament.isDeleted ||
+        sold >= latestTournament.capacity
+      ) {
+        throw new BadRequestException(
+          'Tournament ticket capacity reached or tournament unavailable.',
+        );
+      }
+      if (tier) {
+        const latestTier = await tx.ticketTier.findUnique({
+          where: { tierId: tier.tierId },
+        });
+        if (
+          !latestTier ||
+          latestTier.status !== 'ACTIVE' ||
+          latestTier.sold >= latestTier.capacity
+        ) {
+          throw new BadRequestException(
+            'The selected ticket tier is unavailable or sold out.',
+          );
+        }
+      }
+      const ticket = await tx.ticket.create({
         data: {
           ticketId,
           showTicketId,
@@ -2876,16 +2869,14 @@ export class TicketService {
             },
           },
         },
-      }),
-      ...(tier
-        ? [
-            this.prisma.ticketTier.update({
-              where: { tierId: tier.tierId },
-              data: { sold: { increment: 1 } },
-            }),
-          ]
-        : []),
-    ]);
+      });
+      if (tier)
+        await tx.ticketTier.update({
+          where: { tierId: tier.tierId },
+          data: { sold: { increment: 1 } },
+        });
+      return ticket;
+    });
 
     return ticket;
   }

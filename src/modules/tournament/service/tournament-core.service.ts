@@ -1,3 +1,4 @@
+import { syncTournamentTicket } from '../utils/tournament-ticket.util';
 import {
   reconcileCalendarSettings,
   structureFlags,
@@ -221,6 +222,7 @@ export class TournamentCoreService {
         numberOfTeams:
           createTournamentDto.numberOfTeams || createTournamentDto.teams || 8,
         entryFee: createTournamentDto.entryFee ?? 0,
+        ticketPrice: createTournamentDto.ticketPrice,
         currency: createTournamentDto.currency || Currency.NGN,
         paymentWindow: createTournamentDto.paymentWindow || 48,
         prizeRule: createTournamentDto.prizeRule || PrizeRule.PERCENTAGE,
@@ -449,8 +451,11 @@ export class TournamentCoreService {
       data: { schedule: schedulePayload as any },
     });
 
+    const ticketTier = await syncTournamentTicket(db, tournament);
+
     const result = {
       ...tournament,
+      ticketTiers: ticketTier ? [ticketTier] : [],
       schedule: schedulePayload,
     };
 
@@ -545,6 +550,7 @@ export class TournamentCoreService {
       where.status = {
         in: [
           TournamentStatus.REGISTRATION_OPEN,
+          TournamentStatus.REGISTRATION_CLOSE,
           TournamentStatus.UPCOMING,
           TournamentStatus.ONGOING,
           TournamentStatus.IN_PROGRESS,
@@ -673,6 +679,18 @@ export class TournamentCoreService {
 
   private normalizeConfigurationAliases(dto: any) {
     const input: any = { ...dto };
+    if (
+      input.ticketPrice !== undefined &&
+      (input.ticketPrice === null ||
+        !Number.isFinite(Number(input.ticketPrice)) ||
+        Number(input.ticketPrice) < 0)
+    ) {
+      throw new BadRequestException(
+        'ticketPrice must be a finite nonnegative number.',
+      );
+    }
+    if (input.ticketPrice !== undefined)
+      input.ticketPrice = Number(input.ticketPrice);
     const nested = input.scheduleSettings || {};
     const aliases: Record<string, string[]> = {
       dailyStart: ['eventStartTime', 'dailyStart'],
@@ -1263,6 +1281,7 @@ export class TournamentCoreService {
       'tournamentFormat',
       'numberOfTeams',
       'entryFee',
+      'ticketPrice',
       'currency',
       'paymentWindow',
       'prizeRule',
@@ -1438,7 +1457,9 @@ export class TournamentCoreService {
                 }
               }
           if (windows.some((w: any) => !found.has(w.date)))
-            throw new BadRequestException('Unknown matchday booking window date');
+            throw new BadRequestException(
+              'Unknown matchday booking window date',
+            );
         }
         filteredUpdateData.schedule = nextSchedule;
       }
@@ -1504,7 +1525,18 @@ export class TournamentCoreService {
       }
     }
 
-    return presignTournamentMedia(updated);
+    if (
+      updated.ticketPrice != null ||
+      updateTournamentDto.ticketPrice !== undefined ||
+      updateTournamentDto.registrationOpen === true ||
+      updateTournamentDto.status === TournamentStatus.REGISTRATION_OPEN
+    ) {
+      await syncTournamentTicket(db, updated);
+    }
+    const ticketTiers = await db.ticketTier.findMany({
+      where: { tournamentId: id },
+    });
+    return presignTournamentMedia({ ...updated, ticketTiers });
   }
 
   async deleteTournament(id: string) {
@@ -1546,13 +1578,7 @@ export class TournamentCoreService {
       });
     }
 
-    const updated = await this.prisma.tournament.update({
-      where: { tournamentId: id },
-      data: {
-        status: dto.status,
-        version: { increment: 1 },
-      },
-    });
+    const updated = await this.updateTournament(id, dto);
 
     return {
       id: updated.tournamentId,

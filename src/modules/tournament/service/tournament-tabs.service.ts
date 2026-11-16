@@ -209,6 +209,7 @@ export class TournamentTabsService {
       },
       financialSettings: {
         entryFee: tournament.entryFee,
+        ticketPrice: tournament.ticketPrice,
         currency: tournament.currency,
         prizePoolRule: tournament.prizeRule,
         percentage: tournament.percentage,
@@ -454,6 +455,7 @@ export class TournamentTabsService {
       await this.registrationService.openRegistration(tournamentId, {
         mode,
         capacity: dto.capacity,
+        ticketPrice: dto.ticketPrice,
       });
     } else if (dto.action === 'close') {
       await this.registrationService.closeRegistration(tournamentId);
@@ -464,32 +466,15 @@ export class TournamentTabsService {
         registrationIds: dto.selectedPlayerIds,
       });
     } else {
-      const data: Prisma.TournamentUpdateInput = {};
-      if (dto.registrationOpen !== undefined) {
-        data.registrationOpen = dto.registrationOpen;
-        if (
-          dto.registrationOpen === false &&
-          tournament.status === 'REGISTRATION_OPEN'
-        ) {
-          data.status = TournamentStatus.UPCOMING;
-        } else if (
-          dto.registrationOpen === true &&
-          tournament.status === 'UPCOMING'
-        ) {
-          data.status = TournamentStatus.REGISTRATION_OPEN;
-        }
-      }
-      if (dto.registrationCutOffMode !== undefined)
-        data.registrationCutOffMode = dto.registrationCutOffMode;
-      if (dto.capacity !== undefined) data.capacity = dto.capacity;
-      if (dto.requireJerseySize !== undefined)
-        data.requireJerseySize = dto.requireJerseySize;
-
-      data.version = { increment: 1 };
-
-      await this.prisma.tournament.update({
-        where: { tournamentId },
-        data,
+      await new TournamentCoreService(
+        this.prisma,
+        this.scheduleService,
+      ).updateTournament(tournamentId, {
+        registrationOpen: dto.registrationOpen,
+        registrationCutOffMode: dto.registrationCutOffMode,
+        capacity: dto.capacity,
+        requireJerseySize: dto.requireJerseySize,
+        ticketPrice: dto.ticketPrice,
       });
     }
 
@@ -517,15 +502,7 @@ export class TournamentTabsService {
       updated.registrationCutOffMode === 'CAPACITY' &&
       updated._count.registrations >= updated.capacity
     ) {
-      await this.prisma.tournament.update({
-        where: { tournamentId },
-        data: {
-          registrationOpen: false,
-          ...(updated.status === 'REGISTRATION_OPEN'
-            ? { status: TournamentStatus.UPCOMING }
-            : {}),
-        },
-      });
+      await this.registrationService.closeRegistration(tournamentId);
     }
 
     return this.getRegistrationsTab(tournamentId);
@@ -562,7 +539,11 @@ export class TournamentTabsService {
     });
 
     // Helper to resolve clean display names for participant references
-    const formatParticipant = (rawPlayer: any, ref: any, fallbackId: string) => {
+    const formatParticipant = (
+      rawPlayer: any,
+      ref: any,
+      fallbackId: string,
+    ) => {
       let resolvedName = rawPlayer?.name || rawPlayer?.gamertag;
       if (!resolvedName || resolvedName === 'TBD') {
         resolvedName = ref?.displayName || ref?.name || ref?.gamerTag;

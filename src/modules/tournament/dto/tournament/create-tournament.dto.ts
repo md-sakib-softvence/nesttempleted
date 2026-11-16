@@ -174,6 +174,17 @@ export class CreateTournamentDto {
   numberOfTeams?: number;
 
   @ApiPropertyOptional({
+    description:
+      'Price per admission ticket. Required when creating or opening registration; quantity follows tournament capacity.',
+    example: 1500,
+  })
+  @Type(() => Number)
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(0)
+  @IsOptional()
+  ticketPrice?: number;
+
+  @ApiPropertyOptional({
     description: 'Entry Fee amount',
     example: 50,
     default: 0,
@@ -1030,7 +1041,9 @@ export class CreateTournamentDto {
       (typeof obj?.groups === 'number' || typeof obj?.groups === 'string'
         ? obj?.groups
         : undefined);
-    return raw !== undefined && raw !== null && raw !== '' ? Number(raw) : undefined;
+    return raw !== undefined && raw !== null && raw !== ''
+      ? Number(raw)
+      : undefined;
   })
   @Type(() => Number)
   @IsInt()
@@ -1099,7 +1112,9 @@ export class CreateTournamentDto {
   @ApiPropertyOptional({ description: 'Top qualifiers count' })
   @Transform(({ value, obj }) => {
     const raw = value ?? obj?.topQualifiersPerGroup ?? obj?.topQ;
-    return raw !== undefined && raw !== null && raw !== '' ? Number(raw) : undefined;
+    return raw !== undefined && raw !== null && raw !== ''
+      ? Number(raw)
+      : undefined;
   })
   @Type(() => Number)
   @IsInt()

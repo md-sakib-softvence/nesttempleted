@@ -2,7 +2,6 @@ import {
   Controller,
   Get,
   Post,
-  Put,
   Delete,
   Body,
   Param,
@@ -26,8 +25,6 @@ import { TicketService } from '../service/ticket.service';
 import { PurchaseTicketDto } from '../dto/purchase-ticket.dto';
 import { VerifyTicketDto } from '../dto/verify-ticket.dto';
 import { CheckInTicketDto } from '../dto/check-in-ticket.dto';
-import { CreateTierDto } from '../dto/create-tier.dto';
-import { UpdateTierDto } from '../dto/update-tier.dto';
 import { QueryTicketDto } from '../dto/query-ticket.dto';
 import { TransferTicketDto } from '../dto/transfer-ticket.dto';
 import { sendResponse } from '../../utils/response.util';
@@ -196,7 +193,10 @@ export class TicketController {
   })
   async getMyTickets(@Req() req: Request) {
     const user = (req as any).user;
-    const data = await this.ticketService.getMyTickets(user?.userId, user?.role);
+    const data = await this.ticketService.getMyTickets(
+      user?.userId,
+      user?.role,
+    );
     return sendResponse({
       message: 'User tickets retrieved successfully',
       data,
@@ -270,7 +270,10 @@ export class TicketController {
     @Query('tournamentId') tournamentId?: string,
     @Query('audienceRole') audienceRole?: TicketAudienceRole,
   ) {
-    const data = await this.ticketService.getAllTiers(tournamentId, audienceRole);
+    const data = await this.ticketService.getAllTiers(
+      tournamentId,
+      audienceRole,
+    );
     return sendResponse({
       message: 'Ticket tiers retrieved successfully',
       data,
@@ -305,43 +308,12 @@ export class TicketController {
     @Param('tournamentId') tournamentId: string,
     @Query('audienceRole') audienceRole?: TicketAudienceRole,
   ) {
-    const data = await this.ticketService.getTiersByTournament(tournamentId, audienceRole);
+    const data = await this.ticketService.getTiersByTournament(
+      tournamentId,
+      audienceRole,
+    );
     return sendResponse({
       message: 'Ticket tiers retrieved successfully',
-      data,
-    });
-  }
-
-  /**
-   * 10. Create Ticket Tier (Admin / Organizer)
-   */
-  @Post('tiers')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'ADMIN', 'SUPER_ADMIN')
-  @ApiOperation({ summary: 'Create a new ticket tier for a tournament' })
-  async createTier(@Body() dto: CreateTierDto) {
-    const data = await this.ticketService.createTier(dto);
-    return sendResponse({
-      message: 'Ticket tier created successfully',
-      data,
-    });
-  }
-
-  /**
-   * 11. Update Ticket Tier
-   */
-  @Put('tiers/:tierId')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'ADMIN', 'SUPER_ADMIN')
-  @ApiOperation({ summary: 'Update an existing ticket tier' })
-  @ApiParam({ name: 'tierId', description: 'Tier ID' })
-  async updateTier(
-    @Param('tierId') tierId: string,
-    @Body() dto: UpdateTierDto,
-  ) {
-    const data = await this.ticketService.updateTier(tierId, dto);
-    return sendResponse({
-      message: 'Ticket tier updated successfully',
       data,
     });
   }
