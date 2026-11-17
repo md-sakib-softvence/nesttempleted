@@ -27,6 +27,10 @@ import {
 import { CreateEmployeeTournamentAssignmentDto } from '../dto/create-employee-tournament-assignment.dto';
 import { SendEmployeeMessageDto } from '../dto/send-employee-message.dto';
 import { NotificationService } from '../../notification/notification.service';
+import {
+  assertAccountEmailAvailable,
+  normalizeAccountEmail,
+} from '../../utils/account-email.util';
 
 @Injectable()
 export class EmployeeService {
@@ -74,8 +78,9 @@ export class EmployeeService {
   }
 
   async createEmployee(createEmployeeDto: CreateEmployeeDto) {
-    const existingEmployee = await this.prisma.employee.findUnique({
-      where: { email: createEmployeeDto.email },
+    const normalizedEmail = normalizeAccountEmail(createEmployeeDto.email);
+    const existingEmployee = await this.prisma.employee.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
     });
 
     if (existingEmployee) {
@@ -97,6 +102,8 @@ export class EmployeeService {
       throw new ConflictException('Employee with this email already exists');
     }
 
+    await assertAccountEmailAvailable(this.prisma, normalizedEmail);
+
     const { password, qrCode, ...rest } = createEmployeeDto;
     const initialQrCodes = [
       ...new Set(
@@ -114,6 +121,7 @@ export class EmployeeService {
     const newEmployee = await this.prisma.employee.create({
       data: {
         ...rest,
+        email: normalizedEmail,
         qrCode: initialQrCodes,
         qrCodeSerials: initialQrCodes.map((_, index) => index + 1),
         qrCodeGenerationCount: initialQrCodes.length,
@@ -143,18 +151,17 @@ export class EmployeeService {
     }
 
     // 2. Check email uniqueness if email is being updated
+    const normalizedEmail = updateEmployeeDto.email
+      ? normalizeAccountEmail(updateEmployeeDto.email)
+      : undefined;
     if (
-      updateEmployeeDto.email &&
-      updateEmployeeDto.email !== existingEmployee.email
+      normalizedEmail &&
+      normalizedEmail !== normalizeAccountEmail(existingEmployee.email)
     ) {
-      const emailTaken = await this.prisma.employee.findUnique({
-        where: { email: updateEmployeeDto.email },
+      await assertAccountEmailAvailable(this.prisma, normalizedEmail, {
+        role: 'EMPLOYEE',
+        id: existingEmployee.employeeId,
       });
-      if (emailTaken) {
-        throw new ConflictException(
-          'Email is already in use by another employee',
-        );
-      }
     }
 
     // 3. Prepare data safely without using 'any'
@@ -319,6 +326,7 @@ export class EmployeeService {
       where: { employeeId: existingEmployee.employeeId },
       data: {
         ...restData,
+        ...(normalizedEmail ? { email: normalizedEmail } : {}),
         ...(profileImage ? { profileImage } : {}),
         document: finalDocuments,
         qrCode: finalQrCodes,

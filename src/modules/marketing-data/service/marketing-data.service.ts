@@ -15,6 +15,10 @@ import {
   calculatePaginationMeta,
   QueryOptions,
 } from '../../utils/query.util';
+import {
+  assertAccountEmailAvailable,
+  normalizeAccountEmail,
+} from '../../utils/account-email.util';
 
 @Injectable()
 export class MarketingDataService {
@@ -25,9 +29,11 @@ export class MarketingDataService {
   ) {}
 
   async createMarketingData(dto: CreateMarketingDataDto) {
+    const normalizedEmail = normalizeAccountEmail(dto.email);
+
     // 1. Check if email already exists in Fan or Player
     const existingFan = await this.prisma.fan.findUnique({
-      where: { email: dto.email },
+      where: { email: normalizedEmail },
     });
 
     if (existingFan) {
@@ -50,6 +56,8 @@ export class MarketingDataService {
       }
       throw new ConflictException('A fan with this email already exists.');
     }
+
+    await assertAccountEmailAvailable(this.prisma, normalizedEmail);
 
     if (dto.employeeId) {
       const existingEmployee = await this.prisma.employee.findUnique({
@@ -82,7 +90,7 @@ export class MarketingDataService {
           showFanId,
           firstName,
           surname,
-          email,
+          email: normalizedEmail,
           phoneNumber,
           password: hashedPassword,
           gender: dto.gender,
@@ -103,7 +111,7 @@ export class MarketingDataService {
     });
 
     try {
-      await this.mailService.sendWelcomeEmail(email, firstName, staticPassword);
+      await this.mailService.sendWelcomeEmail(normalizedEmail, firstName, staticPassword);
     } catch (error) {
       console.error('Failed to send welcome email:', error);
     }
@@ -186,17 +194,16 @@ export class MarketingDataService {
       }
 
       // 2. Validate email uniqueness if email is changed
-      if (email) {
-        const checkEmailFan =
-          existingData.fan && email !== existingData.fan.email
-            ? await tx.fan.findUnique({ where: { email } })
-            : null;
-
-        if (checkEmailFan) {
-          throw new ConflictException(
-            'Email is already in use by another user.',
-          );
-        }
+      const normalizedEmail = email ? normalizeAccountEmail(email) : undefined;
+      if (
+        normalizedEmail &&
+        existingData.fan &&
+        normalizedEmail !== normalizeAccountEmail(existingData.fan.email)
+      ) {
+        await assertAccountEmailAvailable(tx, normalizedEmail, {
+          role: 'FAN',
+          id: existingData.fan.fanId,
+        });
       }
 
       // 3. Update associated Fan
@@ -206,7 +213,7 @@ export class MarketingDataService {
           data: {
             ...(firstName ? { firstName } : {}),
             ...(surname ? { surname } : {}),
-            ...(email ? { email } : {}),
+            ...(normalizedEmail ? { email: normalizedEmail } : {}),
             ...(phoneNumber ? { phoneNumber } : {}),
             ...(gender ? { gender } : {}),
             ...(ageRange ? { ageRange } : {}),
