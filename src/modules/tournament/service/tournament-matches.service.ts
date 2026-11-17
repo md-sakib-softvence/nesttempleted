@@ -1,3 +1,4 @@
+import { matchDependencies } from '../utils/tournament-calculation.util';
 import { randomUUID } from 'node:crypto';
 import {
   capacitySummary,
@@ -215,13 +216,14 @@ export class TournamentMatchesService {
     tournamentId: string,
     matchId: string,
     dto: AllocateMatchDto,
+    move = false,
   ) {
     const tournament = await this.resolveTournamentForMatch(
       tournamentId,
       matchId,
     );
 
-    const currentSchedule =
+    let currentSchedule =
       tournament.schedule as any as TournamentSchedulePayload;
     if (!currentSchedule || !currentSchedule.structure) {
       throw new BadRequestException(
@@ -245,6 +247,14 @@ export class TournamentMatchesService {
     Object.assign(currentSchedule.capacity, {
       matchDuration: tournament.matchDuration,
     });
+    if (move) {
+      if (!target || !['SCHEDULED', 'PLAYERS_READY'].includes(target.status))
+        throw new ConflictException('Only scheduled matches can be moved');
+      currentSchedule = this.tournamentScheduleService.unallocateMatch(
+        currentSchedule,
+        matchId,
+      ).updatedSchedule;
+    }
     refreshParticipants(currentSchedule);
     const { updatedSchedule, match, allocation } =
       this.tournamentScheduleService.allocateMatch(
@@ -271,7 +281,63 @@ export class TournamentMatchesService {
     return {
       allocation,
       match,
+      version: tournament.version + 1,
     };
+  }
+
+  async getManualAvailableSlots(tournamentId: string, matchId: string) {
+    const tournament = await this.resolveTournamentForMatch(
+      tournamentId,
+      matchId,
+    );
+    let schedule = JSON.parse(
+      JSON.stringify(tournament.schedule),
+    ) as TournamentSchedulePayload;
+    if (!schedule?.structure || !schedule.calendar)
+      throw new BadRequestException('Schedule is not generated');
+    const match = schedule.structure.matches.find((m) => m.id === matchId);
+    if (!match) throw new NotFoundException('Match not found');
+    if (!['SCHEDULED', 'PLAYERS_READY'].includes(match.status))
+      throw new ConflictException('Match is not schedulable');
+    schedule = this.tournamentScheduleService.unallocateMatch(
+      schedule,
+      matchId,
+    ).updatedSchedule;
+    Object.assign(schedule.capacity, {
+      matchDuration: tournament.matchDuration,
+    });
+    refreshParticipants(schedule);
+    const slots: any[] = [];
+    for (const venue of schedule.calendar)
+      for (const screen of venue.screens)
+        for (const day of screen.days)
+          for (const slot of day.timeslots) {
+            if (slot.game || slot.canonicalMatchId) continue;
+            try {
+              this.tournamentScheduleService.allocateMatch(
+                schedule,
+                matchId,
+                venue.venueId,
+                screen.screenId,
+                day.date,
+                slot.time,
+              );
+              slots.push({
+                venueId: venue.venueId,
+                venueName: venue.venueName,
+                screenId: screen.screenId,
+                screenName: screen.screenName,
+                date: day.date,
+                time: slot.time,
+              });
+            } catch (error) {
+              if (!(error instanceof BadRequestException)) throw error;
+            }
+          }
+    slots.sort(
+      (a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time),
+    );
+    return { matchId, version: tournament.version, slots };
   }
 
   /**
@@ -300,6 +366,19 @@ export class TournamentMatchesService {
     )
       throw new ConflictException(
         'Live or completed allocations cannot be removed',
+      );
+    if (
+      currentSchedule.structure.matches.some(
+        (dependent) =>
+          dependent.date &&
+          dependent.time &&
+          matchDependencies(currentSchedule.structure.matches, dependent).some(
+            (source) => source.id === matchId,
+          ),
+      )
+    )
+      throw new ConflictException(
+        'DEPENDENT_MATCH_ALLOCATED: move this match atomically or unallocate downstream matches first',
       );
     const { updatedSchedule, match } =
       this.tournamentScheduleService.unallocateMatch(currentSchedule, matchId);

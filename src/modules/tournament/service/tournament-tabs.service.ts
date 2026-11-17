@@ -719,6 +719,7 @@ export class TournamentTabsService {
 
     return {
       tournamentId: tournament.tournamentId,
+      version: tournament.version,
       schedulingMode: tournament.schedulingMode,
       schedulingPaused: tournament.schedulingPaused,
       dailyStart: tournament.dailyStart,

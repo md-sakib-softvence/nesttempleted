@@ -309,6 +309,33 @@ export class AdminMatchController {
     });
   }
 
+  @Get(':matchId/available-slots')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  @ApiOperation({
+    summary: 'Eligible slots for admin allocation or moving a match',
+  })
+  async manualAvailableSlots(@Param('matchId') matchId: string) {
+    return sendResponse({
+      message: 'Eligible slots retrieved',
+      data: await this.tournamentService.getManualAvailableSlots('', matchId),
+    });
+  }
+
+  @Patch(':matchId/allocation')
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
+  @ApiOperation({
+    summary: 'Atomically move a scheduled match to another slot',
+  })
+  async moveAllocation(
+    @Param('matchId') matchId: string,
+    @Body() body: AllocateMatchDto,
+  ) {
+    return sendResponse({
+      message: 'Match allocation moved',
+      data: await this.tournamentService.moveTournamentMatch('', matchId, body),
+    });
+  }
+
   @Delete(':matchId/allocation')
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, 'admin', 'super_admin')
   @ApiOperation({ summary: 'De-allocates a match from its timeslot' })

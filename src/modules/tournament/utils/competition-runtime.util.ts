@@ -11,6 +11,7 @@ import {
   summarizeTournamentMatches,
   largestPowerOfTwoNotExceeding,
   allocateMatch,
+  matchDependencies,
   resolveDoubleEliminationPlacementRefs,
 } from './tournament-calculation.util';
 
@@ -756,9 +757,27 @@ export function allocatePending(
   const candidates = current.structure.matches.filter(
     (m) => !terminal(m) && active(m) && !m.date,
   );
+  // Topological order also handles persisted graphs whose array order differs.
+  const ordered: TournamentMatchEntity[] = [];
+  const visited = new Set<string>();
+  const visiting = new Set<string>();
+  const visit = (match: TournamentMatchEntity) => {
+    if (visited.has(match.id)) return;
+    if (visiting.has(match.id))
+      throw new BadRequestException('CYCLIC_MATCH_DEPENDENCY');
+    visiting.add(match.id);
+    for (const source of matchDependencies(current.structure.matches, match)) {
+      if (candidates.some((candidate) => candidate.id === source.id))
+        visit(source);
+    }
+    visiting.delete(match.id);
+    visited.add(match.id);
+    ordered.push(match);
+  };
+  candidates.forEach(visit);
   // Preserve canonical match order. AUTO_RANDOM is retained as the API mode
   // name, but automatic placement now fills the earliest valid physical slots.
-  for (const original of candidates) {
+  for (const original of ordered) {
     const m = current.structure.matches.find(
       (match) => match.id === original.id,
     )!;
@@ -797,6 +816,7 @@ export function allocatePending(
           ),
       );
     let placed = false;
+    let reason = 'NO_VALID_CAPACITY';
     for (const slot of slots) {
       try {
         current = allocateMatch(
@@ -812,9 +832,10 @@ export function allocatePending(
         break;
       } catch (error) {
         if (!(error instanceof BadRequestException)) throw error;
+        reason = error.message;
       }
     }
-    if (!placed) pending.push({ matchId: m.id, reason: 'NO_VALID_CAPACITY' });
+    if (!placed) pending.push({ matchId: m.id, reason });
   }
   return { schedule: current, allocated, pending };
 }

@@ -2111,6 +2111,57 @@ export function assignMatchesToSchedule(
   return updatedCalendar;
 }
 
+/** Fixtures that must finish before this match can begin. */
+export function matchDependencies(
+  matches: TournamentMatchEntity[],
+  match: TournamentMatchEntity,
+): TournamentMatchEntity[] {
+  const result = new Map<string, TournamentMatchEntity>();
+  const visit = (ref: MatchParticipantRef, seen = new Set<string>()) => {
+    if (!ref || seen.has(`${ref.type}:${ref.value}`)) return;
+    const next = new Set(seen).add(`${ref.type}:${ref.value}`);
+    let sources: TournamentMatchEntity[] = [];
+    if (ref.type === 'QUALIFIER_SEED' || ref.type === 'GROUP_POSITION') {
+      // Qualification is ranked across groups: reserve the whole group stage.
+      sources = matches.filter((m) => m.bracketSection === 'GROUP');
+    } else if (ref.type === 'MATCH_WINNER' || ref.type === 'MATCH_LOSER') {
+      sources = matches.filter((m) => m.id === ref.value);
+    } else if (ref.type === 'TIE_WINNER' || ref.type === 'TIE_LOSER') {
+      sources = matches.filter((m) => m.tieId === ref.value);
+    }
+    for (const source of sources) {
+      if (source.isAutoAdvance) {
+        visit(source.participant1Ref, next);
+        visit(source.participant2Ref, next);
+      } else if (source.id !== match.id) result.set(source.id, source);
+    }
+  };
+  visit(match.participant1Ref);
+  visit(match.participant2Ref);
+  return [...result.values()];
+}
+
+function validateDependencyTiming(
+  schedule: TournamentSchedulePayload,
+  match: TournamentMatchEntity,
+  date: string,
+  time: string,
+) {
+  const interval = schedule.capacity.matchTimeMinutes;
+  const start = Date.parse(`${date}T${time}:00Z`);
+  for (const dependency of matchDependencies(
+    schedule.structure.matches,
+    match,
+  )) {
+    if (!dependency.date || !dependency.time)
+      throw new BadRequestException('DEPENDENCY_UNSCHEDULED');
+    const end =
+      Date.parse(`${dependency.date}T${dependency.time}:00Z`) +
+      interval * 60000;
+    if (start < end) throw new BadRequestException('ROUND_DEPENDENCY_CONFLICT');
+  }
+}
+
 export function allocateMatch(
   schedulePayload: TournamentSchedulePayload,
   matchId: string,
@@ -2170,6 +2221,7 @@ export function allocateMatch(
     )
   )
     throw new BadRequestException('MATCH_ALREADY_ALLOCATED');
+  validateDependencyTiming(schedule, match, date, time);
   const duration =
     (schedule.capacity as any).matchDuration ??
     schedule.capacity.matchTimeMinutes;
@@ -2331,6 +2383,24 @@ export function allocateMatch(
   match.screenName = screen.screenName;
   match.date = date;
   match.time = time;
+  // Moving or inserting a feeder must also respect already booked downstream games.
+  for (const dependent of schedule.structure.matches) {
+    if (
+      dependent.id !== match.id &&
+      dependent.date &&
+      dependent.time &&
+      matchDependencies(schedule.structure.matches, dependent).some(
+        (source) => source.id === match.id,
+      )
+    ) {
+      validateDependencyTiming(
+        schedule,
+        dependent,
+        dependent.date,
+        dependent.time,
+      );
+    }
+  }
   match.score1 = existingScore1;
   match.score2 = existingScore2;
   match.status = existingStatus;

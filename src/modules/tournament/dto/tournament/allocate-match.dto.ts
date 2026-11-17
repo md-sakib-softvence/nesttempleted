@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsInt, Min } from 'class-validator';
 
 export class AllocateMatchDto {
   @ApiProperty({
@@ -39,6 +39,8 @@ export class AllocateMatchDto {
     example: 1,
   })
   @IsOptional()
+  @IsInt()
+  @Min(1)
   expectedVersion?: number;
 
   @ApiPropertyOptional({
@@ -46,5 +48,7 @@ export class AllocateMatchDto {
     example: 1,
   })
   @IsOptional()
+  @IsInt()
+  @Min(1)
   expectedScheduleVersion?: number;
 }

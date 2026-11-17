@@ -329,6 +329,23 @@ export class TournamentService {
     return this.matches.allocateTournamentMatch(tournamentId, matchId, dto);
   }
 
+  async moveTournamentMatch(
+    tournamentId: string,
+    matchId: string,
+    dto: AllocateMatchDto,
+  ) {
+    return this.matches.allocateTournamentMatch(
+      tournamentId,
+      matchId,
+      dto,
+      true,
+    );
+  }
+
+  async getManualAvailableSlots(tournamentId: string, matchId: string) {
+    return this.matches.getManualAvailableSlots(tournamentId, matchId);
+  }
+
   async unallocateTournamentMatch(tournamentId: string, matchId: string) {
     return this.matches.unallocateTournamentMatch(tournamentId, matchId);
   }

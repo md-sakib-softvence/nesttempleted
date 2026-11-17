@@ -6,6 +6,7 @@ import {
 import { TournamentScheduleService } from '../service/tournament-schedule.service';
 import {
   allocateMatch,
+  matchDependencies,
   calculateCapacity,
   generateCanonicalStructure,
   generatePlayingDates,
@@ -357,6 +358,43 @@ describe('Handoff v1.2.1 regression cases', () => {
 });
 
 describe('chronological automatic allocation', () => {
+  it('schedules 45 teams across six screens after all feeder fixtures, preserving lunch', async () => {
+    const schedule = await new TournamentScheduleService().generateSchedule({
+      ...config,
+      dailyEnd: '23:00',
+      lunchBreakTime: '15:00',
+      lunchDuration: 20,
+      buffer: 2,
+      frequencyArray: ['0', '1', '2', '3', '4', '5', '6'],
+      tournamentFormat: F.LEAGUE_AND_KNOCKOUT,
+      schedulingMode: SchedulingMode.AUTO_RANDOM,
+      numberOfTeams: 45,
+      groupsCount: 11,
+      topQualifiers: 2,
+      venues: [1, 2].map((v) => ({
+        venueId: `v${v}`,
+        name: `Venue ${v}`,
+        screens: [1, 2, 3].map((s) => ({
+          screenId: `v${v}s${s}`,
+          screenName: `Screen ${s}`,
+        })),
+      })),
+    });
+    expect(schedule.capacity.totalDailySlots).toBe(192);
+    expect(schedule.structure.matches).toHaveLength(91);
+    const stamp = (m: any) => Date.parse(`${m.date}T${m.time}:00Z`);
+    for (const match of schedule.structure.matches) {
+      expect(match.date).toBeDefined();
+      expect(match.time).not.toBe('14:50');
+      for (const source of matchDependencies(
+        schedule.structure.matches,
+        match,
+      )) {
+        expect(stamp(match)).toBeGreaterThanOrEqual(stamp(source) + 25 * 60000);
+      }
+    }
+  });
+
   const generate = (customVenues = venues) =>
     new TournamentScheduleService().generateSchedule({
       ...config,

@@ -143,6 +143,78 @@ describe('Backend handoff commands and frontend projections', () => {
     expect(state()).toEqual(before);
     expect(db.tournament.updateMany).not.toHaveBeenCalled();
   });
+  it('offers only dependency-safe admin slots and moves allocations atomically', async () => {
+    const { service, state } = await fixture();
+    const matches = state().schedule.structure.matches;
+    const final = matches.find((m: any) => m.round === 'Final');
+    expect(
+      (await service.getManualAvailableSlots('t', final.id)).slots,
+    ).toEqual([]);
+    for (let i = 0; i < 2; i++) {
+      await service.allocateTournamentMatch('t', matches[i].id, {
+        venueId: 'v',
+        screenId: 's',
+        date: '2026-11-16',
+        time: i === 0 ? '09:00' : '09:25',
+      });
+    }
+    const available = await service.getManualAvailableSlots('t', final.id);
+    expect(available.slots[0].time).toBe('09:50');
+    await service.allocateTournamentMatch('t', final.id, {
+      venueId: 'v',
+      screenId: 's',
+      date: '2026-11-16',
+      time: '09:50',
+    });
+    await expect(
+      service.unallocateTournamentMatch('t', matches[0].id),
+    ).rejects.toThrow('DEPENDENT_MATCH_ALLOCATED');
+    await expect(
+      service.allocateTournamentMatch(
+        't',
+        final.id,
+        {
+          venueId: 'v',
+          screenId: 's',
+          date: '2026-11-16',
+          time: '10:15',
+          expectedScheduleVersion: 1,
+        },
+        true,
+      ),
+    ).rejects.toThrow('VERSION_CONFLICT');
+    const before = clone(state());
+    await expect(
+      service.allocateTournamentMatch(
+        't',
+        matches[0].id,
+        { venueId: 'v', screenId: 's', date: '2026-11-16', time: '10:15' },
+        true,
+      ),
+    ).rejects.toThrow('ROUND_DEPENDENCY_CONFLICT');
+    expect(state()).toEqual(before);
+    await service.allocateTournamentMatch(
+      't',
+      final.id,
+      {
+        venueId: 'v',
+        screenId: 's',
+        date: '2026-11-16',
+        time: '10:15',
+        expectedScheduleVersion: state().version,
+      },
+      true,
+    );
+    expect(
+      state().schedule.structure.matches.find((m: any) => m.id === final.id)
+        .time,
+    ).toBe('10:15');
+    const slots = state().schedule.calendar[0].screens[0].days[0].timeslots;
+    expect(slots.find((slot: any) => slot.time === '09:50').game).toBeNull();
+    expect(
+      slots.filter((slot: any) => slot.canonicalMatchId === final.id),
+    ).toHaveLength(1);
+  });
   it('rejects a lost allocation race using an atomic version condition', async () => {
     const { service, state, db } = await fixture();
     db.tournament.updateMany.mockResolvedValue({ count: 0 });
