@@ -1,3 +1,4 @@
+import { normalizeMatchSemantics } from '../utils/tournament-calculation.util';
 import { refreshParticipants } from '../utils/competition-runtime.util';
 import { TournamentCoreService } from './tournament-core.service';
 import {
@@ -525,7 +526,26 @@ export class TournamentTabsService {
       throw new NotFoundException(`Tournament #${tournamentId} not found`);
     }
 
-    const schedule = (tournament.schedule as any) || {};
+    // Normalize a response copy; GET must not rewrite the persisted bracket.
+    const schedule = JSON.parse(JSON.stringify(tournament.schedule || {}));
+    if (
+      schedule.structure?.matches?.every(
+        (m: any) => m.participant1Ref && m.participant2Ref,
+      )
+    ) {
+      const activatedConditionalIds = new Set(
+        schedule.structure.matches
+          .filter((m: any) => m.conditional && m.isSchedulable === true)
+          .map((m: any) => m.id),
+      );
+      schedule.structure.matches = normalizeMatchSemantics(
+        schedule.structure.matches,
+      ).map((m) =>
+        activatedConditionalIds.has(m.id) && !m.isAutoAdvance
+          ? { ...m, isSchedulable: true }
+          : m,
+      );
+    }
     if (schedule.structure?.slots && schedule.structure?.matches) {
       refreshParticipants(schedule);
     }
@@ -542,6 +562,10 @@ export class TournamentTabsService {
 
     // Helper to resolve clean display names for participant references
     const formatParticipant = (rawPlayer: any, ref: any) => {
+      if (!rawPlayer?.id && ['TOURNAMENT_SLOT', 'SEED'].includes(ref?.type)) {
+        const label = `${ref.type === 'SEED' ? 'Seed' : 'Slot'} #${ref.value}`;
+        return { id: null, name: label, gamertag: label, avatar: null };
+      }
       let resolvedName = rawPlayer?.name || rawPlayer?.gamertag;
       if (!resolvedName || resolvedName === 'TBD') {
         resolvedName = ref?.displayName || ref?.name || ref?.gamerTag;
@@ -570,8 +594,8 @@ export class TournamentTabsService {
           resolvedName = `Qualifier Seed #${ref.value}`;
         } else if (ref?.type === 'GROUP_POSITION') {
           resolvedName = ref.value;
-        } else if (ref?.type === 'TOURNAMENT_SLOT') {
-          resolvedName = `Slot #${ref.value}`;
+        } else if (ref?.type === 'TOURNAMENT_SLOT' || ref?.type === 'SEED') {
+          resolvedName = `${ref.type === 'SEED' ? 'Seed' : 'Slot'} #${ref.value}`;
         } else if (ref?.value) {
           resolvedName = ref.value;
         } else {
@@ -600,18 +624,34 @@ export class TournamentTabsService {
       const sId = m.screenId || m.physicalAllocation?.screenId || null;
 
       const p1 = formatParticipant(
-        m.player1 ||
-          (m.player1Id ? { id: m.player1Id, name: m.player1Name } : null),
+        m.participant1Ref
+          ? m.player1Id
+            ? { id: m.player1Id, name: m.player1Name }
+            : null
+          : m.player1,
         m.participant1Ref,
       );
       const p2 = formatParticipant(
-        m.player2 ||
-          (m.player2Id ? { id: m.player2Id, name: m.player2Name } : null),
+        m.participant2Ref
+          ? m.player2Id
+            ? { id: m.player2Id, name: m.player2Name }
+            : null
+          : m.player2,
         m.participant2Ref,
       );
 
       return {
         id: matchId,
+        isAutoAdvance: !!m.isAutoAdvance,
+        isSchedulable: m.isSchedulable !== false,
+        isAllocated: !!(
+          m.scheduledDate ||
+          m.date ||
+          m.startTime ||
+          m.time ||
+          sId
+        ),
+        conditional: !!m.conditional,
         stage: m.stage || (m.bracketSection ? m.bracketSection : 'KNOCKOUT'),
         round: m.round || `Round ${m.roundNumber || 1}`,
         venueId: vId,
@@ -655,7 +695,24 @@ export class TournamentTabsService {
               });
           }
 
-    let filteredMatches = allMatches;
+    const playableMatches = allMatches.filter(
+      (m: any) => !m.isAutoAdvance && (!m.conditional || m.isSchedulable),
+    );
+    const playableIds = new Set(playableMatches.map((m: any) => m.id));
+    for (const venue of schedule.calendar || [])
+      for (const screen of venue.screens || [])
+        for (const day of screen.days || [])
+          for (const slot of day.timeslots || []) {
+            const id =
+              slot.canonicalMatchId ||
+              slot.game?.canonicalMatchId ||
+              slot.game?.id;
+            if (id && matchesById.has(id) && !playableIds.has(id)) {
+              slot.game = null;
+              slot.canonicalMatchId = null;
+            }
+          }
+    let filteredMatches = playableMatches;
     if (query?.date) {
       filteredMatches = filteredMatches.filter(
         (m: any) => String(m.scheduledDate) === String(query.date),
@@ -734,6 +791,18 @@ export class TournamentTabsService {
       matches: paginatedMatches,
       canonicalMatches: paginatedMatches, // Backward-compatibility
       totalMatches: total,
+      counts: {
+        structuralNodes: allMatches.length,
+        playableMatches: playableMatches.length,
+        autoAdvanceCount: allMatches.filter((m: any) => m.isAutoAdvance).length,
+        conditionalMatches: allMatches.filter(
+          (m: any) => m.conditional && !m.isAutoAdvance,
+        ).length,
+        allocatedMatches: playableMatches.filter((m: any) => m.isAllocated)
+          .length,
+        unallocatedMatches: playableMatches.filter((m: any) => !m.isAllocated)
+          .length,
+      },
       groups: schedule.groups || schedule.structure?.groups || [],
       calendar: {
         uniqueMatchdays,
