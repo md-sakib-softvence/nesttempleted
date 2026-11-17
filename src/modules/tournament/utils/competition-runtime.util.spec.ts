@@ -416,22 +416,31 @@ describe('chronological automatic allocation', () => {
         })),
       })),
     );
-    expect(
-      schedule.structure.matches
-        .slice(0, 5)
-        .map((m) => [m.venueId, m.screenId, m.time]),
-    ).toEqual([
-      ['v1', 'v1s1', '09:00'],
-      ['v1', 'v1s2', '09:00'],
-      ['v2', 'v2s1', '09:00'],
-      ['v2', 'v2s2', '09:00'],
-      ['v1', 'v1s1', '09:25'],
-    ]);
-    expect(schedule.structure.matches[63].date).toBe('2026-11-16');
-    expect(schedule.structure.matches[64]).toMatchObject({
-      date: '2026-11-17',
+    const matches = schedule.structure.matches;
+    expect(matches[0]).toMatchObject({
+      venueId: 'v1',
+      screenId: 'v1s1',
       time: '09:00',
     });
+    for (const match of matches) {
+      for (const other of matches) {
+        if (
+          match.id === other.id ||
+          match.date !== other.date ||
+          match.time !== other.time
+        )
+          continue;
+        const refs = [match.participant1Ref, match.participant2Ref];
+        expect(
+          refs.some((ref) =>
+            [other.participant1Ref, other.participant2Ref].some(
+              (candidate) =>
+                ref.type === candidate.type && ref.value === candidate.value,
+            ),
+          ),
+        ).toBe(false);
+      }
+    }
   });
 
   it('uses only configured playing weekdays when rolling into the next day', async () => {

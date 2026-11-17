@@ -2182,12 +2182,23 @@ export function allocateMatch(
       !other.venueId
     )
       continue;
+    // Reserve unresolved entrants too: the same tournament slot cannot play
+    // on two screens at once, even before registration assigns a player.
+    const sameEntrant = [match.participant1Ref, match.participant2Ref].some(
+      (ref) =>
+        ref &&
+        ref.type !== 'BYE' &&
+        [other.participant1Ref, other.participant2Ref].some(
+          (candidate) =>
+            candidate?.type === ref.type && candidate.value === ref.value,
+        ),
+    );
     const samePlayer = [match.player1Id, match.player2Id]
       .filter(Boolean)
       .some((id) => id === other.player1Id || id === other.player2Id);
     const otherStart = timeStringToMinutes(other.time);
     if (
-      samePlayer &&
+      (samePlayer || sameEntrant) &&
       start < otherStart + duration &&
       otherStart < start + duration
     ) {

@@ -1,3 +1,4 @@
+import { refreshParticipants } from '../utils/competition-runtime.util';
 import { TournamentCoreService } from './tournament-core.service';
 import {
   Injectable,
@@ -525,6 +526,9 @@ export class TournamentTabsService {
     }
 
     const schedule = (tournament.schedule as any) || {};
+    if (schedule.structure?.slots && schedule.structure?.matches) {
+      refreshParticipants(schedule);
+    }
     const rawMatches: any[] =
       schedule.structure?.matches || schedule.matches || [];
 
@@ -537,11 +541,7 @@ export class TournamentTabsService {
     });
 
     // Helper to resolve clean display names for participant references
-    const formatParticipant = (
-      rawPlayer: any,
-      ref: any,
-      fallbackId: string,
-    ) => {
+    const formatParticipant = (rawPlayer: any, ref: any) => {
       let resolvedName = rawPlayer?.name || rawPlayer?.gamertag;
       if (!resolvedName || resolvedName === 'TBD') {
         resolvedName = ref?.displayName || ref?.name || ref?.gamerTag;
@@ -570,6 +570,8 @@ export class TournamentTabsService {
           resolvedName = `Qualifier Seed #${ref.value}`;
         } else if (ref?.type === 'GROUP_POSITION') {
           resolvedName = ref.value;
+        } else if (ref?.type === 'TOURNAMENT_SLOT') {
+          resolvedName = `Slot #${ref.value}`;
         } else if (ref?.value) {
           resolvedName = ref.value;
         } else {
@@ -584,7 +586,7 @@ export class TournamentTabsService {
       }
 
       return {
-        id: rawPlayer?.id || ref?.value || fallbackId,
+        id: rawPlayer?.id || (ref?.type === 'PARTICIPANT' ? ref.value : null),
         gamertag: rawPlayer?.gamertag || resolvedName,
         name: rawPlayer?.name || resolvedName,
         avatar: rawPlayer?.avatar || ref?.avatar || null,
@@ -597,8 +599,16 @@ export class TournamentTabsService {
       const vId = m.venueId || m.physicalAllocation?.venueId || null;
       const sId = m.screenId || m.physicalAllocation?.screenId || null;
 
-      const p1 = formatParticipant(m.player1, m.participant1Ref, 'p-tbd-1');
-      const p2 = formatParticipant(m.player2, m.participant2Ref, 'p-tbd-2');
+      const p1 = formatParticipant(
+        m.player1 ||
+          (m.player1Id ? { id: m.player1Id, name: m.player1Name } : null),
+        m.participant1Ref,
+      );
+      const p2 = formatParticipant(
+        m.player2 ||
+          (m.player2Id ? { id: m.player2Id, name: m.player2Name } : null),
+        m.participant2Ref,
+      );
 
       return {
         id: matchId,
@@ -619,6 +629,31 @@ export class TournamentTabsService {
         winnerId: m.winnerId || null,
       };
     });
+
+    // The calendar is unpaginated; hydrate every card from the same contract.
+    const matchesById = new Map(allMatches.map((match) => [match.id, match]));
+    for (const venue of schedule.calendar || [])
+      for (const screen of venue.screens || [])
+        for (const day of screen.days || [])
+          for (const slot of day.timeslots || []) {
+            const match = matchesById.get(
+              slot.canonicalMatchId ||
+                slot.game?.canonicalMatchId ||
+                slot.game?.id,
+            );
+            if (match && slot.game)
+              Object.assign(slot.game, {
+                player1Id: match.player1.id,
+                player2Id: match.player2.id,
+                player1Name: match.player1.name,
+                player2Name: match.player2.name,
+                player1: match.player1,
+                player2: match.player2,
+                score1: match.score1,
+                score2: match.score2,
+                status: match.status,
+              });
+          }
 
     let filteredMatches = allMatches;
     if (query?.date) {
