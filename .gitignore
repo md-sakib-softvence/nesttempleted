@@ -8,8 +8,6 @@ dist/
 build/
 
 # Environment
-.env
-.env.*
 !.env.example
 .env.*.local
 

@@ -25,6 +25,8 @@ describe('FanPlayerRegistrationService football club selection', () => {
         }),
       },
       player: { findFirst: jest.fn().mockResolvedValue(null) },
+      employee: { findFirst: jest.fn().mockResolvedValue(null) },
+      admin: { findFirst: jest.fn().mockResolvedValue(null) },
       tournament: {
         findUnique: jest.fn().mockResolvedValue({
           tournamentId: 'tournament-1',
