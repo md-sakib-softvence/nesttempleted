@@ -453,11 +453,11 @@ export class TournamentCoreService {
       data: { schedule: schedulePayload as any },
     });
 
-    const ticketTier = await syncTournamentTicket(db, tournament);
+    const ticketTiers = await syncTournamentTicket(db, tournament);
 
     const result = {
       ...tournament,
-      ticketTiers: ticketTier ? [ticketTier] : [],
+      ticketTiers,
       schedule: schedulePayload,
     };
 
@@ -1552,7 +1552,10 @@ export class TournamentCoreService {
     if (
       updated.ticketPrice != null ||
       updateTournamentDto.entryFee !== undefined ||
-      updateTournamentDto.registrationOpen === true ||
+      updateTournamentDto.currency !== undefined ||
+      updateTournamentDto.capacity !== undefined ||
+      updateTournamentDto.name !== undefined ||
+      updateTournamentDto.registrationOpen !== undefined ||
       updateTournamentDto.status === TournamentStatus.REGISTRATION_OPEN
     ) {
       await syncTournamentTicket(db, updated);

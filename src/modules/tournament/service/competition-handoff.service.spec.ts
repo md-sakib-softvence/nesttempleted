@@ -400,6 +400,11 @@ describe('saving automatic scheduling mode', () => {
     db.ticketTier = {
       findFirst: jest.fn(async () => null),
       findMany: jest.fn(async () => []),
+      create: jest.fn(async ({ data }) => ({
+        tierId: 'managed-player-tier',
+        sold: 0,
+        ...data,
+      })),
     };
     db.tournament.update = jest.fn(async ({ where, data }) => {
       if (where.version !== state().version) throw new Error('stale version');
