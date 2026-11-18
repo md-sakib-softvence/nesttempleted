@@ -37,7 +37,7 @@ import { PlayerPassService } from './player-pass.service';
 import { PlayerWalletService } from './player-wallet.service';
 import { evaluateSelfSchedulingWindow } from '../../tournament/utils/self-schedule.util';
 import {
-  assertAccountEmailAvailable,
+  assertFanOrPlayerEmailAvailable,
   normalizeAccountEmail,
 } from '../../utils/account-email.util';
 
@@ -88,7 +88,7 @@ export class PlayerService {
       throw new ConflictException('Player with this email already exists');
     }
 
-    await assertAccountEmailAvailable(this.prisma, normalizedEmail);
+    await assertFanOrPlayerEmailAvailable(this.prisma, normalizedEmail, 'PLAYER');
 
     const {
       password,
@@ -231,8 +231,9 @@ export class PlayerService {
       preferredPlatform?: string | null;
     },
   ) {
-    // Enforce one account per email across all roles, including conversions.
-    await assertAccountEmailAvailable(tx, fan.email);
+    // A Player may share the linked Fan account's email, but not another
+    // Player's email or an email owned by staff/admin.
+    await assertFanOrPlayerEmailAvailable(tx, fan.email, 'PLAYER');
     const showPlayerId = await generatePlayerId(this.prisma);
     const player = await tx.player.create({
       data: {
