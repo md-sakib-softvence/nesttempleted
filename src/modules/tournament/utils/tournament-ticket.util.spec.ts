@@ -21,18 +21,26 @@ const configuration = {
 };
 
 function fixture() {
-  let tier: any = null;
+  let tiers: any[] = [];
   let tournament: any = null;
   const db: any = {
     $queryRaw: jest.fn(async () => []),
     ticket: { count: jest.fn(async () => 0) },
     ticketTier: {
-      findFirst: jest.fn(async () => tier),
-      findMany: jest.fn(async () => (tier ? [tier] : [])),
+      findFirst: jest.fn(async () => tiers[0] ?? null),
+      findMany: jest.fn(async () => tiers),
       create: jest.fn(
-        async ({ data }) => (tier = { tierId: 'tier', sold: 0, ...data }),
+        async ({ data }) => {
+          const tier = { tierId: `tier-${tiers.length + 1}`, sold: 0, ...data };
+          tiers.push(tier);
+          return tier;
+        },
       ),
-      update: jest.fn(async ({ data }) => (tier = { ...tier, ...data })),
+      update: jest.fn(async ({ where, data }) => {
+        const index = tiers.findIndex((tier) => tier.tierId === where.tierId);
+        tiers[index] = { ...tiers[index], ...data };
+        return tiers[index];
+      }),
     },
     tournament: {
       create: jest.fn(
@@ -53,13 +61,13 @@ function fixture() {
   };
   db.$transaction = jest.fn(async (fn) => {
     const before = {
-      tier: structuredClone(tier),
+      tiers: structuredClone(tiers),
       tournament: structuredClone(tournament),
     };
     try {
       return await fn(db);
     } catch (e) {
-      tier = before.tier;
+      tiers = before.tiers;
       tournament = before.tournament;
       throw e;
     }
@@ -68,20 +76,23 @@ function fixture() {
   return {
     db,
     core: new TournamentCoreService(db, scheduleService),
-    tier: () => tier,
+    tier: () => tiers.find((tier) => tier.audienceRole === 'PLAYER') ?? null,
+    tiers: () => tiers,
     tournament: () => tournament,
   };
 }
 
 describe('Tournament-owned ticket inventory', () => {
-  it('creates one inventory with tournament name, price and exact capacity', async () => {
+  it('creates one Player inventory with tournament name, price, currency and capacity', async () => {
     const { db, tier } = fixture();
     await syncTournamentTicket(db, configuration);
     expect(tier()).toMatchObject({
       name: 'Championship',
       price: 1500,
+      currency: 'NGN',
       capacity: 40,
       tournamentManaged: true,
+      audienceRole: 'PLAYER',
       status: 'ACTIVE',
     });
   });
@@ -107,19 +118,71 @@ describe('Tournament-owned ticket inventory', () => {
     expect(tier()).toMatchObject({ sold: 5, status: 'ACTIVE' });
     expect(db.ticketTier.create).toHaveBeenCalledTimes(1);
   });
-  it('does not create tickets while registration is closed', async () => {
+  it('creates a hidden Player tier while registration is closed', async () => {
     const { db, tier } = fixture();
     await syncTournamentTicket(db, {
       ...configuration,
       registrationOpen: false,
     });
-    expect(tier()).toBeNull();
+    expect(tier()).toMatchObject({ audienceRole: 'PLAYER', status: 'HIDDEN' });
     await syncTournamentTicket(db, {
       ...configuration,
       registrationOpen: false,
       entryFee: null,
     });
+    expect(db.ticketTier.create).toHaveBeenCalledTimes(1);
+  });
+  it('leaves the Fan ticket tier untouched and independently creates Player inventory', async () => {
+    const { db, tiers } = fixture();
+    const fanTier = {
+      tierId: 'fan-tier',
+      tournamentId: 't',
+      name: 'Fan Pass',
+      audienceRole: 'FAN',
+      tournamentManaged: true,
+      type: 'DAY_PASS',
+      price: 500,
+      currency: 'NGN',
+      capacity: 75,
+      sold: 3,
+      status: 'ACTIVE',
+    };
+    tiers().push(fanTier);
+
+    await syncTournamentTicket(db, configuration);
+
+    expect(tiers()).toHaveLength(2);
+    expect(tiers().find((tier) => tier.audienceRole === 'FAN')).toEqual(fanTier);
+    expect(tiers().find((tier) => tier.audienceRole === 'PLAYER')).toMatchObject({
+      name: 'Championship',
+      price: 1500,
+      currency: 'NGN',
+      capacity: 40,
+      status: 'ACTIVE',
+    });
+  });
+  it('does not replace a manually configured Player tier', async () => {
+    const { db, tiers } = fixture();
+    const playerTier = {
+      tierId: 'custom-player-tier',
+      tournamentId: 't',
+      name: 'VIP Player Pass',
+      audienceRole: 'PLAYER',
+      tournamentManaged: false,
+      type: 'VIP',
+      price: 3000,
+      currency: 'NGN',
+      capacity: 12,
+      sold: 0,
+      status: 'ACTIVE',
+    };
+    tiers().push(playerTier);
+
+    await syncTournamentTicket(db, configuration);
+
+    expect(tiers()).toEqual([playerTier]);
     expect(db.ticketTier.create).not.toHaveBeenCalled();
+    expect(db.ticketTier.update).not.toHaveBeenCalled();
   });
   it('supports zero entry fee without a separate ticket price', async () => {
     const { db, tier } = fixture();
@@ -185,7 +248,7 @@ describe('Tournament-owned ticket inventory', () => {
     } as any);
     expect(tier().price).toBe(1500);
   });
-  it('creates inventory when a closed tournament is later opened', async () => {
+  it('creates a hidden Player tier for a closed tournament and activates it when opened', async () => {
     const { core, tier } = fixture();
     await core.createTournament({
       name: 'Closed',
@@ -194,7 +257,14 @@ describe('Tournament-owned ticket inventory', () => {
       entryFee: 100,
       capacity: 20,
     });
-    expect(tier()).toBeNull();
+    expect(tier()).toMatchObject({
+      name: 'Closed',
+      price: 100,
+      capacity: 20,
+      status: 'HIDDEN',
+      audienceRole: 'PLAYER',
+      tournamentManaged: true,
+    });
     await core.updateTournament('t', { registrationOpen: true });
     expect(tier()).toMatchObject({ name: 'Closed', price: 100, capacity: 20 });
   });

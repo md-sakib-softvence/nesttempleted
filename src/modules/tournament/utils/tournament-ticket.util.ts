@@ -35,17 +35,31 @@ export async function syncTournamentTicket(
   const sold = await db.ticket.count({
     where: {
       tournamentId: tournament.tournamentId,
+      purchaserRole: 'PLAYER',
       status: { in: [TicketStatus.ACTIVE, TicketStatus.USED] },
     },
   });
-  const existing = await db.ticketTier.findFirst({
-    where: { tournamentId: tournament.tournamentId, tournamentManaged: true },
+  const allTiers = await db.ticketTier.findMany({
+    where: { tournamentId: tournament.tournamentId },
   });
-  if (tournament.capacity < Math.max(sold, existing?.sold ?? 0)) {
+  // Only the Player tier is managed from the tournament entry fee. Fan tiers
+  // are owned by the existing Fan ticket flow and must remain untouched.
+  const existingTiers = allTiers.filter(
+    (tier) => tier.tournamentManaged && tier.audienceRole === 'PLAYER',
+  );
+  const existingSold = existingTiers.reduce(
+    (total, tier) => total + tier.sold,
+    0,
+  );
+  if (tournament.capacity < Math.max(sold, existingSold)) {
     throw new BadRequestException(
       'Capacity cannot be lower than tickets already sold.',
     );
   }
+
+  const configuredAudienceRoles = new Set(
+    allTiers.map((tier) => tier.audienceRole),
+  );
   const data = {
     name: tournament.name,
     price,
@@ -53,17 +67,30 @@ export async function syncTournamentTicket(
     capacity: tournament.capacity,
     status: tournament.registrationOpen ? 'ACTIVE' : 'HIDDEN',
   };
-  if (existing) {
-    return db.ticketTier.update({ where: { tierId: existing.tierId }, data });
+  const existingPlayerTier = existingTiers[0];
+
+  if (existingPlayerTier) {
+    return [
+      await db.ticketTier.update({
+        where: { tierId: existingPlayerTier.tierId },
+        data,
+      }),
+    ];
   }
-  if (!tournament.registrationOpen) return null;
-  return db.ticketTier.create({
-    data: {
-      ...data,
-      tournamentId: tournament.tournamentId,
-      tournamentManaged: true,
-      audienceRole: 'FAN',
-      type: 'DAY_PASS',
-    },
-  });
+
+  // Keep a manually configured Player tier as-is. The auto-managed tier is
+  // created only when no Player tier exists, and is then synced to entryFee.
+  if (configuredAudienceRoles.has('PLAYER')) return [];
+
+  return [
+    await db.ticketTier.create({
+      data: {
+        ...data,
+        tournamentId: tournament.tournamentId,
+        tournamentManaged: true,
+        audienceRole: 'PLAYER',
+        type: 'DAY_PASS',
+      },
+    }),
+  ];
 }

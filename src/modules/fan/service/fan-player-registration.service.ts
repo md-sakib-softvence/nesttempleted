@@ -21,6 +21,34 @@ import { CompleteFanTournamentApplicationDto } from '../dto/complete-fan-tournam
 import { CreateFanTournamentApplicationDto } from '../dto/create-fan-tournament-application.dto';
 import { FOOTBALL_CLUB_CATALOG } from '../data/football-club-catalog.data';
 
+const normalizeCatalogValue = (value?: string | null) =>
+  value?.trim().toLocaleLowerCase() ?? '';
+
+/**
+ * Resolve the submitted club against the server catalog. Older clients send
+ * only the club name; accept that only when it identifies one catalog row.
+ * If location/competition are provided, they must also match that row.
+ */
+const resolveFootballClub = (
+  club?: string,
+  country?: string,
+  competition?: string,
+) => {
+  const normalizedClub = normalizeCatalogValue(club);
+  if (!normalizedClub) return null;
+
+  const matches = FOOTBALL_CLUB_CATALOG.filter(
+    (entry) =>
+      normalizeCatalogValue(entry.club) === normalizedClub &&
+      (!normalizeCatalogValue(country) ||
+        normalizeCatalogValue(entry.country) === normalizeCatalogValue(country)) &&
+      (!normalizeCatalogValue(competition) ||
+        normalizeCatalogValue(entry.competition) === normalizeCatalogValue(competition)),
+  );
+
+  return matches.length === 1 ? matches[0] : null;
+};
+
 @Injectable()
 export class FanPlayerRegistrationService {
   constructor(
@@ -108,43 +136,30 @@ export class FanPlayerRegistrationService {
     }
 
     const footballGame = tournament.gameType === 'FOOTBALL';
+    let primaryClub: (typeof FOOTBALL_CLUB_CATALOG)[number] | null = null;
+    let secondaryClub: (typeof FOOTBALL_CLUB_CATALOG)[number] | null = null;
     if (footballGame) {
       if (!dto.primaryTeamId || !dto.secondaryTeamId) {
         throw new BadRequestException(
           'Choose both a primary and a backup team for this football tournament.',
         );
       }
-      const isValidClub = (
-        club: string,
-        country?: string,
-        competition?: string,
-      ) =>
-        FOOTBALL_CLUB_CATALOG.some(
-          (entry) =>
-            entry.club.toLocaleLowerCase() ===
-              club.trim().toLocaleLowerCase() &&
-            entry.country.toLocaleLowerCase() ===
-              country?.trim().toLocaleLowerCase() &&
-            entry.competition.toLocaleLowerCase() ===
-              competition?.trim().toLocaleLowerCase(),
-        );
-      if (
-        !isValidClub(
-          dto.primaryTeamId,
-          dto.primaryTeamCountry,
-          dto.primaryTeamCompetition,
-        ) ||
-        !isValidClub(
-          dto.secondaryTeamId,
-          dto.secondaryTeamCountry,
-          dto.secondaryTeamCompetition,
-        )
-      ) {
+      primaryClub = resolveFootballClub(
+        dto.primaryTeamId,
+        dto.primaryTeamCountry,
+        dto.primaryTeamCompetition,
+      );
+      secondaryClub = resolveFootballClub(
+        dto.secondaryTeamId,
+        dto.secondaryTeamCountry,
+        dto.secondaryTeamCompetition,
+      );
+      if (!primaryClub || !secondaryClub) {
         throw new BadRequestException(
-          'Choose each club from its selected country and competition.',
+          'Choose valid clubs from the country and competition lists. If your app is older, refresh it and select both clubs again.',
         );
       }
-      if (dto.primaryTeamId.trim() === dto.secondaryTeamId.trim()) {
+      if (primaryClub.club === secondaryClub.club) {
         throw new BadRequestException(
           'Primary and backup teams must be different.',
         );
@@ -183,20 +198,12 @@ export class FanPlayerRegistrationService {
         data: {
           status: FanTournamentApplicationStatus.PENDING_PAYMENT,
           homeVenueId: dto.homeVenueId || null,
-          primaryTeamId: footballGame ? dto.primaryTeamId!.trim() : null,
-          primaryTeamCountry: footballGame
-            ? dto.primaryTeamCountry!.trim()
-            : null,
-          primaryTeamCompetition: footballGame
-            ? dto.primaryTeamCompetition!.trim()
-            : null,
-          secondaryTeamId: footballGame ? dto.secondaryTeamId!.trim() : null,
-          secondaryTeamCountry: footballGame
-            ? dto.secondaryTeamCountry!.trim()
-            : null,
-          secondaryTeamCompetition: footballGame
-            ? dto.secondaryTeamCompetition!.trim()
-            : null,
+          primaryTeamId: primaryClub?.club ?? null,
+          primaryTeamCountry: primaryClub?.country ?? null,
+          primaryTeamCompetition: primaryClub?.competition ?? null,
+          secondaryTeamId: secondaryClub?.club ?? null,
+          secondaryTeamCountry: secondaryClub?.country ?? null,
+          secondaryTeamCompetition: secondaryClub?.competition ?? null,
           jerseySize: dto.jerseySize?.trim() || null,
         },
       });
@@ -205,20 +212,12 @@ export class FanPlayerRegistrationService {
         where: { id: application.id },
         data: {
           homeVenueId: dto.homeVenueId || null,
-          primaryTeamId: footballGame ? dto.primaryTeamId!.trim() : null,
-          primaryTeamCountry: footballGame
-            ? dto.primaryTeamCountry!.trim()
-            : null,
-          primaryTeamCompetition: footballGame
-            ? dto.primaryTeamCompetition!.trim()
-            : null,
-          secondaryTeamId: footballGame ? dto.secondaryTeamId!.trim() : null,
-          secondaryTeamCountry: footballGame
-            ? dto.secondaryTeamCountry!.trim()
-            : null,
-          secondaryTeamCompetition: footballGame
-            ? dto.secondaryTeamCompetition!.trim()
-            : null,
+          primaryTeamId: primaryClub?.club ?? null,
+          primaryTeamCountry: primaryClub?.country ?? null,
+          primaryTeamCompetition: primaryClub?.competition ?? null,
+          secondaryTeamId: secondaryClub?.club ?? null,
+          secondaryTeamCountry: secondaryClub?.country ?? null,
+          secondaryTeamCompetition: secondaryClub?.competition ?? null,
           jerseySize: dto.jerseySize?.trim() || null,
         },
       });
@@ -228,20 +227,12 @@ export class FanPlayerRegistrationService {
           fanId,
           tournamentId,
           homeVenueId: dto.homeVenueId || null,
-          primaryTeamId: footballGame ? dto.primaryTeamId!.trim() : null,
-          primaryTeamCountry: footballGame
-            ? dto.primaryTeamCountry!.trim()
-            : null,
-          primaryTeamCompetition: footballGame
-            ? dto.primaryTeamCompetition!.trim()
-            : null,
-          secondaryTeamId: footballGame ? dto.secondaryTeamId!.trim() : null,
-          secondaryTeamCountry: footballGame
-            ? dto.secondaryTeamCountry!.trim()
-            : null,
-          secondaryTeamCompetition: footballGame
-            ? dto.secondaryTeamCompetition!.trim()
-            : null,
+          primaryTeamId: primaryClub?.club ?? null,
+          primaryTeamCountry: primaryClub?.country ?? null,
+          primaryTeamCompetition: primaryClub?.competition ?? null,
+          secondaryTeamId: secondaryClub?.club ?? null,
+          secondaryTeamCountry: secondaryClub?.country ?? null,
+          secondaryTeamCompetition: secondaryClub?.competition ?? null,
           jerseySize: dto.jerseySize?.trim() || null,
         },
       });
