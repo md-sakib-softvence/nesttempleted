@@ -18,7 +18,7 @@ import { createActivities } from '../../utils/activity.util';
 import { JwtService } from '@nestjs/jwt';
 import { MailService } from '../../mail/mail.service';
 import {
-  assertAccountEmailAvailable,
+  assertFanOrPlayerEmailAvailable,
   normalizeAccountEmail,
 } from '../../utils/account-email.util';
 
@@ -60,7 +60,7 @@ export class FanService {
       throw new ConflictException('Fan with this email already exists');
     }
 
-    await assertAccountEmailAvailable(this.prisma, normalizedEmail);
+    await assertFanOrPlayerEmailAvailable(this.prisma, normalizedEmail, 'FAN');
 
     const { password, coins, ...rest } = createFanDto;
     const hashedPassword = await bcrypt.hash(
@@ -133,7 +133,7 @@ export class FanService {
       normalizedEmail &&
       normalizedEmail !== normalizeAccountEmail(existingFan.email)
     ) {
-      await assertAccountEmailAvailable(this.prisma, normalizedEmail, {
+      await assertFanOrPlayerEmailAvailable(this.prisma, normalizedEmail, 'FAN', {
         role: 'FAN',
         id: existingFan.fanId,
       });

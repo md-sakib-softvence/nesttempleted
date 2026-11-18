@@ -16,7 +16,7 @@ import {
   QueryOptions,
 } from '../../utils/query.util';
 import {
-  assertAccountEmailAvailable,
+  assertFanOrPlayerEmailAvailable,
   normalizeAccountEmail,
 } from '../../utils/account-email.util';
 
@@ -57,7 +57,7 @@ export class MarketingDataService {
       throw new ConflictException('A fan with this email already exists.');
     }
 
-    await assertAccountEmailAvailable(this.prisma, normalizedEmail);
+    await assertFanOrPlayerEmailAvailable(this.prisma, normalizedEmail, 'FAN');
 
     if (dto.employeeId) {
       const existingEmployee = await this.prisma.employee.findUnique({
@@ -200,7 +200,7 @@ export class MarketingDataService {
         existingData.fan &&
         normalizedEmail !== normalizeAccountEmail(existingData.fan.email)
       ) {
-        await assertAccountEmailAvailable(tx, normalizedEmail, {
+        await assertFanOrPlayerEmailAvailable(tx, normalizedEmail, 'FAN', {
           role: 'FAN',
           id: existingData.fan.fanId,
         });

@@ -5,15 +5,15 @@ type AccountRole = 'FAN' | 'PLAYER' | 'EMPLOYEE' | 'ADMIN';
 type AccountEmailStore = PrismaClient | Prisma.TransactionClient;
 
 const EMAIL_CONFLICT_MESSAGE =
-  'This email is already registered to an account. Use a different email or sign in to the existing account.';
+  'This email is already in use. Fan and linked Player accounts may share an email, but staff and admin accounts must use a unique email.';
 
 export const normalizeAccountEmail = (email: string) =>
   email.trim().toLowerCase();
 
 /**
- * Emails are unique across independent account roles, not only within each
- * individual table. This policy applies to every account creation path,
- * including Fan -> Player conversion: an email belongs to one account only.
+ * Enforce global email uniqueness for roles that must never share an email.
+ * This is used for staff/admin accounts and therefore checks all account
+ * tables, including Fan and Player.
  */
 export async function assertAccountEmailAvailable(
   prisma: AccountEmailStore,
@@ -65,5 +65,62 @@ export async function assertAccountEmailAvailable(
 
   if (fan || player || employee || admin) {
     throw new ConflictException(EMAIL_CONFLICT_MESSAGE);
+  }
+}
+
+/**
+ * Fan and Player are a linked account pair and may share one email address.
+ * They still cannot duplicate an account of the same role, or reuse an email
+ * belonging to an Employee/Admin account.
+ */
+export async function assertFanOrPlayerEmailAvailable(
+  prisma: AccountEmailStore,
+  email: string,
+  role: 'FAN' | 'PLAYER',
+  exclude?: { role: 'FAN' | 'PLAYER'; id: string },
+) {
+  const normalizedEmail = normalizeAccountEmail(email);
+  const emailFilter = {
+    equals: normalizedEmail,
+    mode: 'insensitive' as const,
+  };
+
+  const [sameRoleAccount, employee, admin] = await Promise.all([
+    role === 'FAN'
+      ? prisma.fan.findFirst({
+          where: {
+            email: emailFilter,
+            ...(exclude?.role === 'FAN' ? { fanId: { not: exclude.id } } : {}),
+          },
+          select: { fanId: true },
+        })
+      : prisma.player.findFirst({
+          where: {
+            email: emailFilter,
+            ...(exclude?.role === 'PLAYER'
+              ? { playerId: { not: exclude.id } }
+              : {}),
+          },
+          select: { playerId: true },
+        }),
+    prisma.employee.findFirst({
+      where: { email: emailFilter },
+      select: { employeeId: true },
+    }),
+    prisma.admin.findFirst({
+      where: { email: emailFilter },
+      select: { adminId: true },
+    }),
+  ]);
+
+  if (sameRoleAccount) {
+    throw new ConflictException(
+      `A ${role.toLowerCase()} account already exists with this email. Sign in to that account.`,
+    );
+  }
+  if (employee || admin) {
+    throw new ConflictException(
+      'This email belongs to an Employee or Administrator account. Fan and linked Player accounts may share an email, but staff/admin accounts must use a different email.',
+    );
   }
 }

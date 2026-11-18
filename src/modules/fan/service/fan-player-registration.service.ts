@@ -16,7 +16,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { PlayerService } from '../../player/service/player.service';
 import { FlutterwaveService } from '../../flutterwave/service/flutterwave.service';
 import { uploadBase64ToS3 } from '../../utils/s3.util';
-import { assertAccountEmailAvailable } from '../../utils/account-email.util';
+import { assertFanOrPlayerEmailAvailable } from '../../utils/account-email.util';
 import { CompleteFanTournamentApplicationDto } from '../dto/complete-fan-tournament-application.dto';
 import { CreateFanTournamentApplicationDto } from '../dto/create-fan-tournament-application.dto';
 import { FOOTBALL_CLUB_CATALOG } from '../data/football-club-catalog.data';
@@ -80,9 +80,8 @@ export class FanPlayerRegistrationService {
     if (!fan || fan.isDeleted || fan.status !== 'ACTIVE') {
       throw new NotFoundException('Active fan account not found.');
     }
-    // A Fan account already owns this email. The global one-account-per-email
-    // policy does not allow this checkout to create a second Player identity.
-    await assertAccountEmailAvailable(this.prisma, fan.email);
+    // Fan and Player accounts intentionally share the Fan's email. Keep the
+    // Player role unique and reject emails already owned by staff/admin.
     const existingPlayerAccount = await this.prisma.player.findFirst({
       where: {
         email: { equals: fan.email, mode: 'insensitive' },
@@ -95,6 +94,7 @@ export class FanPlayerRegistrationService {
         'You already have a Player account. Use that account to register for tournaments.',
       );
     }
+    await assertFanOrPlayerEmailAvailable(this.prisma, fan.email, 'PLAYER');
     if (!tournament || tournament.isDeleted) {
       throw new NotFoundException('Tournament not found.');
     }
